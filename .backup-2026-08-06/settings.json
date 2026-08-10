@@ -1,0 +1,12 @@
+﻿{
+    "hotkeys":  {
+                    "solo:LG ULTRAGEAR":  "Ctrl+Alt+F1",
+                    "solo:LG ULTRAFINE":  "Ctrl+Alt+F2",
+                    "role:work":  "Ctrl+Alt+F3",
+                    "solo:ROG STRIX XG27AQDMGR":  "Ctrl+Alt+F4",
+                    "all":  "Ctrl+Alt+F5"
+                },
+    "maximizeRefresh":  true,
+    "runAtStartup":  true,
+    "notifications":  true
+}
