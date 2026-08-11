@@ -334,6 +334,30 @@ public class NativeForeground {
     public const uint MONITOR_DEFAULTTONEAREST = 2;
 }
 
+// DPI-осведомлённость процесса. Нужна по двум причинам, и вторая важнее:
+//
+// 1. Косметика: окно настроек при масштабе 150% иначе растягивается системой из
+//    100% и выглядит мылом.
+// 2. Координаты. Снимок позиций окон (WindowLayout.ps1) читает и возвращает
+//    прямоугольники в пикселях рабочего стола. Процесс, не осведомлённый о DPI,
+//    получает их виртуализованными — система пересчитывает их под мнимые 96 dpi,
+//    и на мониторах с разным масштабом снимок и восстановление говорили бы на
+//    разных языках. Одна система координат на весь процесс снимает вопрос.
+//
+// PER_MONITOR_AWARE_V2 есть с Windows 10 1703. На более старых сборках
+// SetProcessDpiAwarenessContext отсутствует или отдаёт ошибку — тогда откат на
+// SetProcessDPIAware (system-aware), он есть с Vista.
+public class NativeDpi {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetProcessDPIAware();
+
+    // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (HANDLE)-4
+    public static readonly IntPtr PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+}
+
 // Приёмник горячих клавиш. Жил в Displays.ps1 и компилировался четвёртым
 // отдельным вызовом; переехал сюда, чтобы компиляция была одна. Трею он нужен,
 // CLI — нет, но неиспользованный класс в сборке ничего не стоит: ссылка на
@@ -442,6 +466,41 @@ function Initialize-NativeTypes {
 }
 
 Initialize-NativeTypes
+
+# Объявить процесс DPI-осведомлённым можно только ДО создания первого окна и до
+# первого запроса метрик — потом система игнорирует вызов. Поэтому это делается
+# здесь, сразу за типами, а не в Displays.ps1: DisplayCore подключается первой
+# строкой и в трее, и в CLI.
+#
+# Вызывается один раз за процесс: повторный вызов вернул бы ошибку, и в журнал
+# посыпались бы `dpi:` строки на каждое обращение.
+$script:DpiSet = $false
+
+function Initialize-DpiAwareness {
+    if ($script:DpiSet) { return }
+    $script:DpiSet = $true
+
+    try {
+        if ([NativeDpi]::SetProcessDpiAwarenessContext([NativeDpi]::PER_MONITOR_AWARE_V2)) { return }
+    }
+    catch { }   # на старых сборках самой функции нет — это не ошибка
+
+    # Откат: system-aware. Хуже, чем per-monitor (при переезде окна между
+    # мониторами с разным масштабом его отрисует система), но координаты хотя бы
+    # не виртуализуются.
+    try {
+        if ([NativeDpi]::SetProcessDPIAware()) {
+            Write-DisplayLog 'core: per-monitor DPI is unavailable, fell back to system-aware'
+            return
+        }
+    }
+    catch { }
+
+    # Уже осведомлён (например задано в манифесте или через переменную окружения) —
+    # оба вызова вернут false, и это нормально. Молчим, чтобы не пугать журнал.
+}
+
+Initialize-DpiAwareness
 
 function New-DisplayDevice {
     $d = New-Object NativeDisplay+DISPLAY_DEVICE
