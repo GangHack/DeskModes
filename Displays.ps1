@@ -13,6 +13,13 @@
 param([switch]$NoHotkeys)
 
 $ErrorActionPreference = 'Stop'
+
+# Заводим до всего остального: в это время попадает и компиляция (или загрузка из
+# кэша) нативных типов, и сборка формы, и первый опрос состояния. Итог уходит в
+# журнал строкой «tray: started in N ms» — постоянный контроль того, как быстро
+# клавиши становятся рабочими после входа в Windows.
+$script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
+
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
@@ -89,53 +96,9 @@ function Invoke-ModeWatch {
     }
 }
 
-# --- окно-приёмник горячих клавиш -------------------------------------------
-# RegisterHotKey требует HWND и работает только там, где крутится цикл сообщений.
-
-if (-not ('HotkeyWindow' -as [type])) {
-    Add-Type -ReferencedAssemblies 'System.Windows.Forms' -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
-
-public class HotkeyWindow : NativeWindow, IDisposable {
-    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    private const int WM_HOTKEY = 0x0312;
-    private int _nextId = 1;
-    private readonly List<int> _ids = new List<int>();
-
-    public event EventHandler<int> HotkeyPressed;
-
-    public HotkeyWindow() { CreateHandle(new CreateParams()); }
-
-    // MOD_ALT 1 | MOD_CONTROL 2 | MOD_SHIFT 4 | MOD_WIN 8 | MOD_NOREPEAT 0x4000
-    public int Register(uint modifiers, uint vk) {
-        int id = _nextId++;
-        if (!RegisterHotKey(Handle, id, modifiers, vk)) return -1;
-        _ids.Add(id);
-        return id;
-    }
-
-    public void UnregisterAll() {
-        foreach (int id in _ids) { UnregisterHotKey(Handle, id); }
-        _ids.Clear();
-    }
-
-    protected override void WndProc(ref Message m) {
-        if (m.Msg == WM_HOTKEY) {
-            EventHandler<int> h = HotkeyPressed;
-            if (h != null) h(this, (int)m.WParam);
-        }
-        base.WndProc(ref m);
-    }
-
-    public void Dispose() { UnregisterAll(); DestroyHandle(); }
-}
-'@
-}
+# Приёмник горячих клавиш (класс HotkeyWindow) переехал в общий исходник в
+# DisplayCore.ps1: там все нативные типы компилируются одним вызовом и кладутся в
+# кэш-сборку. Здесь он был четвёртой отдельной компиляцией на каждый старт трея.
 
 # --- значок -----------------------------------------------------------------
 # Один файл app.ico на всё: трей, ярлыки в Пуске и в автозагрузке. Иконка
@@ -416,7 +379,7 @@ if (-not (Test-Path $script:SettingsFile)) {
 }
 
 Register-Hotkeys
-Write-DisplayLog 'tray: started'
+Write-DisplayLog ("tray: started in {0} ms" -f [int]$script:StartWatch.ElapsedMilliseconds)
 
 try {
     [System.Windows.Forms.Application]::Run()

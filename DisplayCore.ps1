@@ -138,11 +138,24 @@ function Format-HotkeyString {
 }
 
 # --- Windows API ------------------------------------------------------------
+# Все четыре класса живут в ОДНОМ исходнике и компилируются одним вызовом.
+#
+# Раньше их было четыре отдельных Add-Type (три здесь и HotkeyWindow в
+# Displays.ps1), а каждый Add-Type -TypeDefinition — это отдельная компиляция.
+# Замер на этой машине: 129 + 75 + 75 + 87 мс, то есть треть секунды на каждый
+# запуск CLI и на каждый старт трея. (В плане стояло «~2 с на каждый» — это
+# оказалось неверно, csc здесь заметно быстрее, чем ожидалось.)
+#
+# Комментарий «отдельным классом, а не полем в NativeDisplay» относился к
+# ДОПИСЫВАНИЮ в уже скомпилированный тип — так действительно нельзя без
+# перезапуска процесса. Совместной компиляции с нуля это не противоречит.
 
-if (-not ('NativeDisplay' -as [type])) {
-    Add-Type -TypeDefinition @'
+$script:NativeSource = @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
 
 public class NativeDisplay {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -199,28 +212,21 @@ public class NativeDisplay {
     public const int CDS_NORESET = 0x10000000;
     public const int PRIMARY_DEVICE = 0x00000004;
 }
-'@
-}
 
-# --- CCD: современный API конфигурации дисплеев ------------------------------
-# Зачем он здесь, если есть и MultiMonitorTool, и старый API.
-#
-# 1. Скорость. QueryDisplayConfig отвечает за ~1 мс, дамп MultiMonitorTool —
-#    за 1100 мс. Дамп делался на каждом переключении, на каждом открытии меню и
-#    на каждом срабатывании сторожа.
-# 2. Выключенный монитор. Для MultiMonitorTool его просто нет: в дампе остаётся
-#    строка без имени, без короткого ID и с пустым Monitor ID (проверено 7
-#    августа: оба погашенных LG схлопнулись в одну безымянную строку). Включить
-#    такой монитор по имени нечем — отсюда `/enable ` с пустым аргументом в
-#    журнале. CCD же перечисляет и неактивные цели, с именами.
-# 3. Родное разрешение. GET_TARGET_PREFERRED_MODE отдаёт preferred timing из
-#    EDID силами системы — и для выключенного монитора тоже. Разбор EDID из
-#    реестра вручную больше не нужен.
-if (-not ('NativeCcd' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
+// --- CCD: современный API конфигурации дисплеев ---------------------------
+// Зачем он здесь, если есть и MultiMonitorTool, и старый API.
+//
+// 1. Скорость. QueryDisplayConfig отвечает за ~1 мс, дамп MultiMonitorTool —
+//    за 1100 мс. Дамп делался на каждом переключении, на каждом открытии меню
+//    и на каждом срабатывании сторожа.
+// 2. Выключенный монитор. Для MultiMonitorTool его просто нет: в дампе
+//    остаётся строка без имени, без короткого ID и с пустым Monitor ID
+//    (проверено 7 августа: оба погашенных LG схлопнулись в одну безымянную
+//    строку). Включить такой монитор по имени нечем — отсюда `/enable ` с
+//    пустым аргументом в журнале. CCD же перечисляет и неактивные цели.
+// 3. Родное разрешение. GET_TARGET_PREFERRED_MODE отдаёт preferred timing из
+//    EDID силами системы — и для выключенного монитора тоже. Разбор EDID из
+//    реестра вручную больше не нужен.
 public class NativeCcd {
     [StructLayout(LayoutKind.Sequential)] public struct LUID { public uint Low; public int High; }
     [StructLayout(LayoutKind.Sequential)] public struct RATIONAL { public uint Numerator, Denominator; }
@@ -294,16 +300,6 @@ public class NativeCcd {
     public const uint SDC_ALLOW_CHANGES = 0x00000400;
     public const uint SDC_SAVE_TO_DATABASE = 0x00000200;
 }
-'@
-}
-
-# Отдельным классом, а не полем в NativeDisplay: у той проверка «тип уже есть»
-# своя, и дописывать в неё нельзя без перезапуска процесса.
-if (-not ('NativeForeground' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
 
 public class NativeForeground {
     [StructLayout(LayoutKind.Sequential)]
@@ -337,8 +333,115 @@ public class NativeForeground {
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
 }
-'@
+
+// Приёмник горячих клавиш. Жил в Displays.ps1 и компилировался четвёртым
+// отдельным вызовом; переехал сюда, чтобы компиляция была одна. Трею он нужен,
+// CLI — нет, но неиспользованный класс в сборке ничего не стоит: ссылка на
+// System.Windows.Forms разрешается лениво, при первом обращении к типу.
+//
+// RegisterHotKey требует HWND и работает только там, где крутится цикл сообщений.
+public class HotkeyWindow : NativeWindow, IDisposable {
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private const int WM_HOTKEY = 0x0312;
+    private int _nextId = 1;
+    private readonly List<int> _ids = new List<int>();
+
+    public event EventHandler<int> HotkeyPressed;
+
+    public HotkeyWindow() { CreateHandle(new CreateParams()); }
+
+    // MOD_ALT 1 | MOD_CONTROL 2 | MOD_SHIFT 4 | MOD_WIN 8 | MOD_NOREPEAT 0x4000
+    public int Register(uint modifiers, uint vk) {
+        int id = _nextId++;
+        if (!RegisterHotKey(Handle, id, modifiers, vk)) return -1;
+        _ids.Add(id);
+        return id;
+    }
+
+    public void UnregisterAll() {
+        foreach (int id in _ids) { UnregisterHotKey(Handle, id); }
+        _ids.Clear();
+    }
+
+    protected override void WndProc(ref Message m) {
+        if (m.Msg == WM_HOTKEY) {
+            EventHandler<int> h = HotkeyPressed;
+            if (h != null) h(this, (int)m.WParam);
+        }
+        base.WndProc(ref m);
+    }
+
+    public void Dispose() { UnregisterAll(); DestroyHandle(); }
 }
+'@
+
+# Компиляция один раз, дальше — из кэша рядом со скриптами.
+#
+# Имя сборки содержит первые 8 hex SHA256 от исходника: правишь C# — меняется
+# хэш — собирается заново, а старые файлы удаляются. Забыть пересобрать нельзя
+# по построению.
+#
+# Любой сбой кэша (папка только для чтения, занятый файл, гонка двух процессов)
+# не должен ронять инструмент: тогда просто компилируем в память, как раньше, и
+# пишем причину в журнал.
+function Initialize-NativeTypes {
+    # Уже в этой сессии — выходим. Проверка по NativeDisplay покрывает все
+    # четыре класса: они собираются вместе и появляются вместе.
+    if ('NativeDisplay' -as [type]) { return }
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $refs = @('System.Windows.Forms')
+    $how = 'compiled'
+
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $digest = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($script:NativeSource)) }
+        finally { $sha.Dispose() }
+        $hash = -join ($digest[0..3] | ForEach-Object { $_.ToString('x2') })
+
+        $name = "native-$hash.dll"
+        $dll = Join-Path $script:ToolRoot $name
+
+        # Сборки от прошлых версий исходника только занимают место и путают.
+        # Молча пропускаем занятые: трей живёт неделями и держит свою сборку
+        # открытой, поэтому сразу после правки C# старый файл удалить нельзя —
+        # он уйдёт при следующем запуске, уже после перезапуска трея.
+        foreach ($old in @(Get-ChildItem -Path $script:ToolRoot -Filter 'native-*.dll' -ErrorAction SilentlyContinue)) {
+            if ($old.Name -ne $name) { Remove-Item $old.FullName -Force -ErrorAction SilentlyContinue }
+        }
+
+        if (Test-Path $dll) {
+            Add-Type -Path $dll
+            $how = 'cache'
+        }
+        else {
+            # Собираем во временный файл с номером процесса в имени и только
+            # потом переименовываем: трей и CLI могут стартовать одновременно, и
+            # писать двумя процессами в один файл нельзя.
+            $tmp = Join-Path $script:ToolRoot ("native-$hash.$PID.tmp")
+            Add-Type -TypeDefinition $script:NativeSource -ReferencedAssemblies $refs -OutputAssembly $tmp
+            try { Move-Item -LiteralPath $tmp -Destination $dll -Force }
+            catch { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+
+            # -OutputAssembly в PS 5.1 типы в сессию НЕ загружает, поэтому
+            # догружаем из файла. Проверка на случай, если поведение иное.
+            if (-not ('NativeDisplay' -as [type])) { Add-Type -Path $dll }
+        }
+    }
+    catch {
+        Write-DisplayLog "core: dll cache failed - $($_.Exception.Message)"
+        if (-not ('NativeDisplay' -as [type])) {
+            Add-Type -TypeDefinition $script:NativeSource -ReferencedAssemblies $refs
+        }
+        $how = 'compiled'
+    }
+
+    Write-DisplayLog ("core: native types ready in {0} ms ({1})" -f [int]$sw.ElapsedMilliseconds, $how)
+}
+
+Initialize-NativeTypes
 
 function New-DisplayDevice {
     $d = New-Object NativeDisplay+DISPLAY_DEVICE
