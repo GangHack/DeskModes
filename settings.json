@@ -1,8 +1,8 @@
 ﻿{
     "hotkeys":  {
+                    "solo:LG ULTRAFINE":  "Ctrl+Alt+F2",
                     "solo:LG ULTRAGEAR":  "Ctrl+Alt+F1",
                     "solo:XG27AQDMGR":  "Ctrl+Alt+F4",
-                    "solo:LG ULTRAFINE":  "Ctrl+Alt+F2",
                     "role:work":  "Ctrl+Alt+F3",
                     "all":  "Ctrl+Alt+F5"
                 },
@@ -13,5 +13,15 @@
                    "XG27AQDMGR",
                    "LG ULTRAGEAR"
                ],
-    "primary":  "ULTRAGEAR"
+    "primary":  "ULTRAGEAR",
+    "restoreWindows":  false,
+    "autoGame":  {
+                     "enabled":  false,
+                     "process":  "",
+                     "gameMode":  "",
+                     "backMode":  ""
+                 },
+    "audio":  {
+
+              }
 }
