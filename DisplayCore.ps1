@@ -2035,6 +2035,7 @@ function Switch-DisplayMode {
         # до гашения расставлять нечего — часть экранов сейчас исчезнет, и их
         # координаты всё равно пришлось бы пересчитывать.
         $order = @($settings.layout)
+        $layoutChanged = $false
         if ($order.Count -gt 0) {
             $laid = Set-CcdLayout -PrimaryPath $primary.Id -Order $order
             # Пишем «arranged» только когда действительно расставляли. Раньше
@@ -2043,41 +2044,86 @@ function Switch-DisplayMode {
             # строка отчитывалась о работе, которой не было.
             if ($laid.Ok -and $laid.Changed) {
                 Write-DisplayLog ("layout: arranged left to right - " + ($order -join ' | '))
+                $layoutChanged = $true
             }
             elseif ($laid.Ok) {
                 Write-DisplayLog 'layout: already correct'
             }
         }
 
-        # Режим выставляем последним, когда набор активных мониторов уже
-        # окончательный: и назначение основного, и гашение соседа сбрасывают
-        # частоту на то, что записано в реестре, а там она часто ниже родной.
-        # Каждый монитор ждём отдельно — иначе он не успевает прицепиться, и
-        # установка режима вместе со сводкой пропадают вообще без следа.
-        $summary = @()
-        $failed = @()
-        foreach ($m in $wanted) {
-            $output = Get-CcdOutput -DevicePath $m.Id
-            if (-not $output) {
-                # Раньше здесь стоял continue, и монитор просто исчезал из сводки.
-                # Получался рапорт об успехе при чёрном экране: в журнале
-                # «did not attach» и следом пустое «done:», а человек в этот
-                # момент смотрел на погасший стол.
-                Write-DisplayLog "warn: $($m.Label) did not attach within 8 s - mode was not applied"
-                $failed += $m.Label
-                continue
+        # Третий granular-skip, к топологии и раскладке: если стол не двигался
+        # вообще И все нужные мониторы уже стоят в своих максимальных режимах —
+        # проверять нечего, сводку можно собрать из состояния, снятого на входе.
+        #
+        # Экономия не косметическая. Сразу после смены раскладки драйвер отвечает
+        # на запросы о режимах заметно медленнее, и повторное нажатие, сделанное
+        # через секунду после переключения, стоило 0.6 с вместо 0.3 с в покое —
+        # ровно тот случай, ради которого granular-skip и задуман (нажатия,
+        # скопившиеся за время переключения). Здесь пропускаются перечисление
+        # выходов и по два запроса режима на каждый монитор.
+        $nothingMoved = ($sameTopology -eq $true) -and (-not $layoutChanged)
+        $alreadyBest = $false
+        if ($nothingMoved -and -not $KeepMode) {
+            $alreadyBest = $true
+            foreach ($m in $wanted) {
+                if (-not $m.Active -or -not $m.Output -or -not $m.BestMode) { $alreadyBest = $false; break }
+                if ($m.Width -ne $m.BestMode.Width -or $m.Height -ne $m.BestMode.Height -or
+                    $m.Hz -ne $m.BestMode.Hz) { $alreadyBest = $false; break }
             }
-            if (-not $KeepMode) {
-                $nw = 0; $nh = 0
-                if ($m.Native) { $nw = $m.Native.Width; $nh = $m.Native.Height }
-                # $m.BestMode посчитан в Get-DisplayState на входе — для монитора,
-                # который уже был включён, он готов, и перебор режимов (дорогой
-                # сразу после смены топологии) не нужен. У только что
-                # проснувшегося он $null, и Set-BestModeFor посчитает сам.
-                [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode)
+        }
+
+        if ($alreadyBest) {
+            $summary = @()
+            foreach ($m in $wanted) {
+                $summary += '{0} {1}x{2} @ {3} Hz' -f $m.Label, $m.Width, $m.Height, $m.Hz
             }
-            $cur = Get-CurrentMode $output
-            $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
+            $failed = @()
+            Write-DisplayLog 'switch: modes already correct'
+        }
+        else {
+            # Режим выставляем последним, когда набор активных мониторов уже
+            # окончательный: и назначение основного, и гашение соседа сбрасывают
+            # частоту на то, что записано в реестре, а там она часто ниже родной.
+            # Каждый монитор ждём отдельно — иначе он не успевает прицепиться, и
+            # установка режима вместе со сводкой пропадают вообще без следа.
+            #
+            # Имена выходов берём ОДНИМ перечислением на всех, а не по одному на
+            # монитор: Get-CcdOutput внутри зовёт Get-CcdTargets (полный обход CCD
+            # с запросом имён, ~50 мс), и на трёх мониторах это втрое дороже без
+            # всякой причины. Кто уже на столе — найдётся здесь; кто ещё
+            # просыпается — уйдёт в Get-CcdOutput и будет честно дождан.
+            $outputs = @{}
+            foreach ($t in @(Get-CcdTargets)) {
+                if ($t.Active -and $t.Output) { $outputs[$t.DevicePath] = $t.Output }
+            }
+
+            $summary = @()
+            $failed = @()
+            foreach ($m in $wanted) {
+                $output = $outputs[$m.Id]
+                if (-not $output) { $output = Get-CcdOutput -DevicePath $m.Id }
+                if (-not $output) {
+                    # Раньше здесь стоял continue, и монитор просто исчезал из
+                    # сводки. Получался рапорт об успехе при чёрном экране: в
+                    # журнале «did not attach» и следом пустое «done:», а человек
+                    # в этот момент смотрел на погасший стол.
+                    Write-DisplayLog "warn: $($m.Label) did not attach within 8 s - mode was not applied"
+                    $failed += $m.Label
+                    continue
+                }
+                if (-not $KeepMode) {
+                    $nw = 0; $nh = 0
+                    if ($m.Native) { $nw = $m.Native.Width; $nh = $m.Native.Height }
+                    # $m.BestMode посчитан в Get-DisplayState на входе — для
+                    # монитора, который уже был включён, он готов, и перебор
+                    # режимов (дорогой сразу после смены топологии) не нужен. У
+                    # только что проснувшегося он $null, и Set-BestModeFor
+                    # посчитает сам.
+                    [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode)
+                }
+                $cur = Get-CurrentMode $output
+                $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
+            }
         }
 
         $text = ($summary -join ', ')
