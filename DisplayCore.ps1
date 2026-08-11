@@ -1168,6 +1168,11 @@ function Switch-DisplayMode {
         return [pscustomobject]@{ Mode = $ModeKey; Skipped = $true; Message = 'A switch is already in progress.' }
     }
 
+    # Длительность переключения пишется в итоговый done: и остаётся там навсегда.
+    # Три строки кода дают постоянный контроль регрессий скорости прямо в журнале:
+    # разбор «стало медленнее» без цифр за прошлые недели невозможен.
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+
     try {
         Write-DisplayLog "--- start mode=$ModeKey primaryMatch='$PrimaryMatch' keepMode=$KeepMode dryRun=$DryRun"
 
@@ -1309,10 +1314,14 @@ function Switch-DisplayMode {
         if ($refused -and $refused.Count -gt 0) {
             $text += ('. Still on: ' + ($refused -join ', ') + ' - Windows would not turn them off')
         }
-        Write-DisplayLog "done: $text"
+        # Форматируем через InvariantCulture: журнал английский, а `-f` берёт
+        # разделитель из текущей локали и на русской писал бы «4,2 s».
+        $took = $watch.Elapsed.TotalSeconds.ToString('0.0', [cultureinfo]::InvariantCulture)
+        Write-DisplayLog ("done: {0} ({1} s)" -f $text, $took)
         return [pscustomobject]@{
             Mode = $ModeKey; Skipped = $false; Message = $text
             Refused = $refused; Failed = $failed
+            Seconds = $watch.Elapsed.TotalSeconds
             Ok = ($failed.Count -eq 0 -and (-not $refused -or $refused.Count -eq 0))
         }
     }
