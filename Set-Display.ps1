@@ -78,6 +78,23 @@ if ($Mode -eq 'status') {
     return
 }
 
+if ($Mode -eq 'audio') {
+    # Нужно, чтобы знать, какой кусок названия писать в settings.json -> audio.
+    # Окна для этой настройки нет намеренно, а угадывать названия устройств
+    # по памяти невозможно.
+    Write-Host ''
+    Write-Host 'Playback devices:' -ForegroundColor Cyan
+    $devs = @(Get-AudioDevices)
+    if ($devs.Count -eq 0) { Write-Host '  (none found)'; return }
+    $devs |
+        Select-Object @{n = 'Default'; e = { if ($_.IsDefault) { '*' } else { '' } } },
+                      @{n = 'Name';    e = { $_.Name } } |
+        Format-Table -AutoSize
+    Write-Host 'Put a distinctive part of a name into settings.json, for example:' -ForegroundColor DarkGray
+    Write-Host '    "audio": { "role:work": "ULTRAFINE", "solo:XG27AQDMGR": "ROG" }' -ForegroundColor DarkGray
+    return
+}
+
 $modes = @(Get-DisplayModes $state)
 
 if ($Mode -eq 'modes') {

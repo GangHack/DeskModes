@@ -371,7 +371,40 @@ README честно признаёт дыру: «Смена набора мон�
   (eConsole; eCommunications — решить при реализации). Не нашли → `warn: audio device '...' not found`.
 - Журнал: `audio: default -> LG ULTRAGEAR (HDMI)`.
 
-### 3.4 HDR переживает переключение
+### 3.4 — НЕ НУЖЕН, проверено 2026-08-11
+
+Пункт начинался с условия: «Сначала быстрый живой тест… Не сбрасывается — пункт
+закрыть как ненужный». Тест проведён, **HDR не сбрасывается**.
+
+Все три монитора сообщают `advancedColorSupported = True`, включён HDR не был ни на
+одном (8 бит на канал). HDR включили на ULTRAGEAR через
+`SET_ADVANCED_COLOR_STATE` (вернул 0, состояние стало `enabled = True` — сверено
+чтением, а не по коду возврата), затем `all → work → all`:
+
+```
+after enabling:            LG ULTRAGEAR enabled=True
+after going to work:       LG ULTRAGEAR enabled=True
+after coming back to all:  LG ULTRAGEAR enabled=True
+```
+
+HDR остался включённым на всех шагах. После теста возвращён в исходное
+«выключено».
+
+Объявления HDR-структур из кода **убраны**: без вызывающего это мёртвый код.
+Если после обновления драйвера HDR начнёт сбрасываться, работы тут на десять
+минут — всё, что нужно, уже выяснено:
+
+* `DISPLAYCONFIG_DEVICE_INFO_TYPE`: `GET_ADVANCED_COLOR_INFO = 9`,
+  `SET_ADVANCED_COLOR_STATE = 10`;
+* `ADVANCED_COLOR_INFO` = `HEADER` + `uint value` + `uint colorEncoding` +
+  `uint bitsPerColorChannel` (32 байта на x64); в `value` бит 0 —
+  `advancedColorSupported`, бит 1 — `advancedColorEnabled`. Битовые поля проще
+  свернуть в один `uint`, чем описывать в C#;
+* структура для записи — `HEADER` + `uint value` (24 байта), бит 0 включает HDR;
+* имя структуры не должно совпадать с именем константы: `SET_ADVANCED_COLOR_STATE`
+  и там и там — это ошибка компиляции, на которой первый заход и застрял.
+
+### 3.4 (исходный текст пункта)
 - Перед топологией у каждого wanted-монитора запросить
   `DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO`; после установки режимов — если HDR был
   включён, а стал выключен → вернуть через `SET_ADVANCED_COLOR_STATE`.

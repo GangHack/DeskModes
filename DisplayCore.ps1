@@ -98,6 +98,10 @@ function Get-DefaultSettings {
             gameMode = ''
             backMode = ''
         }
+        # Звук следом за режимом: ключ режима -> кусок названия устройства вывода.
+        # Пустой словарь = выключено. Тоже правится руками:
+        #   "audio": { "solo:XG27AQDMGR": "ROG", "role:work": "ULTRAFINE" }
+        audio           = [ordered]@{}
         # runAtStartup здесь был и убран: его писали, но никогда не читали —
         # правда об автозагрузке живёт в наличии ярлыка (см. Test-RunAtStartup),
         # и две копии одного факта могли разойтись.
@@ -120,6 +124,9 @@ function Get-DisplaySettings {
             # Поле за полем, а не присваиванием объекта целиком: в файле может
             # лежать половина ключей (его правят руками), и остальные обязаны
             # остаться дефолтными, а не превратиться в $null.
+            if ($raw.audio) {
+                foreach ($p in $raw.audio.PSObject.Properties) { $s.audio[$p.Name] = [string]$p.Value }
+            }
             if ($raw.autoGame) {
                 if ($null -ne $raw.autoGame.enabled)  { $s.autoGame.enabled  = [bool]$raw.autoGame.enabled }
                 if ($null -ne $raw.autoGame.process)  { $s.autoGame.process  = [string]$raw.autoGame.process }
@@ -350,6 +357,10 @@ public class NativeCcd {
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref SOURCE_DEVICE_NAME d);
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref TARGET_PREFERRED_MODE d);
 
+    // HDR здесь намеренно НЕ объявлен. Проверено 2026-08-11: HDR переживает
+    // смену набора мониторов, возвращать его не надо (подробности и рецепт на
+    // случай, если это изменится, — в PLAN.md, пункт 3.4).
+
     public const uint QDC_ALL_PATHS = 1;
     public const uint QDC_ONLY_ACTIVE_PATHS = 2;
 
@@ -399,6 +410,151 @@ public class NativeForeground {
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+}
+
+// Звук: список устройств вывода и назначение устройства по умолчанию.
+//
+// Внешних .exe не нужно. Список берётся документированным IMMDeviceEnumerator, а
+// назначение — недокументированным IPolicyConfig: публичного API «сделать это
+// устройство основным» в Windows нет вообще, им пользуются все переключалки
+// звука, и он не меняется много лет.
+//
+// ОСТОРОЖНО с порядком методов в IPolicyConfig. У COM-интерфейса методы
+// вызываются по номеру слота в таблице, а не по имени: если пропустить или
+// перепутать хотя бы один, вызов уйдёт в СОСЕДНЮЮ функцию — например в
+// SetDeviceFormat с мусором вместо формата. Поэтому объявлены все двенадцать
+// слотов в точном порядке, хотя нужен из них один — одиннадцатый.
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+public class MMDeviceEnumeratorComObject { }
+
+[ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDeviceEnumerator {
+    [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
+    [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+    [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice device);
+    [PreserveSig] int RegisterEndpointNotificationCallback(IntPtr client);
+    [PreserveSig] int UnregisterEndpointNotificationCallback(IntPtr client);
+}
+
+[ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDeviceCollection {
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int Item(int index, out IMMDevice device);
+}
+
+[ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+    [PreserveSig] int OpenPropertyStore(int stgmAccess, out IPropertyStore properties);
+    [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    [PreserveSig] int GetState(out int state);
+}
+
+[ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IPropertyStore {
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int GetAt(int index, out PROPERTYKEY key);
+    [PreserveSig] int GetValue(ref PROPERTYKEY key, out PROPVARIANT value);
+    [PreserveSig] int SetValue(ref PROPERTYKEY key, ref PROPVARIANT value);
+    [PreserveSig] int Commit();
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct PROPERTYKEY { public Guid fmtid; public int pid; }
+
+// Из объединения нужен один случай — VT_LPWSTR. На x64 данные начинаются с
+// восьмого байта, поэтому указатель лежит там.
+[StructLayout(LayoutKind.Explicit)]
+public struct PROPVARIANT {
+    [FieldOffset(0)] public ushort vt;
+    [FieldOffset(8)] public IntPtr pointerValue;
+}
+
+[ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")]
+public class PolicyConfigComObject { }
+
+[ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IPolicyConfig {
+    [PreserveSig] int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, out IntPtr format);
+    [PreserveSig] int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool isDefault, out IntPtr format);
+    [PreserveSig] int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+    [PreserveSig] int SetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr endpointFormat, IntPtr mixFormat);
+    [PreserveSig] int GetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool isDefault, out IntPtr defaultPeriod, out IntPtr minimumPeriod);
+    [PreserveSig] int SetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr period);
+    [PreserveSig] int GetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, out IntPtr mode);
+    [PreserveSig] int SetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr mode);
+    [PreserveSig] int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool isFxStore, ref PROPERTYKEY key, out PROPVARIANT value);
+    [PreserveSig] int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool isFxStore, ref PROPERTYKEY key, IntPtr value);
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, int role);
+    [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string deviceId, bool visible);
+}
+
+public class AudioDev {
+    public string Id;
+    public string Name;
+    public bool IsDefault;
+}
+
+public class NativeAudio {
+    private const int RENDER = 0;              // eRender: вывод, не запись
+    private const int DEVICE_STATE_ACTIVE = 1; // только живые устройства
+    private const int STGM_READ = 0;
+
+    // PKEY_Device_FriendlyName — «Динамики (Realtek)», то, что видно в системе.
+    private static PROPERTYKEY FriendlyName() {
+        PROPERTYKEY k = new PROPERTYKEY();
+        k.fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0");
+        k.pid = 14;
+        return k;
+    }
+
+    public static List<AudioDev> ListRenderDevices() {
+        List<AudioDev> result = new List<AudioDev>();
+        IMMDeviceEnumerator en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
+
+        string defaultId = "";
+        IMMDevice def;
+        if (en.GetDefaultAudioEndpoint(RENDER, 0, out def) == 0 && def != null) {
+            def.GetId(out defaultId);
+        }
+
+        IMMDeviceCollection col;
+        if (en.EnumAudioEndpoints(RENDER, DEVICE_STATE_ACTIVE, out col) != 0) return result;
+
+        int count = 0;
+        if (col.GetCount(out count) != 0) return result;
+
+        for (int i = 0; i < count; i++) {
+            IMMDevice dev;
+            if (col.Item(i, out dev) != 0 || dev == null) continue;
+
+            string id;
+            if (dev.GetId(out id) != 0) continue;
+
+            string name = "";
+            IPropertyStore store;
+            if (dev.OpenPropertyStore(STGM_READ, out store) == 0 && store != null) {
+                PROPERTYKEY key = FriendlyName();
+                PROPVARIANT v;
+                if (store.GetValue(ref key, out v) == 0 && v.pointerValue != IntPtr.Zero) {
+                    name = Marshal.PtrToStringUni(v.pointerValue);
+                }
+            }
+
+            AudioDev d = new AudioDev();
+            d.Id = id;
+            d.Name = name == null ? "" : name;
+            d.IsDefault = (id == defaultId);
+            result.Add(d);
+        }
+        return result;
+    }
+
+    // role: 0 eConsole, 1 eMultimedia, 2 eCommunications
+    public static int SetDefault(string deviceId, int role) {
+        IPolicyConfig cfg = (IPolicyConfig)(new PolicyConfigComObject());
+        return cfg.SetDefaultEndpoint(deviceId, role);
+    }
 }
 
 // Позиции окон: перечисление и восстановление. Перебор сделан здесь, а не в
@@ -1947,6 +2103,16 @@ function Switch-DisplayMode {
             try { Restore-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $wantedIds) }
             catch { Write-DisplayLog "warn: windows - restoring failed: $($_.Exception.Message)" }
         }
+
+        # Звук — после того, как режим состоялся: незачем гонять устройства, если
+        # переключение провалилось. Словарь пуст (по умолчанию) — кода нет вообще.
+        if ($settings.audio -and $settings.audio.Contains($ModeKey)) {
+            $want = [string]$settings.audio[$ModeKey]
+            if ($want) {
+                try { [void](Set-DefaultAudioDevice -Match $want) }
+                catch { Write-DisplayLog "warn: audio - failed: $($_.Exception.Message)" }
+            }
+        }
         return [pscustomobject]@{
             Mode = $ModeKey; Skipped = $false; Message = $text
             Refused = $refused; Failed = $failed
@@ -2106,6 +2272,61 @@ function Restore-BestModes {
     finally {
         $mutex.ReleaseMutex()
         $mutex.Dispose()
+    }
+}
+
+# --- звук следом за режимом -------------------------------------------------
+# Каждому режиму можно сопоставить устройство вывода: сел играть на ASUS — звук
+# ушёл в его колонки, вернулся за работу — в наушники на столе. Выключено, пока
+# словарь audio в настройках пуст.
+
+# Список устройств вывода — для настройки руками: чтобы знать, какой кусок
+# названия писать в settings.json. Вызывается из Set-Display.ps1 (audio).
+function Get-AudioDevices {
+    try { return @([NativeAudio]::ListRenderDevices()) }
+    catch {
+        Write-DisplayLog "warn: audio - could not list devices: $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Сделать устройством по умолчанию первое, чьё название содержит $Match.
+#
+# Роли назначаем eConsole и eMultimedia, а eCommunications НЕ трогаем осознанно:
+# устройство для разговоров — это обычно гарнитура, и она не должна ездить за
+# мониторами. Кому нужно иначе, тот поправит здесь.
+function Set-DefaultAudioDevice {
+    param([Parameter(Mandatory)][string]$Match)
+
+    if (-not $Match) { return $false }
+
+    $devices = Get-AudioDevices
+    if ($devices.Count -eq 0) { return $false }
+
+    $hit = $devices | Where-Object { $_.Name -like ('*' + $Match + '*') } | Select-Object -First 1
+    if (-not $hit) {
+        # Названия перечисляем в журнале: без них непонятно, что писать в
+        # настройки, а окна для этого нет.
+        Write-DisplayLog ("warn: audio device '{0}' not found - have: {1}" -f `
+            $Match, (($devices | ForEach-Object { $_.Name }) -join '; '))
+        return $false
+    }
+
+    if ($hit.IsDefault) { return $true }   # уже он — молчим, чтобы не шуметь
+
+    try {
+        $rc = [NativeAudio]::SetDefault($hit.Id, 0)          # eConsole
+        $rc2 = [NativeAudio]::SetDefault($hit.Id, 1)         # eMultimedia
+        if ($rc -ne 0 -or $rc2 -ne 0) {
+            Write-DisplayLog ("warn: audio - switching to '{0}' returned {1}/{2}" -f $hit.Name, $rc, $rc2)
+            return $false
+        }
+        Write-DisplayLog ("audio: default -> {0}" -f $hit.Name)
+        return $true
+    }
+    catch {
+        Write-DisplayLog "warn: audio - could not switch: $($_.Exception.Message)"
+        return $false
     }
 }
 
