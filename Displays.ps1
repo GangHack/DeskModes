@@ -101,6 +101,77 @@ function Invoke-ModeWatch {
 # DisplayCore.ps1: там все нативные типы компилируются одним вызовом и кладутся в
 # кэш-сборку. Здесь он был четвёртой отдельной компиляцией на каждый старт трея.
 
+# --- авто-игровой режим -----------------------------------------------------
+# Запустилась игра — уходим в её режим; закрылась — возвращаемся. Выключено по
+# умолчанию, включается руками в settings.json (см. Get-DefaultSettings): своего
+# элемента в окне настроек намеренно нет, настройка редкая.
+#
+# Опрос живёт в уже существующем 15-секундном таймере трея: своего не надо, а
+# Get-Process по имени стоит единицы миллисекунд.
+#
+# «Переключались мы» помнится отдельно от текущего режима. Иначе после ручного
+# переключения во время игры выход из неё уносил бы экраны туда, где человек их
+# видеть не просил.
+
+$script:AutoGameOwned = $false
+$script:AutoGameReturnTo = ''
+
+function Invoke-AutoGameCheck {
+    $cfg = (Get-ActiveSettings).autoGame
+    if (-not $cfg) { return }
+    if (-not $cfg.enabled -or -not $cfg.process -or -not $cfg.gameMode) { return }
+
+    $running = $null -ne (Get-Process -Name $cfg.process -ErrorAction SilentlyContinue)
+
+    if ($running -and -not $script:AutoGameOwned) {
+        $state = Get-CachedState
+        $current = $null
+        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state) }
+        # Уже в нужном режиме — управление брать незачем: возвращать потом будет
+        # нечего, и это правильно.
+        if ($current -eq $cfg.gameMode) { return }
+
+        $back = $(if ($cfg.backMode) { [string]$cfg.backMode } else { [string]$current })
+        if (-not $back) {
+            # Текущий набор экранов не совпал ни с одним режимом — вернуться потом
+            # будет некуда, поэтому и уходить не станем. Молчать тут нельзя.
+            Write-DisplayLog "warn: auto - current displays match no known mode, not switching for $($cfg.process)"
+            return
+        }
+        $script:AutoGameReturnTo = $back
+        $script:AutoGameOwned = $true
+        Write-DisplayLog "auto: $($cfg.process) started -> $($cfg.gameMode)"
+        Invoke-Mode $cfg.gameMode -Auto
+        return
+    }
+
+    # Игра идёт, переключали мы — следим, не сменил ли набор экранов кто-то ещё.
+    # Invoke-Mode сбрасывает владение сразу, но только для своих путей (меню и
+    # хоткей). Переключение из командной строки — тоже ручное, а трей о нём знает
+    # лишь по факту изменившегося состояния. Проверка по текущему режиму
+    # покрывает все случаи разом.
+    if ($running -and $script:AutoGameOwned) {
+        $state = Get-CachedState
+        $current = $null
+        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state) }
+        if ($current -and $current -ne $cfg.gameMode) {
+            Write-DisplayLog 'auto: the displays were changed by hand, letting go'
+            $script:AutoGameOwned = $false
+            $script:AutoGameReturnTo = ''
+        }
+        return
+    }
+
+    if (-not $running -and $script:AutoGameOwned) {
+        $back = $script:AutoGameReturnTo
+        $script:AutoGameOwned = $false
+        $script:AutoGameReturnTo = ''
+        if (-not $back) { return }
+        Write-DisplayLog "auto: $($cfg.process) exited -> $back"
+        Invoke-Mode $back -Auto
+    }
+}
+
 # --- значок -----------------------------------------------------------------
 # Один файл app.ico на всё: трей, ярлыки в Пуске и в автозагрузке. Иконка
 # DisplaySwitch.exe, которая стояла раньше, в Пуске сливалась с системными.
@@ -147,7 +218,15 @@ function Show-Balloon {
 }
 
 function Invoke-Mode {
-    param([string]$Key)
+    param([string]$Key, [switch]$Auto)
+
+    # Человек переключил сам — значит авто-режим больше не хозяин положения и
+    # возвращать ничего не должен. С людьми не воюем: если во время игры руками
+    # выбрали другой набор экранов, это осознанное решение.
+    if (-not $Auto) {
+        $script:AutoGameOwned = $false
+        $script:AutoGameReturnTo = ''
+    }
 
     $tray.Text = "$script:AppName - switching..."
     try {
@@ -348,6 +427,11 @@ $script:DisplayChanged = { Update-StateCache; Invoke-ModeWatch }
 $script:WatchTimer = New-Object System.Windows.Forms.Timer
 $script:WatchTimer.Interval = 15000
 $script:WatchTimer.add_Tick({
+    # Авто-игровой режим первым: заметить запуск игры важнее, чем добрать
+    # отложенный возврат частоты, и одно с другим не связано.
+    try { Invoke-AutoGameCheck }
+    catch { Write-DisplayLog "auto: check failed - $($_.Exception.Message)" }
+
     if (-not $script:RestorePending) { return }
     if (Test-FullscreenApp) { return }
     Update-StateCache

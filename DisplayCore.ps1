@@ -19,10 +19,52 @@ $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 function Write-DisplayLog {
     param([string]$Message)
     try {
-        Add-Content -Path $script:LogFile -Encoding UTF8 -Value ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+        # -ErrorAction Stop не для красоты: отказ Add-Content (файл открыт на
+        # запись чем-то ещё, только чтение, диск полон) — ошибка НЕтерминирующая,
+        # и без этого catch ниже её не поймает. Обе точки входа ставят
+        # $ErrorActionPreference = 'Stop' и потому были прикрыты случайно, а вот
+        # DisplayCore, подключённый в обычную консоль, сыпал красным текстом на
+        # каждую строку журнала. Теперь молчание не зависит от вызывающего.
+        Add-Content -Path $script:LogFile -Encoding UTF8 -ErrorAction Stop `
+                    -Value ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
     }
     catch { }   # лог не должен ронять переключение мониторов
 }
+
+# Журнал в этом проекте — главный (и единственный) инструмент разбора, поэтому он
+# растёт: строка на каждое переключение, на каждый старт, на каждое срабатывание
+# сторожа. Один мегабайт — это примерно год такой жизни; дальше открывать его
+# блокнотом становится больно, а история старше года не нужна ни разу.
+#
+# Проверка ОДНА, при загрузке DisplayCore, а не на каждой записи: иначе Get-Item
+# дёргался бы по нескольку раз за переключение впустую.
+#
+# Переименование, а не обрезание: активный процесс может держать файл открытым, и
+# резать его под ним нельзя. Прошлый .old перезаписывается — двух поколений
+# достаточно.
+function Rotate-DisplayLog {
+    param([int]$MaxBytes = 1MB)
+
+    try {
+        if (-not (Test-Path $script:LogFile)) { return }
+        if ((Get-Item $script:LogFile).Length -lt $MaxBytes) { return }
+
+        $old = $script:LogFile + '.old'
+        # -ErrorAction Stop обязателен: без него отказ Move-Item — ошибка
+        # НЕтерминирующая, catch ниже не срабатывает, и текст «файл занят другим
+        # процессом» уезжает в поток ошибок. В трее это никто не увидит, а вот
+        # status.cmd печатал бы красную простыню из-за уборки в журнале.
+        Move-Item -LiteralPath $script:LogFile -Destination $old -Force -ErrorAction Stop
+        # Первая строка нового файла объясняет, куда девалось прошлое.
+        Write-DisplayLog 'core: log rotated, the previous one is last-run.log.old'
+    }
+    catch {
+        # Не смогли — не беда: пишем дальше в тот же файл. Ронять инструмент
+        # из-за уборки в журнале нельзя.
+    }
+}
+
+Rotate-DisplayLog
 
 # --- настройки --------------------------------------------------------------
 # Привязки клавиш живут в settings.json, а не в коде: их правит сам пользователь
@@ -44,6 +86,18 @@ function Get-DefaultSettings {
         # Запоминать положение окон для каждой раскладки столов и возвращать их
         # обратно при возврате к ней (WindowLayout.ps1).
         restoreWindows  = $true
+        # Автоматический игровой режим. Своего элемента в окне настроек нет
+        # намеренно: настройка редкая и правится руками в settings.json.
+        #   enabled   включить слежение;
+        #   process   имя процесса БЕЗ .exe, как его показывает Get-Process (cs2);
+        #   gameMode  ключ режима, в который уходить (см. Set-Display.ps1 modes);
+        #   backMode  куда возвращаться; пусто — в тот режим, что был до игры.
+        autoGame        = [ordered]@{
+            enabled  = $false
+            process  = ''
+            gameMode = ''
+            backMode = ''
+        }
         # runAtStartup здесь был и убран: его писали, но никогда не читали —
         # правда об автозагрузке живёт в наличии ярлыка (см. Test-RunAtStartup),
         # и две копии одного факта могли разойтись.
@@ -62,6 +116,15 @@ function Get-DisplaySettings {
             if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
             if ($raw.hotkeys) {
                 foreach ($p in $raw.hotkeys.PSObject.Properties) { $s.hotkeys[$p.Name] = [string]$p.Value }
+            }
+            # Поле за полем, а не присваиванием объекта целиком: в файле может
+            # лежать половина ключей (его правят руками), и остальные обязаны
+            # остаться дефолтными, а не превратиться в $null.
+            if ($raw.autoGame) {
+                if ($null -ne $raw.autoGame.enabled)  { $s.autoGame.enabled  = [bool]$raw.autoGame.enabled }
+                if ($null -ne $raw.autoGame.process)  { $s.autoGame.process  = [string]$raw.autoGame.process }
+                if ($null -ne $raw.autoGame.gameMode) { $s.autoGame.gameMode = [string]$raw.autoGame.gameMode }
+                if ($null -ne $raw.autoGame.backMode) { $s.autoGame.backMode = [string]$raw.autoGame.backMode }
             }
         }
         catch {
