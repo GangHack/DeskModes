@@ -21,6 +21,7 @@ $ErrorActionPreference = 'Stop'
 $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
+. (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -353,6 +354,12 @@ $script:WatchTimer.add_Tick({
     Invoke-ModeWatch
 })
 $script:WatchTimer.Start()
+
+# Снимки позиций окон из прошлого входа в Windows бесполезны: HWND действительны
+# только в рамках одной logon-сессии, а после перезагрузки те же номера достанутся
+# другим окнам. Чистим записи, все процессы которых уже мертвы.
+try { Remove-DeadWindowLayouts }
+catch { Write-DisplayLog "windows: could not clean stale snapshots - $($_.Exception.Message)" }
 
 # Монитор мог переехать на другой вход, пока приложение не работало — тогда
 # привязка сама переезжает на новый ключ. Делаем это до регистрации клавиш.

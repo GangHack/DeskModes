@@ -147,9 +147,18 @@ function New-SettingsForm {
     $notifyBox = New-Object System.Windows.Forms.CheckBox
     $notifyBox.Text = 'Show a notification after switching'
     $notifyBox.AutoSize = $true
-    $notifyBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 18
+    $notifyBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 3
     $notifyBox.Checked = [bool]$Settings.notifications
     [void]$root.Controls.Add($notifyBox)
+
+    $windowsBox = New-Object System.Windows.Forms.CheckBox
+    $windowsBox.Text = 'Remember window positions per display layout'
+    $windowsBox.AutoSize = $true
+    $windowsBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 18
+    # Значение по умолчанию — включено, поэтому отсутствие поля читается как $true,
+    # а не как «выключено»: у старого settings.json этого ключа нет.
+    $windowsBox.Checked = ($null -eq $Settings.restoreWindows -or [bool]$Settings.restoreWindows)
+    [void]$root.Controls.Add($windowsBox)
 
     $buttons = New-Object System.Windows.Forms.FlowLayoutPanel
     $buttons.FlowDirection = 'RightToLeft'
@@ -181,6 +190,7 @@ function New-SettingsForm {
         StartupBox = $startupBox
         RefreshBox = $refreshBox
         NotifyBox  = $notifyBox
+        WindowsBox = $windowsBox
     }
 }
 
@@ -254,6 +264,7 @@ function Show-SettingsDialog {
         $updated.hotkeys = $newHotkeys
         $updated.maximizeRefresh = $ui.RefreshBox.Checked
         $updated.notifications = $ui.NotifyBox.Checked
+        $updated.restoreWindows = $ui.WindowsBox.Checked
 
         # Окно правит только то, что в нём есть; остальные поля обязаны проехать
         # насквозь. Начинали с Get-DefaultSettings — значит всё, чего в форме нет,

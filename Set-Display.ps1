@@ -26,6 +26,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
+. (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 
 function Resolve-ModeKey {
     param([string]$Text, $Modes, $State)

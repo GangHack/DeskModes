@@ -41,6 +41,9 @@ function Get-DefaultSettings {
         # Какой монитор делать основным (то есть где панель задач), если он есть
         # среди включённых. Часть названия, как и в layout.
         primary         = ''
+        # Запоминать положение окон для каждой раскладки столов и возвращать их
+        # обратно при возврате к ней (WindowLayout.ps1).
+        restoreWindows  = $true
         # runAtStartup здесь был и убран: его писали, но никогда не читали —
         # правда об автозагрузке живёт в наличии ярлыка (см. Test-RunAtStartup),
         # и две копии одного факта могли разойтись.
@@ -54,6 +57,7 @@ function Get-DisplaySettings {
             $raw = Get-Content $script:SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($null -ne $raw.maximizeRefresh) { $s.maximizeRefresh = [bool]$raw.maximizeRefresh }
             if ($null -ne $raw.notifications)   { $s.notifications   = [bool]$raw.notifications }
+            if ($null -ne $raw.restoreWindows)  { $s.restoreWindows  = [bool]$raw.restoreWindows }
             if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
             if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
             if ($raw.hotkeys) {
@@ -332,6 +336,146 @@ public class NativeForeground {
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+}
+
+// Позиции окон: перечисление и восстановление. Перебор сделан здесь, а не в
+// PowerShell, по двум причинам: EnumWindows требует делегат (из PowerShell это
+// хрупко и медленно), и на десятках окон каждый P/Invoke из скрипта стоит дороже
+// самого вызова.
+//
+// GetWindowPlacement, а не GetWindowRect: он несёт и рамку нормального
+// состояния, и признак «свёрнуто/развёрнуто». Развёрнутое окно через
+// GetWindowRect вернуло бы координаты во весь экран, и восстановление сделало бы
+// из него обычное окно такого размера — а нужно, чтобы оно осталось развёрнутым.
+public class WinInfo {
+    public IntPtr Hwnd;
+    public int Pid;
+    public string Title;
+    public string Path;
+    public int ShowCmd;
+    public int NL, NT, NR, NB;      // rcNormalPosition
+    public int MinX, MinY;          // ptMinPosition
+    public int MaxX, MaxY;          // ptMaxPosition
+}
+
+public class NativeWindows {
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct WRECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WINDOWPLACEMENT {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition;
+        public POINT ptMaxPosition;
+        public WRECT rcNormalPosition;
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr hWnd, StringBuilder s, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLengthW(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
+    [DllImport("user32.dll")] private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
+
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(int access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageNameW(IntPtr h, int flags, StringBuilder name, ref int size);
+
+    // Окно, которое системе принадлежит, а не пользователю: панели, всплывашки,
+    // невидимые окна-обработчики. Их место на столе никого не интересует.
+    private const int GWL_EXSTYLE = -20;
+    private const int GWL_STYLE = -16;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_CHILD = 0x40000000;
+    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    // DWM «прячет» окна магазинных приложений, не закрывая их: они остаются
+    // видимыми по IsWindowVisible, но на столе их нет. Раскладывать их обратно
+    // бессмысленно, а в снимок они попадали бы десятками.
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int value, int size);
+    private const int DWMWA_CLOAKED = 14;
+
+    private static bool IsCloaked(IntPtr hWnd) {
+        int cloaked = 0;
+        try { if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out cloaked, sizeof(int)) == 0) return cloaked != 0; }
+        catch { }
+        return false;
+    }
+
+    public static string PathOf(uint pid) {
+        IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return "";
+        try {
+            StringBuilder sb = new StringBuilder(1024);
+            int size = sb.Capacity;
+            if (QueryFullProcessImageNameW(h, 0, sb, ref size)) return sb.ToString();
+            return "";
+        }
+        finally { CloseHandle(h); }
+    }
+
+    public static List<WinInfo> Enumerate() {
+        List<WinInfo> list = new List<WinInfo>();
+        EnumWindows(delegate(IntPtr hWnd, IntPtr lp) {
+            if (!IsWindowVisible(hWnd)) return true;
+            if ((GetWindowLong(hWnd, GWL_STYLE) & WS_CHILD) != 0) return true;
+            if ((GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) return true;
+            if (GetWindowTextLengthW(hWnd) == 0) return true;
+            if (IsCloaked(hWnd)) return true;
+
+            WINDOWPLACEMENT p = new WINDOWPLACEMENT();
+            p.length = Marshal.SizeOf(typeof(WINDOWPLACEMENT));
+            if (!GetWindowPlacement(hWnd, ref p)) return true;
+
+            StringBuilder sb = new StringBuilder(512);
+            GetWindowTextW(hWnd, sb, sb.Capacity);
+
+            uint pid = 0;
+            GetWindowThreadProcessId(hWnd, out pid);
+
+            WinInfo w = new WinInfo();
+            w.Hwnd = hWnd;
+            w.Pid = (int)pid;
+            w.Title = sb.ToString();
+            w.Path = PathOf(pid);
+            w.ShowCmd = p.showCmd;
+            w.NL = p.rcNormalPosition.Left;   w.NT = p.rcNormalPosition.Top;
+            w.NR = p.rcNormalPosition.Right;  w.NB = p.rcNormalPosition.Bottom;
+            w.MinX = p.ptMinPosition.X;       w.MinY = p.ptMinPosition.Y;
+            w.MaxX = p.ptMaxPosition.X;       w.MaxY = p.ptMaxPosition.Y;
+            list.Add(w);
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+
+    public static bool ApplyPlacement(IntPtr hWnd, int showCmd,
+                                     int nl, int nt, int nr, int nb,
+                                     int minX, int minY, int maxX, int maxY) {
+        if (!IsWindow(hWnd)) return false;
+        WINDOWPLACEMENT p = new WINDOWPLACEMENT();
+        p.length = Marshal.SizeOf(typeof(WINDOWPLACEMENT));
+        p.flags = 0;
+        p.showCmd = showCmd;
+        p.ptMinPosition.X = minX; p.ptMinPosition.Y = minY;
+        p.ptMaxPosition.X = maxX; p.ptMaxPosition.Y = maxY;
+        p.rcNormalPosition.Left = nl; p.rcNormalPosition.Top = nt;
+        p.rcNormalPosition.Right = nr; p.rcNormalPosition.Bottom = nb;
+        return SetWindowPlacement(hWnd, ref p);
+    }
+
+    public static int PidOfWindow(IntPtr hWnd) {
+        uint pid = 0;
+        GetWindowThreadProcessId(hWnd, out pid);
+        return (int)pid;
+    }
 }
 
 // DPI-осведомлённость процесса. Нужна по двум причинам, и вторая важнее:
@@ -1630,6 +1774,22 @@ function Switch-DisplayMode {
                 Write-DisplayLog 'switch: topology already correct'
             }
             else {
+                # Снимок позиций окон — до перестроения, пока окна ещё стоят так,
+                # как их расставил человек. Функции живут в WindowLayout.ps1,
+                # который подключают точки входа; core обязан работать и без него,
+                # поэтому проверяем наличие, а не зовём вслепую.
+                #
+                # Только когда топология действительно меняется: при повторном
+                # нажатии окна никуда не двигались, а перебор окон с чтением путей
+                # процессов стоит десятки миллисекунд — незачем платить их за
+                # no-op, ради которого весь granular-skip и делался.
+                $doWindows = ((Test-Path Function:\Save-WindowLayout) -and
+                              ($null -eq $settings.restoreWindows -or $settings.restoreWindows))
+                if ($doWindows) {
+                    try { Save-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $activeNow) }
+                    catch { Write-DisplayLog "warn: windows - saving failed: $($_.Exception.Message)" }
+                }
+
                 if (-not (Set-CcdTopology -DevicePaths $wantedIds)) {
                     throw "Windows refused the display configuration for '$($mode.Title)'. Nothing was changed, so you keep a picture."
                 }
@@ -1715,6 +1875,15 @@ function Switch-DisplayMode {
         # разделитель из текущей локали и на русской писал бы «4,2 s».
         $took = $watch.Elapsed.TotalSeconds.ToString('0.0', [cultureinfo]::InvariantCulture)
         Write-DisplayLog ("done: {0} ({1} s)" -f $text, $took)
+
+        # Окна раскладываем последними: и смена режима, и назначение основного
+        # монитора двигают их сами, поэтому раньше это делать бессмысленно.
+        # $doWindows выставлен только если топология действительно менялась —
+        # при повторном нажатии окна не трогаем вообще.
+        if ($doWindows) {
+            try { Restore-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $wantedIds) }
+            catch { Write-DisplayLog "warn: windows - restoring failed: $($_.Exception.Message)" }
+        }
         return [pscustomobject]@{
             Mode = $ModeKey; Skipped = $false; Message = $text
             Refused = $refused; Failed = $failed
