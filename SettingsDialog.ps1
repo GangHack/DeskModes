@@ -66,7 +66,11 @@ function New-SettingsForm {
     $grid.Margin = New-Object System.Windows.Forms.Padding 0, 0, 0, 16
     [void]$root.Controls.Add($grid)
 
-    $boxes = @{}
+    # Именно [ordered]: из этого словаря Show-SettingsDialog собирает hotkeys для
+    # записи на диск, а обычный @{} перечисляется в непредсказуемом порядке — и
+    # каждый Save переставлял привязки в settings.json местами. Файл под git, и
+    # такая перетасовка выглядела в diff'е изменением, которого никто не делал.
+    $boxes = [ordered]@{}
     foreach ($mode in $Modes) {
         $label = New-Object System.Windows.Forms.Label
         $label.AutoSize = $true
@@ -250,6 +254,15 @@ function Show-SettingsDialog {
         $updated.hotkeys = $newHotkeys
         $updated.maximizeRefresh = $ui.RefreshBox.Checked
         $updated.notifications = $ui.NotifyBox.Checked
+
+        # Окно правит только то, что в нём есть; остальные поля обязаны проехать
+        # насквозь. Начинали с Get-DefaultSettings — значит всё, чего в форме нет,
+        # уезжало на диск ДЕФОЛТНЫМ. Первый же Save стирал layout (@()) и primary
+        # (''): мониторы снова вставали как попало, панель задач ездила. Каждое
+        # новое поле настроек, у которого нет своего элемента в форме, нужно
+        # добавлять сюда — иначе Save его тихо съест.
+        $updated.layout  = @($Settings.layout | ForEach-Object { [string]$_ })
+        $updated.primary = [string]$Settings.primary
 
         Save-DisplaySettings $updated
         Set-RunAtStartup $ui.StartupBox.Checked
