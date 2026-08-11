@@ -578,14 +578,40 @@ function Set-CcdTopology {
 # SDC_ALLOW_CHANGES намеренно НЕ ставим: без него система обязана применить
 # ровно те координаты, что переданы, или отказать. С ним она вправе подобрать
 # что-то своё, и мониторы опять разъехались бы.
+#
+# Возвращает не «да/нет», а Ok + Changed. Changed нужен вызывающему, чтобы не
+# писать в журнал «arranged left to right» там, где ничего не расставлялось:
+# строка, которая рапортует о работе, которой не было, — это то же вранье в
+# журнале, из-за которого в этом проекте уже дважды искали дефект не там.
+function New-LayoutResult {
+    param([bool]$Ok, [bool]$Changed)
+    return [pscustomobject]@{ Ok = $Ok; Changed = $Changed }
+}
+
 function Set-CcdLayout {
     param([string]$PrimaryPath, [string[]]$Order = @())
 
     $np = 0; $nm = 0
-    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, [ref]$nm) -ne 0) { return $false }
+    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, [ref]$nm) -ne 0) {
+        Write-DisplayLog 'warn: layout - could not size the display config buffers'
+        return (New-LayoutResult -Ok $false -Changed $false)
+    }
     $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
     $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
-    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return $false }
+    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) {
+        Write-DisplayLog 'warn: layout - QueryDisplayConfig refused'
+        return (New-LayoutResult -Ok $false -Changed $false)
+    }
+
+    # Исходные позиции запоминаем ДО любых правок: ниже по ним решается, надо ли
+    # вообще звать SetDisplayConfig. Windows с SDC_SAVE_TO_DATABASE часто
+    # восстанавливает раскладку сама, и типовой случай — «всё уже стоит как
+    # надо» — стоил второго перестроения экранов: моргание и секунда-две времени.
+    $before = @{}
+    for ($i = 0; $i -lt $nm; $i++) {
+        if ($modes[$i].infoType -ne [NativeCcd]::MODE_INFO_TYPE_SOURCE) { continue }
+        $before[$i] = [pscustomobject]@{ X = $modes[$i].srcPosX; Y = $modes[$i].srcPosY }
+    }
 
     # Индекс исходного режима -> монитор. Один источник может обслуживать
     # несколько путей, поэтому идём по путям и запоминаем первое совпадение.
@@ -619,7 +645,10 @@ function Set-CcdLayout {
             Height     = [int]$modes[$idx].srcHeight
         }
     }
-    if ($screens.Count -eq 0) { return $false }
+    if ($screens.Count -eq 0) {
+        Write-DisplayLog 'warn: layout - no active screens to arrange'
+        return (New-LayoutResult -Ok $false -Changed $false)
+    }
 
     if ($Order -and $Order.Count -gt 0) {
         # Место в списке: сравниваем по вхождению, чтобы «UltraGear» находил
@@ -663,38 +692,156 @@ function Set-CcdLayout {
         }
     }
 
+    # Ничего не сдвинулось — значит и применять нечего. Проверка идёт после
+    # сдвига к якорю, поэтому она заодно означает «нужный монитор уже в (0,0)»,
+    # то есть уже основной.
+    $moved = $false
+    foreach ($i in @($before.Keys)) {
+        if ($modes[$i].srcPosX -ne $before[$i].X -or $modes[$i].srcPosY -ne $before[$i].Y) { $moved = $true; break }
+    }
+    if (-not $moved) { return (New-LayoutResult -Ok $true -Changed $false) }
+
+    # Куда должно приехать — по пути монитора, а не по индексу режима: индексы
+    # между двумя QueryDisplayConfig не обязаны совпадать, а путь устройства
+    # стабилен. Снимаем до применения, сверяем после.
+    $wantPos = @{}
+    foreach ($s in $screens) {
+        $wantPos[$s.DevicePath] = [pscustomobject]@{ X = $modes[$s.ModeIdx].srcPosX; Y = $modes[$s.ModeIdx].srcPosY }
+    }
+
     $base = [NativeCcd]::SDC_USE_SUPPLIED_DISPLAY_CONFIG
     $rc = [NativeCcd]::SetDisplayConfig($np, $paths, $nm, $modes, ($base -bor [NativeCcd]::SDC_VALIDATE))
     if ($rc -ne 0) {
         Write-DisplayLog "ccd: layout validate -> $rc"
-        return $false
+        return (New-LayoutResult -Ok $false -Changed $false)
     }
     $rc = [NativeCcd]::SetDisplayConfig($np, $paths, $nm, $modes,
         ($base -bor [NativeCcd]::SDC_APPLY -bor [NativeCcd]::SDC_SAVE_TO_DATABASE))
     if ($rc -ne 0) {
         Write-DisplayLog "ccd: layout apply -> $rc"
-        return $false
+        return (New-LayoutResult -Ok $false -Changed $false)
     }
-    Start-Sleep -Milliseconds 700
-    return $true
+
+    # Вместо Start-Sleep 700 — ждём по факту: система должна начать отдавать те
+    # позиции, которые мы только что задали. Пауза была «на всякий случай», и как
+    # всякая фиксированная пауза она одновременно и слишком долгая в обычном
+    # случае, и слишком короткая в плохом.
+    if (-not (Wait-ForLayout -WantedPositions $wantPos)) {
+        Write-DisplayLog 'warn: layout did not settle'
+    }
+    return (New-LayoutResult -Ok $true -Changed $true)
 }
 
-# Дождаться, пока указанные мониторы окажутся на столе. Считаем по CCD, а не по
-# карте выходов: у CCD признак активности лежит на самом пути монитора, и его
-# нельзя перепутать с соседним.
-function Wait-ForCcdActive {
-    param([string[]]$DevicePaths, [int]$TimeoutMs = 15000, [switch]$All)
+# Позиции исходных режимов по пути монитора: путь -> @{X;Y}. Отдельной функцией,
+# потому что нужна и для ожидания раскладки, и пригодится для снимков окон.
+function Get-CcdSourcePositions {
+    $np = 0; $nm = 0
+    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, [ref]$nm) -ne 0) { return @{} }
+    $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
+    $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
+    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return @{} }
 
-    $waited = 0
-    while ($true) {
-        $live = @(Get-CcdTargets | Where-Object { $_.Active } | ForEach-Object { $_.DevicePath })
-        $hit = @($DevicePaths | Where-Object { $live -contains $_ })
-        if ($All) { if ($hit.Count -eq $DevicePaths.Count) { return $true } }
-        elseif ($hit.Count -gt 0) { return $true }
-        if ($waited -ge $TimeoutMs) { return $false }
-        Start-Sleep -Milliseconds 250
-        $waited += 250
+    $out = @{}
+    for ($i = 0; $i -lt $np; $i++) {
+        $mi = $paths[$i].sourceInfo.modeInfoIdx
+        if ($mi -eq [NativeCcd]::MODE_IDX_INVALID) { continue }
+        $dp = Get-CcdPathDevice $paths[$i]
+        if (-not $dp -or $out.ContainsKey($dp)) { continue }
+        $out[$dp] = [pscustomobject]@{ X = [int]$modes[[int]$mi].srcPosX; Y = [int]$modes[[int]$mi].srcPosY }
     }
+    return $out
+}
+
+# Дождаться, пока заданные позиции реально встанут. $false — не встали за срок.
+function Wait-ForLayout {
+    param(
+        [Parameter(Mandatory)]$WantedPositions,
+        [int]$TimeoutMs = 3000,
+        [int]$StepMs = 200
+    )
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        $now = Get-CcdSourcePositions
+        $bad = 0
+        foreach ($dp in @($WantedPositions.Keys)) {
+            $p = $now[$dp]
+            if ($null -eq $p -or $p.X -ne $WantedPositions[$dp].X -or $p.Y -ne $WantedPositions[$dp].Y) { $bad++ }
+        }
+        if ($bad -eq 0) { return $true }
+        if ($sw.ElapsedMilliseconds -ge $TimeoutMs) { return $false }
+        Start-Sleep -Milliseconds $StepMs
+    }
+}
+
+# Дождаться, пока стол станет ровно запрошенным: все нужные мониторы поднялись и
+# ни одного лишнего не осталось. Считаем по CCD, а не по карте выходов: у CCD
+# признак активности лежит на самом пути монитора, и его нельзя перепутать с
+# соседним (на этом обжигались, см. README про Get-OutputMap).
+#
+# Пришло на место связки «Start-Sleep 1200 + Wait-ForCcdActive + полный
+# Get-DisplayState для поиска лишних». Смысл паузы 1200 был в том, чтобы не
+# прочитать «ещё активен» у гаснущего монитора — но это ожидание по условию, а не
+# по таймеру: условие «лишние погасли» покрывает тот же случай и уходит сразу,
+# как только он выполнен. Полный Get-DisplayState тут больше не нужен:
+# Get-CcdTargets отдаёт и активность, и имена, и стоит ~10 мс против ~90.
+#
+# Возвращает Ok плюс два списка имён: кто не поднялся и кто не погас.
+#
+# Два срока, а не один. TimeoutMs — сколько ждём, пока мониторы проснутся (ASUS
+# просыпается около десяти секунд, это физика). ExtraGraceMs — сколько ещё ждём
+# гашения лишних ПОСЛЕ того, как все нужные уже на столе: монитор, который
+# собирается погаснуть, делает это за секунду-две, и если он упёрся, то упёрся.
+# С одним общим сроком отказ гасить стоил бы все 15 с ожидания на пути, который и
+# так уже провалился.
+function Wait-ForTopology {
+    param(
+        [Parameter(Mandatory)][string[]]$WantedPaths,
+        [int]$TimeoutMs = 15000,
+        [int]$ExtraGraceMs = 3000,
+        [int]$StepMs = 200
+    )
+
+    $want = @{}
+    foreach ($p in $WantedPaths) { if ($p) { $want[$p] = $true } }
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $allUpAt = -1
+    $missing = @()
+    $extra = @()
+
+    while ($true) {
+        $byPath = @{}
+        foreach ($t in @(Get-CcdTargets)) { $byPath[$t.DevicePath] = $t }
+
+        # Имя для отчёта берём из CCD; если путь вообще исчез из перечисления,
+        # показываем путь — молчать нельзя, а назвать монитор больше нечем.
+        $missing = @()
+        foreach ($p in @($want.Keys)) {
+            $t = $byPath[$p]
+            if ($null -eq $t -or -not $t.Active) {
+                $missing += $(if ($t -and $t.Label) { $t.Label } else { $p })
+            }
+        }
+        $extra = @($byPath.Values |
+            Where-Object { $_.Active -and -not $want.ContainsKey($_.DevicePath) } |
+            ForEach-Object { $(if ($_.Label) { $_.Label } else { $_.DevicePath }) })
+
+        if ($missing.Count -eq 0 -and $extra.Count -eq 0) {
+            return [pscustomobject]@{ Ok = $true; MissingLabels = @(); ExtraLabels = @() }
+        }
+
+        $elapsed = $sw.ElapsedMilliseconds
+        if ($missing.Count -eq 0) {
+            if ($allUpAt -lt 0) { $allUpAt = $elapsed }
+            if (($elapsed - $allUpAt) -ge $ExtraGraceMs) { break }
+        }
+        if ($elapsed -ge $TimeoutMs) { break }
+
+        Start-Sleep -Milliseconds $StepMs
+    }
+
+    return [pscustomobject]@{ Ok = $false; MissingLabels = @($missing); ExtraLabels = @($extra) }
 }
 
 
@@ -852,6 +999,27 @@ function Set-DisplayMode {
     return [pscustomobject]@{ Code = $code2; Text = (& $describe $code2); Persisted = $false }
 }
 
+# Дождаться, пока монитор реально отдаёт заданный режим. Короткий срок: смена
+# режима либо встаёт почти сразу, либо не встаёт вовсе и нужна вторая попытка.
+function Wait-ForMode {
+    param(
+        [Parameter(Mandatory)][string]$Output,
+        [Parameter(Mandatory)][int]$Width,
+        [Parameter(Mandatory)][int]$Height,
+        [Parameter(Mandatory)][int]$Hz,
+        [int]$TimeoutMs = 1500,
+        [int]$StepMs = 100
+    )
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        $c = Get-CurrentMode $Output
+        if ($c -and $c.Width -eq $Width -and $c.Height -eq $Height -and $c.Hz -eq $Hz) { return $true }
+        if ($sw.ElapsedMilliseconds -ge $TimeoutMs) { return $false }
+        Start-Sleep -Milliseconds $StepMs
+    }
+}
+
 # Поднять монитор в его максимальный режим, если он там ещё не стоит. С проверкой
 # и повторной попыткой: смена основного монитора и гашение соседа могут сбросить
 # режим уже после того, как он был выставлен.
@@ -860,10 +1028,26 @@ function Set-BestModeFor {
         [Parameter(Mandatory)][string]$Output,
         [string]$Label = '',
         [int]$NativeWidth = 0,
-        [int]$NativeHeight = 0
+        [int]$NativeHeight = 0,
+        $Best = $null
     )
 
-    $best = Get-BestMode -Output $Output -NativeWidth $NativeWidth -NativeHeight $NativeHeight
+    # $Best можно передать готовым, и это не микрооптимизация. Get-BestMode
+    # перебирает EnumDisplaySettings по всем режимам монитора, и сразу после
+    # смены топологии драйвер отдаёт их заметно медленнее, чем в покое: замер
+    # холодного `all` показал 1.6 с на ULTRAGEAR и 0.8 с на ULTRAFINE — на двух
+    # мониторах, которым вообще ничего менять не требовалось. В покое тот же
+    # перебор стоит 60 мс.
+    #
+    # Состояние на входе в переключение уже содержит BestMode для каждого
+    # включённого монитора (его посчитал Get-DisplayState), а самый большой режим
+    # монитора от смены набора экранов не меняется: родное разрешение берётся из
+    # EDID, а список частот — свойство панели, не раскладки. Поэтому для
+    # монитора, который и до переключения был на столе, пересчитывать нечего.
+    # Для того, кто только что проснулся (ASUS), BestMode неизвестен — там
+    # перебор честно выполняется.
+    $best = $Best
+    if (-not $best) { $best = Get-BestMode -Output $Output -NativeWidth $NativeWidth -NativeHeight $NativeHeight }
     if (-not $best) { return $null }
 
     foreach ($attempt in 1, 2) {
@@ -879,7 +1063,14 @@ function Set-BestModeFor {
         # монитор ещё перестраивается, поэтому раньше здесь стоял выход из
         # функции по любой ошибке и вторая попытка не наступала никогда.
         if ($r.Code -eq -2 -or $r.Code -eq -5) { return $false }
-        Start-Sleep -Milliseconds 600
+
+        # Здесь стоял Start-Sleep 600 — и спал даже когда режим встал с первой
+        # попытки: успех обнаруживался только в начале следующего витка. В режиме
+        # `all` это лишние 600 мс на каждый монитор, которому меняли частоту.
+        # Теперь ждём по факту: как только монитор отдаёт нужный режим — выходим.
+        if (Wait-ForMode -Output $Output -Width $best.Width -Height $best.Height -Hz $best.Hz) {
+            return $true
+        }
     }
 
     $current = Get-CurrentMode $Output
@@ -1176,6 +1367,13 @@ function Switch-DisplayMode {
     try {
         Write-DisplayLog "--- start mode=$ModeKey primaryMatch='$PrimaryMatch' keepMode=$KeepMode dryRun=$DryRun"
 
+        # Настройки читаем РОВНО один раз на переключение. Раньше
+        # Get-DisplaySettings вызывался до трёх раз (предпочтение primary,
+        # запасной primary по layout, сама раскладка) — три чтения диска и, что
+        # хуже, возможность взять разные версии файла внутри одного переключения,
+        # если его правят в этот момент из окна настроек.
+        $settings = Get-DisplaySettings
+
         $monitors = @(Get-DisplayState)
         $modes = Get-DisplayModes $monitors
         $mode = $modes | Where-Object { $_.Key -eq $ModeKey } | Select-Object -First 1
@@ -1210,7 +1408,7 @@ function Switch-DisplayMode {
         # молча идём дальше. Без него основным оставался тот, кто им был раньше,
         # и панель задач переезжала от переключения к переключению непредсказуемо.
         if (-not $primary) {
-            $prefer = [string](Get-DisplaySettings).primary
+            $prefer = [string]$settings.primary
             if ($prefer) {
                 $primary = $wanted | Where-Object { $_.Label -like ('*' + $prefer + '*') } | Select-Object -First 1
             }
@@ -1220,7 +1418,7 @@ function Switch-DisplayMode {
         # Последний довод — самый правый по физической раскладке: у стола есть
         # «главная» сторона, и случайный выбор по порядку опроса ей не помогает.
         if (-not $primary) {
-            $order = @((Get-DisplaySettings).layout)
+            $order = @($settings.layout)
             if ($order.Count -gt 0) {
                 for ($k = $order.Count - 1; $k -ge 0; $k--) {
                     $primary = $wanted | Where-Object { $_.Label -like ('*' + $order[$k] + '*') } | Select-Object -First 1
@@ -1247,20 +1445,45 @@ function Switch-DisplayMode {
         }
         else {
             Write-DisplayLog ("switch: on = " + (($wanted | ForEach-Object { $_.Label }) -join ', '))
-            if (-not (Set-CcdTopology -DevicePaths $wantedIds)) {
-                throw "Windows refused the display configuration for '$($mode.Title)'. Nothing was changed, so you keep a picture."
-            }
-            Start-Sleep -Milliseconds 1200
 
-            # Проверяем результат, а не верим коду возврата: раньше отказ гасить
-            # выглядел в журнале полным успехом.
-            if (-not (Wait-ForCcdActive -DevicePaths $wantedIds -All -TimeoutMs 15000)) {
-                Write-DisplayLog 'warn: not all requested displays came up'
+            # Набор уже такой, как просят — перестраивать топологию нечего.
+            # Состояние у нас на руках, в $monitors: лишнего опроса не надо.
+            #
+            # Это главная экономия на повторном нажатии хоткея. Без проверки
+            # Windows честно перестраивала стол в то же самое состояние: экраны
+            # моргали, частота сбрасывалась, и всё это занимало полный цикл. И
+            # это же чинит очередь нажатий: цикл сообщений трея однопоточный,
+            # накопившиеся за время переключения нажатия теперь исполняются как
+            # дешёвые no-op'ы вместо серии полных перестроений.
+            #
+            # Layout, primary и режимы ниже всё равно проверяются — после 2.4 это
+            # дёшево, а пропустить их нельзя: набор мониторов может совпадать, а
+            # раскладка быть развалена (например после DisplaySwitch /extend).
+            $activeNow = @($monitors | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
+            $wantedSorted = @($wantedIds | Sort-Object)
+            $sameTopology = ($activeNow.Count -eq $wantedSorted.Count -and
+                             -not (Compare-Object $activeNow $wantedSorted))
+
+            if ($sameTopology) {
+                Write-DisplayLog 'switch: topology already correct'
             }
-            $stillOn = @(Get-DisplayState | Where-Object { $_.Active -and ($wantedIds -notcontains $_.Id) })
-            if ($stillOn.Count -gt 0) {
-                $refused = @($stillOn | ForEach-Object { $_.Label })
-                Write-DisplayLog ("warn: refused to turn off: " + ($refused -join ', '))
+            else {
+                if (-not (Set-CcdTopology -DevicePaths $wantedIds)) {
+                    throw "Windows refused the display configuration for '$($mode.Title)'. Nothing was changed, so you keep a picture."
+                }
+
+                # Проверяем результат, а не верим коду возврата: раньше отказ гасить
+                # выглядел в журнале полным успехом.
+                $settled = Wait-ForTopology -WantedPaths $wantedIds
+                if (-not $settled.Ok) {
+                    if ($settled.MissingLabels.Count -gt 0) {
+                        Write-DisplayLog 'warn: not all requested displays came up'
+                    }
+                    if ($settled.ExtraLabels.Count -gt 0) {
+                        $refused = @($settled.ExtraLabels)
+                        Write-DisplayLog ("warn: refused to turn off: " + ($refused -join ', '))
+                    }
+                }
             }
         }
 
@@ -1270,10 +1493,18 @@ function Switch-DisplayMode {
         # Раскладку строим здесь, когда набор активных мониторов окончательный:
         # до гашения расставлять нечего — часть экранов сейчас исчезнет, и их
         # координаты всё равно пришлось бы пересчитывать.
-        $order = @((Get-DisplaySettings).layout)
+        $order = @($settings.layout)
         if ($order.Count -gt 0) {
-            if (Set-CcdLayout -PrimaryPath $primary.Id -Order $order) {
+            $laid = Set-CcdLayout -PrimaryPath $primary.Id -Order $order
+            # Пишем «arranged» только когда действительно расставляли. Раньше
+            # строка уходила в журнал при любом успехе, и после granular-skip'а
+            # получалась пара «already correct» + «arranged left to right» — вторая
+            # строка отчитывалась о работе, которой не было.
+            if ($laid.Ok -and $laid.Changed) {
                 Write-DisplayLog ("layout: arranged left to right - " + ($order -join ' | '))
+            }
+            elseif ($laid.Ok) {
+                Write-DisplayLog 'layout: already correct'
             }
         }
 
@@ -1298,7 +1529,11 @@ function Switch-DisplayMode {
             if (-not $KeepMode) {
                 $nw = 0; $nh = 0
                 if ($m.Native) { $nw = $m.Native.Width; $nh = $m.Native.Height }
-                [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh)
+                # $m.BestMode посчитан в Get-DisplayState на входе — для монитора,
+                # который уже был включён, он готов, и перебор режимов (дорогой
+                # сразу после смены топологии) не нужен. У только что
+                # проснувшегося он $null, и Set-BestModeFor посчитает сам.
+                [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode)
             }
             $cur = Get-CurrentMode $output
             $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
@@ -1463,7 +1698,9 @@ function Restore-BestModes {
 
             $nw = 0; $nh = 0
             if ($m.Native) { $nw = $m.Native.Width; $nh = $m.Native.Height }
-            if (Set-BestModeFor -Output $m.Output -Label $m.Label -NativeWidth $nw -NativeHeight $nh) {
+            # BestMode здесь тоже уже посчитан: сторож как раз по нему и решил,
+            # что монитор просел. Второй перебор режимов был бы лишним.
+            if (Set-BestModeFor -Output $m.Output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode) {
                 $fixed += $m.Label
             }
         }
