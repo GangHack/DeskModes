@@ -1216,17 +1216,42 @@ function New-LayoutResult {
 }
 
 function Set-CcdLayout {
-    param([string]$PrimaryPath, [string[]]$Order = @())
+    param([string]$PrimaryPath, [string[]]$Order = @(), [int]$RetryDelayMs = 300)
+
+    # До трёх попыток, каждая — со свежим QueryDisplayConfig. 17 августа 2026
+    # валидация вернула 87 (ERROR_INVALID_PARAMETER) через секунду после смены
+    # топологии: снимок, снятый в переходном состоянии, система сама же
+    # отказалась принять. Попытка была одна, функция молча сдалась — и до
+    # следующего нажатия хоткея стол стоял так, как его расставила Windows:
+    # мониторы перепутаны местами. Тот же вызов позже прошёл с первого раза за
+    # полсекунды. Отказ моментный — значит лечится повтором, но повторять надо
+    # целиком: после отказа старый снимок конфигурации уже ничего не описывает.
+    $attempts = 3
+    for ($n = 1; $n -le $attempts; $n++) {
+        if ($n -gt 1 -and $RetryDelayMs -gt 0) { Start-Sleep -Milliseconds $RetryDelayMs }
+        $r = Invoke-CcdLayoutAttempt -PrimaryPath $PrimaryPath -Order $Order -Attempt $n -Attempts $attempts
+        if ($r.Ok) { return $r }
+    }
+    Write-DisplayLog ("warn: layout gave up after {0} attempts" -f $attempts)
+    return (New-LayoutResult -Ok $false -Changed $false)
+}
+
+# Одна попытка расставить мониторы. Отдельной функцией, чтобы Set-CcdLayout мог
+# повторять её целиком, а тесты — подменять; вся настоящая работа с CCD здесь.
+function Invoke-CcdLayoutAttempt {
+    param([string]$PrimaryPath, [string[]]$Order = @(), [int]$Attempt = 1, [int]$Attempts = 1)
+
+    $tag = " (attempt $Attempt/$Attempts)"
 
     $np = 0; $nm = 0
     if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, [ref]$nm) -ne 0) {
-        Write-DisplayLog 'warn: layout - could not size the display config buffers'
+        Write-DisplayLog ('warn: layout - could not size the display config buffers' + $tag)
         return (New-LayoutResult -Ok $false -Changed $false)
     }
     $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
     $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
     if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) {
-        Write-DisplayLog 'warn: layout - QueryDisplayConfig refused'
+        Write-DisplayLog ('warn: layout - QueryDisplayConfig refused' + $tag)
         return (New-LayoutResult -Ok $false -Changed $false)
     }
 
@@ -1273,7 +1298,7 @@ function Set-CcdLayout {
         }
     }
     if ($screens.Count -eq 0) {
-        Write-DisplayLog 'warn: layout - no active screens to arrange'
+        Write-DisplayLog ('warn: layout - no active screens to arrange' + $tag)
         return (New-LayoutResult -Ok $false -Changed $false)
     }
 
@@ -1339,13 +1364,13 @@ function Set-CcdLayout {
     $base = [NativeCcd]::SDC_USE_SUPPLIED_DISPLAY_CONFIG
     $rc = [NativeCcd]::SetDisplayConfig($np, $paths, $nm, $modes, ($base -bor [NativeCcd]::SDC_VALIDATE))
     if ($rc -ne 0) {
-        Write-DisplayLog "ccd: layout validate -> $rc"
+        Write-DisplayLog ("ccd: layout validate -> $rc" + $tag)
         return (New-LayoutResult -Ok $false -Changed $false)
     }
     $rc = [NativeCcd]::SetDisplayConfig($np, $paths, $nm, $modes,
         ($base -bor [NativeCcd]::SDC_APPLY -bor [NativeCcd]::SDC_SAVE_TO_DATABASE))
     if ($rc -ne 0) {
-        Write-DisplayLog "ccd: layout apply -> $rc"
+        Write-DisplayLog ("ccd: layout apply -> $rc" + $tag)
         return (New-LayoutResult -Ok $false -Changed $false)
     }
 
@@ -1963,6 +1988,39 @@ function Get-ActiveModeKey {
 
 # --- переключение -----------------------------------------------------------
 
+# Сводка переключения и вердикт «успех или нет» — одним местом. По Ok трей
+# выбирает между зелёной всплывашкой и жёлтой, CLI — код возврата, поэтому всё,
+# что пошло не так, обязано попасть и в текст, и в Ok. Чистая функция: сборка
+# текста уже дважды врала (монитор выпадал из сводки, отказ гасить терялся), и
+# каждый случай чинился на ощупь — теперь это покрыто тестами.
+#
+# Об отказе гасить говорим прямо в сводке: иначе выходит рапорт об успехе при
+# том, что на столе осталось больше экранов, чем просили. Провал раскладки —
+# туда же: 17 августа 2026 он был виден только в журнале, трей показал зелёное
+# «Displays switched», и перепутанные мониторы человек обнаружил сам.
+function Format-SwitchResult {
+    param([string[]]$Summary = @(), [string[]]$Failed = @(), [string[]]$Refused = @(), [bool]$LayoutFailed = $false)
+
+    $text = (@($Summary) -join ', ')
+    $parts = @()
+    if (@($Failed).Count -gt 0) {
+        $parts += ('did not come up: ' + (@($Failed) -join ', ') + ' - unplug the cable and plug it back in')
+    }
+    if (@($Refused).Count -gt 0) {
+        $parts += ('Still on: ' + (@($Refused) -join ', ') + ' - Windows would not turn them off')
+    }
+    if ($LayoutFailed) {
+        $parts += 'positions not arranged - Windows refused the layout, press the hotkey to retry'
+    }
+    foreach ($p in $parts) {
+        $text = $(if ($text) { $text + '. ' + $p } else { $p })
+    }
+    return [pscustomobject]@{
+        Text = $text
+        Ok   = (@($Failed).Count -eq 0 -and @($Refused).Count -eq 0 -and -not $LayoutFailed)
+    }
+}
+
 function Switch-DisplayMode {
     [CmdletBinding()]
     param(
@@ -2145,6 +2203,7 @@ function Switch-DisplayMode {
         # координаты всё равно пришлось бы пересчитывать.
         $order = @($settings.layout)
         $layoutChanged = $false
+        $layoutFailed = $false
         if ($order.Count -gt 0) {
             $laid = Set-CcdLayout -PrimaryPath $primary.Id -Order $order
             # Пишем «arranged» только когда действительно расставляли. Раньше
@@ -2157,6 +2216,12 @@ function Switch-DisplayMode {
             }
             elseif ($laid.Ok) {
                 Write-DisplayLog 'layout: already correct'
+            }
+            else {
+                # Причина уже в журнале — Set-CcdLayout пишет каждую попытку.
+                # Здесь провал запоминается для сводки и вердикта: молчаливый
+                # успех при перепутанных мониторах — это и был баг 17 августа.
+                $layoutFailed = $true
             }
         }
 
@@ -2235,16 +2300,8 @@ function Switch-DisplayMode {
             }
         }
 
-        $text = ($summary -join ', ')
-        if ($failed.Count -gt 0) {
-            $part = 'did not come up: ' + ($failed -join ', ') + ' - unplug the cable and plug it back in'
-            $text = $(if ($text) { $text + '. ' + $part } else { $part })
-        }
-        # Об отказе гасить говорим прямо в сводке: иначе выходит рапорт об успехе
-        # при том, что на столе осталось больше экранов, чем просили.
-        if ($refused -and $refused.Count -gt 0) {
-            $text += ('. Still on: ' + ($refused -join ', ') + ' - Windows would not turn them off')
-        }
+        $verdict = Format-SwitchResult -Summary $summary -Failed $failed -Refused $refused -LayoutFailed $layoutFailed
+        $text = $verdict.Text
         # Форматируем через InvariantCulture: журнал английский, а `-f` берёт
         # разделитель из текущей локали и на русской писал бы «4,2 s».
         $took = $watch.Elapsed.TotalSeconds.ToString('0.0', [cultureinfo]::InvariantCulture)
@@ -2278,7 +2335,7 @@ function Switch-DisplayMode {
             Mode = $ModeKey; Skipped = $false; Message = $text
             Refused = $refused; Failed = $failed
             Seconds = $watch.Elapsed.TotalSeconds
-            Ok = ($failed.Count -eq 0 -and (-not $refused -or $refused.Count -eq 0))
+            Ok = $verdict.Ok
         }
     }
     catch {
