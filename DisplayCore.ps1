@@ -2034,7 +2034,7 @@ function Switch-DisplayMode {
     # Один переключатель за раз. Без этого два быстрых нажатия запускали два
     # процесса, которые перебивали друг друга: один включал монитор, другой в
     # это же время менял ему режим — и результат становился непредсказуемым.
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\SuperDisplaySwitch')
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
     if (-not $mutex.WaitOne(0)) {
         Write-DisplayLog "skip: mode=$ModeKey - the previous switch has not finished yet"
         if (-not $Quiet) { Write-Host 'A switch is already in progress - skipping.' -ForegroundColor Yellow }
@@ -2424,7 +2424,7 @@ function Restore-BestModes {
     }
 
     # Во время переключения не вмешиваемся — там режимы ставятся сами.
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\SuperDisplaySwitch')
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
     if (-not $mutex.WaitOne(0)) { $mutex.Dispose(); return @() }
 
     try {
@@ -2551,7 +2551,7 @@ function Set-DefaultAudioDevice {
 # --- автозагрузка -----------------------------------------------------------
 
 function Get-StartupShortcutPath {
-    return Join-Path ([Environment]::GetFolderPath('Startup')) 'Multi-Monitor Tool.lnk'
+    return Join-Path ([Environment]::GetFolderPath('Startup')) 'ScreenDeck.lnk'
 }
 
 function Test-RunAtStartup {
@@ -2577,7 +2577,7 @@ function Set-RunAtStartup {
     if (Test-Path $icon) { $sc.IconLocation = $icon + ',0' }
     else { $sc.IconLocation = (Join-Path $env:SystemRoot 'System32\DisplaySwitch.exe') + ',0' }
     $sc.WindowStyle = 7
-    $sc.Description = 'Multi-Monitor Tool - display switcher in the notification area'
+    $sc.Description = 'ScreenDeck - display switcher in the notification area'
     $sc.Save()
     Write-DisplayLog 'startup: enabled'
 }

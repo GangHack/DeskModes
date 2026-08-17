@@ -126,7 +126,7 @@ function New-FakeMonitor {
 }
 
 Write-Host ''
-Write-Host 'Multi-Monitor Tool - tests' -ForegroundColor Cyan
+Write-Host 'ScreenDeck - tests' -ForegroundColor Cyan
 Write-Host ''
 
 # --- разбор и печать комбинаций клавиш ---------------------------------------

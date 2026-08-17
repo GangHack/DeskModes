@@ -1,5 +1,5 @@
 ﻿<#
-    SettingsDialog.ps1 — окно настроек Multi-Monitor Tool.
+    SettingsDialog.ps1 — окно настроек ScreenDeck.
 
     Вынесено из Displays.ps1 отдельным файлом, чтобы окно можно было собрать и
     проверить в изоляции: в трее исключение при построении формы видно только как
@@ -23,7 +23,7 @@ function New-SettingsForm {
     $grey = [System.Drawing.Color]::FromArgb(255, 110, 110, 110)
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = 'Multi-Monitor Tool - Settings'
+    $form.Text = 'ScreenDeck - Settings'
     $form.Font = $font
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
@@ -259,7 +259,7 @@ function Show-SettingsDialog {
                 Write-DisplayLog "settings dialog: rejected save - $($parsed.Text) is assigned to both $($seen[$parsed.Text]) and $key"
                 [System.Windows.Forms.MessageBox]::Show(
                     "$($parsed.Text) is assigned twice. Each combination can only drive one mode.",
-                    'Multi-Monitor Tool', 'OK', 'Warning') | Out-Null
+                    'ScreenDeck', 'OK', 'Warning') | Out-Null
                 return $null
             }
             $seen[$parsed.Text] = $key

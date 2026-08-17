@@ -1,5 +1,5 @@
 ﻿<#
-    Displays.ps1 — Multi-Monitor Tool, значок в области уведомлений.
+    Displays.ps1 — ScreenDeck, значок в области уведомлений.
 
     Интерфейс на английском (просьба пользователя), комментарии на русском.
 
@@ -28,11 +28,11 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppName = 'Multi-Monitor Tool'
+$script:AppName = 'ScreenDeck'
 
 # Один экземпляр: иначе горячие клавиши займёт только первый, а второй провисит
 # бесполезным значком.
-$script:AppMutex = New-Object System.Threading.Mutex($false, 'Local\SuperDisplayTray')
+$script:AppMutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckTray')
 if (-not $script:AppMutex.WaitOne(0)) {
     [System.Windows.Forms.MessageBox]::Show(
         "$script:AppName is already running - look for its icon in the notification area.",
