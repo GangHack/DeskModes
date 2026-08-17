@@ -91,6 +91,18 @@ function Get-DefaultSettings {
         # Какой монитор делать основным (то есть где панель задач), если он есть
         # среди включённых. Часть названия, как и в layout.
         primary         = ''
+        # Роли мониторов: кусок названия -> имя роли. Из них строятся групповые
+        # режимы «включить все рабочие» / «включить игровой»:
+        #   "roles": { "ULTRAFINE": "work", "XG27AQDMGR": "game" }
+        # Имя роли произвольное — work, game, coding, что угодно; режим получает
+        # ключ role:<роль>. Группа появляется, когда роль делят хотя бы два
+        # подключённых монитора: для одного уже есть соло-режим.
+        #
+        # Раньше роль угадывалась по бренду прямо в коде (ASUS -> игровой,
+        # LG -> рабочий). Это описывало один конкретный стол, а не общее правило:
+        # у соседа LG UltraGear — игровой монитор, и угадать это нельзя никак.
+        # Пустой словарь = групповых режимов нет, остаются соло и «все».
+        roles           = [ordered]@{}
         # Запоминать положение окон для каждой раскладки столов и возвращать их
         # обратно при возврате к ней (WindowLayout.ps1).
         restoreWindows  = $true
@@ -139,6 +151,9 @@ function Get-DisplaySettings {
             # остаться дефолтными, а не превратиться в $null.
             if ($raw.audio) {
                 foreach ($p in $raw.audio.PSObject.Properties) { $s.audio[$p.Name] = [string]$p.Value }
+            }
+            if ($raw.roles) {
+                foreach ($p in $raw.roles.PSObject.Properties) { $s.roles[$p.Name] = [string]$p.Value }
             }
             if ($raw.autoGame) {
                 if ($null -ne $raw.autoGame.enabled)  { $s.autoGame.enabled  = [bool]$raw.autoGame.enabled }
@@ -1743,12 +1758,89 @@ function Set-BestModeFor {
 # (GoldStar), AUS = ASUS. Он стабилен для модели, но НЕ для экземпляра и не для
 # входа, поэтому ключом настроек служит название монитора (см. Get-DisplayModes).
 
-function Get-MonitorRole {
-    param([string]$ShortId, [string]$Label)
+# Подходит ли шаблон из настроек этому монитору. Сравниваем по вхождению в обе
+# стороны — тем же правилом, что layout и primary: система знает монитор как
+# «XG27AQDMGR», а человек мог написать «ROG STRIX XG27AQDMGR», и наоборот
+# «UltraGear» должен находить «LG ULTRAGEAR». Регистр не важен: -like без -c.
+#
+# Одной функцией, потому что «совпало» нужно в двух местах: когда роль читают и
+# когда окно настроек решает, чью запись в файле оно вправе перезаписать. Два
+# определения одного правила разошлись бы на первом же нестандартном названии.
+function Test-RolePatternMatch {
+    param([string]$Pattern, [string]$Label, [string]$ShortId)
 
-    if ($ShortId -match '^AUS' -or $Label -match 'ROG|ASUS|XG\d') { return 'game' }
-    if ($ShortId -match '^GSM' -or $Label -match '\bLG\b')        { return 'work' }
-    return 'other'
+    if (-not $Pattern) { return $false }
+    foreach ($name in $Label, $ShortId) {
+        if (-not $name) { continue }
+        if ($name -like ('*' + $Pattern + '*') -or $Pattern -like ('*' + $name + '*')) { return $true }
+    }
+    return $false
+}
+
+# Роль монитора по настройкам: кусок названия -> имя роли (settings.json, ключ
+# roles). Пусто — роли нет, монитор просто не попадёт ни в одну группу.
+#
+# Здесь раньше стояла эвристика по бренду: AUS/ROG/XG -> game, GSM/LG -> work.
+# Она описывала стол автора и врала на любом другом: у LG есть игровые серии, у
+# ASUS — рабочие, а Dell не попадал никуда. Угадывать роль монитора по названию
+# невозможно в принципе — это решение человека, а не свойство железа.
+function Get-MonitorRole {
+    param([string]$Label, [string]$ShortId, $Roles)
+
+    if (-not $Roles) { return '' }
+    # Первое совпадение выигрывает, а словарь [ordered] — значит порядок в файле
+    # и есть порядок разбора: результат не зависит от того, как перечислился хеш.
+    foreach ($pattern in $Roles.Keys) {
+        if (Test-RolePatternMatch -Pattern $pattern -Label $Label -ShortId $ShortId) {
+            return [string]$Roles[$pattern]
+        }
+    }
+    return ''
+}
+
+# Название группового режима по имени роли: work -> «Work displays». Группа
+# показывается только когда роль делят двое и больше, поэтому множественное
+# число здесь всегда уместно. ToUpperInvariant, а не ToUpper: на турецкой локали
+# «i» превращается в «İ», и заголовок поехал бы от настроек системы.
+function Get-RoleTitle {
+    param([string]$Role)
+
+    if (-not $Role) { return '' }
+    return $Role.Substring(0, 1).ToUpperInvariant() + $Role.Substring(1) + ' displays'
+}
+
+# Слить роли, назначенные в окне настроек, с тем, что уже лежит в файле.
+#
+# Окно показывает только подключённые мониторы, а в файле могут быть записи для
+# отключённого монитора или шаблон вроде «ROG» на несколько моделей сразу.
+# Сохранять из формы «как есть» значило бы стирать их при каждом Save — ровно
+# так этот проект однажды уже терял layout и primary. Поэтому: чужие записи,
+# которые не относятся ни к одному монитору на столе, остаются нетронутыми, а
+# для подключённых источник правды — форма.
+function Merge-RoleSettings {
+    param($Existing, $Assigned, $State)
+
+    $result = [ordered]@{}
+    if ($Existing) {
+        foreach ($pattern in @($Existing.Keys)) {
+            $touchesLiveDisplay = $false
+            foreach ($m in @($State)) {
+                if (Test-RolePatternMatch -Pattern $pattern -Label $m.Label -ShortId $m.ShortId) {
+                    $touchesLiveDisplay = $true
+                    break
+                }
+            }
+            if (-not $touchesLiveDisplay) { $result[$pattern] = [string]$Existing[$pattern] }
+        }
+    }
+    if ($Assigned) {
+        foreach ($name in @($Assigned.Keys)) {
+            $role = ([string]$Assigned[$name]).Trim()
+            if (-not $role) { continue }
+            $result[$name] = $role
+        }
+    }
+    return $result
 }
 
 # Кто сейчас основной. Спрашиваем только адаптеры: у них флаг PRIMARY_DEVICE
@@ -1773,7 +1865,16 @@ function Get-PrimaryOutput {
 # можно и опознать монитор, и снова его включить. Старый Monitor ID
 # (MONITOR\GSM5BB3\...) больше не нужен нигде: он существовал только ради команд
 # MultiMonitorTool, а их не осталось.
+# $Settings нужны только ради ролей. Параметр необязательный: кто настройки уже
+# прочитал (Switch-DisplayMode, трей) — передаёт их и не платит вторым чтением
+# диска, остальным удобнее не знать о них вовсе. Читать их здесь безусловно было
+# нельзя: Switch-DisplayMode намеренно читает файл РОВНО один раз за
+# переключение, чтобы внутри одного перехода не оказалось двух его версий.
 function Get-DisplayState {
+    param($Settings)
+
+    if (-not $Settings) { $Settings = Get-DisplaySettings }
+
     $targets = @(Get-CcdTargets)
     if ($targets.Count -eq 0) { throw 'Windows returned no displays at all' }
 
@@ -1800,7 +1901,7 @@ function Get-DisplayState {
             Model        = $label
             ShortId      = $t.ShortId
             Native       = $t.Native
-            Role         = Get-MonitorRole $t.ShortId $label
+            Role         = Get-MonitorRole -Label $label -ShortId $t.ShortId -Roles $Settings.roles
             Id           = $t.DevicePath
             Active       = $t.Active
             Primary      = ($t.Active -and $t.Output -and $t.Output -eq $primaryOutput)
@@ -1866,20 +1967,25 @@ function Get-DisplayModes {
         }
     }
 
-    $groups = @(
-        [pscustomobject]@{ Key = 'role:work'; Title = 'Work displays'; Role = 'work'; Primary = $null }
-        [pscustomobject]@{ Key = 'role:game'; Title = 'Gaming display'; Role = 'game'; Primary = $null }
-    )
-    foreach ($g in $groups) {
-        $members = @($State | Where-Object { $_.Role -eq $g.Role -and -not $_.Disconnected })
+    # Групповые режимы — из ролей, которые человек задал в настройках. Раньше
+    # здесь стояла жёсткая пара work + game, а роль угадывалась по бренду: это
+    # был стол автора, а не общее правило. Теперь ролей может быть сколько
+    # угодно и называться они могут как угодно.
+    #
+    # Сортируем по имени роли: порядок мониторов в перечислении CCD меняется от
+    # переподключения кабеля, и без сортировки пункты меню (а с ними и порядок
+    # ключей в settings.json) переставлялись бы местами сами собой.
+    $roles = @($State | Where-Object { $_.Role } | ForEach-Object { $_.Role } | Sort-Object -Unique)
+    foreach ($role in $roles) {
+        $members = @($State | Where-Object { $_.Role -eq $role -and -not $_.Disconnected })
         # Группу из одного монитора не показываем — для него уже есть соло-режим.
         if ($members.Count -lt 2) { continue }
         $modes += [pscustomobject]@{
-            Key       = $g.Key
-            Title     = $g.Title
+            Key       = 'role:' + $role
+            Title     = Get-RoleTitle $role
             Kind      = 'role'
-            Role      = $g.Role
-            Primary   = $g.Primary
+            Role      = $role
+            Primary   = $null
             Available = $true
         }
     }
@@ -1904,8 +2010,7 @@ function Get-ModeTitleFromKey {
 
     switch -Regex ($Key) {
         '^solo:(.+)$' { return 'Only ' + $Matches[1] }
-        '^role:work$' { return 'Work displays' }
-        '^role:game$' { return 'Gaming display' }
+        '^role:(.+)$' { return Get-RoleTitle $Matches[1] }
         '^all$'       { return 'All displays' }
         default       { return $Key }
     }
@@ -2066,7 +2171,10 @@ function Switch-DisplayMode {
         # если его правят в этот момент из окна настроек.
         $settings = Get-DisplaySettings
 
-        $monitors = @(Get-DisplayState)
+        # Настройки уже прочитаны — отдаём их состоянию, иначе оно полезет за
+        # ролями на диск само, и внутри одного переключения оказались бы две
+        # версии файла (его могут править из окна настроек прямо сейчас).
+        $monitors = @(Get-DisplayState -Settings $settings)
         $modes = Get-DisplayModes $monitors
         $mode = $modes | Where-Object { $_.Key -eq $ModeKey } | Select-Object -First 1
         if (-not $mode) {
@@ -2433,7 +2541,10 @@ function Restore-BestModes {
         # иногда не застаёт; сбор состояния занимает секунду, и повторная
         # проверка ниже попадает уже по открытому полному экрану.
         $todo = @()
-        foreach ($m in @(Get-DisplayState)) {
+        # Роли сторожу не нужны — он смотрит только на частоту, — поэтому за
+        # настройками на диск не ходим: событие о смене режима приходит пачками,
+        # и лишний ввод-вывод в его обработчике здесь ни к чему.
+        foreach ($m in @(Get-DisplayState -Settings (Get-DefaultSettings))) {
             if (-not $m.Active -or -not $m.BestMode) { continue }
             $cur = Get-CurrentMode $m.Output
             if (-not $cur) { continue }

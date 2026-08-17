@@ -44,13 +44,14 @@ function Resolve-ModeKey {
     if ($hit) { return $hit }
 
     # Группы из одного монитора в меню не показываются (для него есть соло-режим),
-    # но по имени группы всё равно должно находиться: 'game' -> единственный ASUS.
-    if ($Text -in 'work', 'game') {
-        $byRole = @($State | Where-Object { $_.Role -eq $Text -and -not $_.Disconnected })
-        if ($byRole.Count -eq 1) {
-            $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $byRole[0].ShortId } | Select-Object -First 1
-            if ($hit) { return $hit }
-        }
+    # но по имени роли всё равно должно находиться: 'game' -> единственный ASUS.
+    # Раньше здесь стоял список 'work', 'game' — теперь роли задаёт человек в
+    # settings.json, и подходит любое их имя; сравнение с ролью само отсекает
+    # лишнее.
+    $byRole = @($State | Where-Object { $_.Role -eq $Text -and -not $_.Disconnected })
+    if ($byRole.Count -eq 1) {
+        $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $byRole[0].ShortId } | Select-Object -First 1
+        if ($hit) { return $hit }
     }
 
     # часть названия монитора

@@ -265,7 +265,10 @@ Test-Case 'ModeTitleFromKey: every shape' {
     Assert-Equal 'Only LG ULTRAGEAR' (Get-ModeTitleFromKey 'solo:LG ULTRAGEAR') 'solo'
     Assert-Equal 'Only AUSAA1D' (Get-ModeTitleFromKey 'solo:AUSAA1D') 'solo by short id'
     Assert-Equal 'Work displays' (Get-ModeTitleFromKey 'role:work') 'work'
-    Assert-Equal 'Gaming display' (Get-ModeTitleFromKey 'role:game') 'game'
+    Assert-Equal 'Game displays' (Get-ModeTitleFromKey 'role:game') 'game'
+    # Роли задаёт человек, поэтому имя может быть любым — заголовок строится, а не
+    # ищется в списке из двух заранее известных.
+    Assert-Equal 'Coding displays' (Get-ModeTitleFromKey 'role:coding') 'a role nobody hardcoded'
     Assert-Equal 'All displays' (Get-ModeTitleFromKey 'all') 'all'
     Assert-Equal 'something else' (Get-ModeTitleFromKey 'something else') 'unknown falls through'
 }
@@ -338,6 +341,7 @@ Test-Case 'settings: defaults have the shape the rest of the code expects' {
     Assert-True $s.restoreLastMode 'restoreLastMode on by default'
     Assert-Equal 0 @($s.layout).Count 'layout empty'
     Assert-Equal '' $s.primary 'primary empty'
+    Assert-Equal 0 @($s.roles.Keys).Count 'roles empty - no guessing by brand'
     Assert-True (-not $s.autoGame.enabled) 'autoGame off by default'
 }
 
@@ -389,6 +393,141 @@ Test-Case 'settings: round-trip through disk preserves everything' {
     Assert-True (-not $back.restoreWindows) 'restoreWindows false survived'
     Assert-Equal 'ULTRAFINE' $back.audio['role:work'] 'audio mapping'
     Remove-Item $script:SettingsFile -Force
+}
+
+Test-Case 'settings: roles survive a round-trip through disk' {
+    $s = Get-DefaultSettings
+    $s.roles['LG ULTRAGEAR'] = 'work'
+    $s.roles['XG27AQDMGR'] = 'game'
+    Save-DisplaySettings $s
+
+    $back = Get-DisplaySettings
+    Assert-Equal 'work' $back.roles['LG ULTRAGEAR'] 'first role'
+    Assert-Equal 'game' $back.roles['XG27AQDMGR'] 'second role'
+    Assert-Equal @('LG ULTRAGEAR', 'XG27AQDMGR') @($back.roles.Keys) 'order kept - first match wins, so it matters'
+    Remove-Item $script:SettingsFile -Force
+}
+
+# --- роли мониторов ----------------------------------------------------------
+# Роль монитора — решение человека, а не свойство железа. Раньше она угадывалась
+# по бренду прямо в коде (AUS/ROG/XG -> game, GSM/LG -> work), то есть описывала
+# один конкретный стол: у соседа LG UltraGear — игровой монитор, и никакая
+# эвристика этого не узнает. Теперь роли живут в settings.json.
+
+Write-Host ''
+Write-Host 'display roles' -ForegroundColor White
+
+Test-Case 'roles: a pattern is found inside the display name' {
+    $roles = [ordered]@{ 'ULTRAGEAR' = 'work' }
+    Assert-Equal 'work' (Get-MonitorRole -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3' -Roles $roles) 'part of the name'
+}
+
+Test-Case 'roles: a pattern longer than the name still matches' {
+    # Система знает монитор как XG27AQDMGR, а человек пишет так, как написано на
+    # коробке. То же правило, что у layout и primary.
+    $roles = [ordered]@{ 'ROG STRIX XG27AQDMGR' = 'game' }
+    Assert-Equal 'game' (Get-MonitorRole -Label 'XG27AQDMGR' -ShortId 'AUSAA1D' -Roles $roles) 'contains the other way round'
+}
+
+Test-Case 'roles: case does not matter, and the short id works too' {
+    Assert-Equal 'work' (Get-MonitorRole -Label 'LG ULTRAFINE' -ShortId 'GSM5CBC' -Roles ([ordered]@{ 'ultrafine' = 'work' })) 'lower case pattern'
+    Assert-Equal 'game' (Get-MonitorRole -Label 'XG27AQDMGR' -ShortId 'AUSAA1D' -Roles ([ordered]@{ 'AUSAA1D' = 'game' })) 'by short id'
+}
+
+Test-Case 'roles: no settings means no role, not a guess' {
+    # Ровно то, что делала старая эвристика: ASUS объявлялся игровым сам.
+    Assert-Equal '' (Get-MonitorRole -Label 'ROG STRIX XG27AQDMGR' -ShortId 'AUSAA1D' -Roles ([ordered]@{})) 'empty settings'
+    Assert-Equal '' (Get-MonitorRole -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3' -Roles $null) 'null settings'
+}
+
+Test-Case 'roles: the first matching pattern wins' {
+    # Порядок в файле и есть порядок разбора — поэтому словарь [ordered].
+    $roles = [ordered]@{ 'LG' = 'work'; 'LG ULTRAGEAR' = 'game' }
+    Assert-Equal 'work' (Get-MonitorRole -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3' -Roles $roles) 'earlier entry'
+}
+
+Test-Case 'roles: an empty pattern matches nothing' {
+    # Пустая строка как ключ означала бы «подходит всем»: -like '**' истинно.
+    Assert-Equal '' (Get-MonitorRole -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3' -Roles ([ordered]@{ '' = 'work' })) 'blank key ignored'
+}
+
+Test-Case 'roles: a group mode appears for any role name, not just work and game' {
+    $state = @(
+        (New-FakeMonitor 'DELL U2720Q'  'DEL1234' 'coding')
+        (New-FakeMonitor 'DELL U2419H'  'DEL5678' 'coding')
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'game')
+    )
+    $keys = @(Get-DisplayModes $state | ForEach-Object { $_.Key })
+    Assert-True ($keys -contains 'role:coding') 'the group the user invented'
+    Assert-True (-not ($keys -contains 'role:game')) 'still no group for a single display'
+    $coding = Get-DisplayModes $state | Where-Object { $_.Key -eq 'role:coding' } | Select-Object -First 1
+    Assert-Equal 'Coding displays' $coding.Title 'title built from the role name'
+}
+
+Test-Case 'roles: displays without a role produce no groups at all' {
+    # Первый запуск на чужой машине: настроек нет, роли пустые. Должны остаться
+    # соло-режимы и «все» — и ничего не должно упасть.
+    $state = @(
+        (New-FakeMonitor 'DELL U2720Q' 'DEL1234' '')
+        (New-FakeMonitor 'DELL U2419H' 'DEL5678' '')
+    )
+    $modes = @(Get-DisplayModes $state)
+    $keys = @($modes | ForEach-Object { $_.Key })
+    Assert-Equal 0 @($modes | Where-Object { $_.Kind -eq 'role' }).Count 'no group modes'
+    Assert-True ($keys -contains 'solo:DELL U2720Q') 'solo modes are still there'
+    Assert-True ($keys -contains 'all') 'and all'
+}
+
+Test-Case 'roles: group modes come out sorted, so the menu does not reshuffle itself' {
+    # Порядок мониторов в перечислении CCD меняется от переподключения кабеля.
+    $state = @(
+        (New-FakeMonitor 'A1' 'AAA1111' 'zebra')
+        (New-FakeMonitor 'A2' 'AAA2222' 'zebra')
+        (New-FakeMonitor 'B1' 'BBB1111' 'alpha')
+        (New-FakeMonitor 'B2' 'BBB2222' 'alpha')
+    )
+    $roleKeys = @(Get-DisplayModes $state | Where-Object { $_.Kind -eq 'role' } | ForEach-Object { $_.Key })
+    Assert-Equal @('role:alpha', 'role:zebra') $roleKeys 'alphabetical, not enumeration order'
+}
+
+Test-Case 'merge: a role for a display that is not on the desk is kept' {
+    # Окно настроек показывает только подключённые мониторы. Если сохранять из
+    # формы «как есть», записи для остальных исчезали бы на каждом Save — ровно
+    # так этот проект однажды терял layout и primary.
+    $existing = [ordered]@{ 'LG ULTRAGEAR' = 'work'; 'SOME OTHER MONITOR' = 'game' }
+    $state = @((New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'work'))
+    $assigned = [ordered]@{ 'LG ULTRAGEAR' = 'work' }
+
+    $merged = Merge-RoleSettings -Existing $existing -Assigned $assigned -State $state
+    Assert-Equal 'game' $merged['SOME OTHER MONITOR'] 'the absent display kept its role'
+    Assert-Equal 'work' $merged['LG ULTRAGEAR'] 'the connected one came from the form'
+}
+
+Test-Case 'merge: clearing the box removes the role' {
+    $existing = [ordered]@{ 'LG ULTRAGEAR' = 'work' }
+    $state = @((New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'work'))
+    $merged = Merge-RoleSettings -Existing $existing -Assigned ([ordered]@{ 'LG ULTRAGEAR' = '   ' }) -State $state
+    Assert-Equal 0 @($merged.Keys).Count 'blank means no role'
+}
+
+Test-Case 'merge: a wildcard pattern is replaced by the exact name it covered' {
+    # Человек написал руками "LG" на оба монитора, потом поправил роль одного в
+    # окне. Оставить обе записи нельзя: шаблон продолжал бы навязывать роль.
+    $existing = [ordered]@{ 'LG' = 'work' }
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'work')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'work')
+    )
+    $assigned = [ordered]@{ 'LG ULTRAGEAR' = 'game'; 'LG ULTRAFINE' = 'work' }
+    $merged = Merge-RoleSettings -Existing $existing -Assigned $assigned -State $state
+    Assert-True (-not $merged.Contains('LG')) 'the pattern is gone'
+    Assert-Equal 'game' $merged['LG ULTRAGEAR'] 'new role stuck'
+    Assert-Equal 'work' $merged['LG ULTRAFINE'] 'the other one kept its own'
+}
+
+Test-Case 'merge: nothing configured anywhere is an empty map, not a crash' {
+    $merged = Merge-RoleSettings -Existing $null -Assigned $null -State @()
+    Assert-Equal 0 @($merged.Keys).Count 'empty'
 }
 
 # --- регрессия бага этапа 1 --------------------------------------------------
@@ -486,6 +625,8 @@ Test-Case 'regression: the REAL Save path keeps layout and primary' {
         Assert-Equal @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR') @($updated.layout) 'layout survived the real Save'
         Assert-Equal 'ULTRAGEAR' $updated.primary 'primary survived the real Save'
         Assert-Equal 'Ctrl+Alt+F1' $updated.hotkeys['solo:LG ULTRAGEAR'] 'hotkey kept'
+        # Роль монитора приехала из строки в окне, а не из угадывания по бренду.
+        Assert-Equal 'work' $updated.roles['LG ULTRAGEAR'] 'the role box was saved'
     }
     # И на диске тоже — писали в подменённый файл, не в настоящий.
     Assert-True (Test-Path $script:SettingsFile) 'wrote the settings file'
@@ -554,6 +695,16 @@ Test-Case 'resolve: game with a single gaming display lands on its solo mode' {
     # Группа из одного монитора в меню не показывается, но по имени находиться
     # обязана.
     Assert-Equal 'solo:XG27AQDMGR' (Resolve-ModeKey 'game' $script:ResolveModes $script:ResolveState).Key 'game'
+}
+
+Test-Case 'resolve: a role name the user invented resolves too' {
+    # Список 'work', 'game' в Resolve-ModeKey был жёстким; роли теперь свои.
+    $state = @(
+        (New-FakeMonitor 'DELL U2720Q'  'DEL1234' 'coding')
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'streaming')
+    )
+    $modes = @(Get-DisplayModes $state)
+    Assert-Equal 'solo:DELL U2720Q' (Resolve-ModeKey 'coding' $modes $state).Key 'single-member role lands on its solo mode'
 }
 
 Test-Case 'resolve: an ambiguous name is refused, not guessed' {

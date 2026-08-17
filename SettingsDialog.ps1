@@ -16,6 +16,9 @@ function New-SettingsForm {
     param(
         $Modes,
         $Settings,
+        # Подключённые мониторы: из них строятся строки назначения ролей. Пусто —
+        # раздела групп в окне просто нет (например, когда форму собирают в тесте).
+        $State,
         [System.Drawing.Icon]$Icon
     )
 
@@ -131,6 +134,71 @@ function New-SettingsForm {
         $boxes[$mode.Key] = $box
     }
 
+    # Роли мониторов. Без них у человека есть только «включить один» и «включить
+    # все»; роль — это способ сказать «вот эти два — рабочие», чтобы получился
+    # групповой режим. Раньше роль угадывалась по бренду в коде и настроить её
+    # было нельзя вообще.
+    #
+    # Строки только для подключённых мониторов: назначать роль тому, чего нет на
+    # столе, не по чему — названия взять неоткуда. Записи для отсутствующих
+    # мониторов при сохранении не теряются, этим занимается Merge-RoleSettings.
+    $roleBoxes = [ordered]@{}
+    # `$_ -and` здесь обязательно: конвейер из $null в PowerShell 5.1 пропускает
+    # ОДИН элемент — сам $null, — и без этой проверки `-not $_.Disconnected`
+    # оказывалось истиной. Строка роли строилась для несуществующего монитора и
+    # падала на $roleBoxes[$null].
+    $live = @($State | Where-Object { $_ -and -not $_.Disconnected })
+    if ($live.Count -gt 0) {
+        $rolesHeading = New-Object System.Windows.Forms.Label
+        $rolesHeading.Text = 'Display groups'
+        $rolesHeading.Font = New-Object System.Drawing.Font 'Segoe UI Semibold', 10
+        $rolesHeading.AutoSize = $true
+        $rolesHeading.Margin = New-Object System.Windows.Forms.Padding 0, 8, 0, 4
+        [void]$root.Controls.Add($rolesHeading)
+
+        $rolesHint = New-Object System.Windows.Forms.Label
+        $rolesHint.Text = "Give displays the same group name to switch them on together." + [Environment]::NewLine +
+                          "Any name works - work, game, coding. Leave blank for no group."
+        $rolesHint.ForeColor = $grey
+        $rolesHint.AutoSize = $true
+        $rolesHint.Margin = New-Object System.Windows.Forms.Padding 0, 0, 0, 12
+        [void]$root.Controls.Add($rolesHint)
+
+        $roleGrid = New-Object System.Windows.Forms.TableLayoutPanel
+        $roleGrid.AutoSize = $true
+        $roleGrid.AutoSizeMode = 'GrowAndShrink'
+        $roleGrid.ColumnCount = 2
+        $roleGrid.GrowStyle = 'AddRows'
+        $roleGrid.Margin = New-Object System.Windows.Forms.Padding 0, 0, 0, 16
+        [void]$root.Controls.Add($roleGrid)
+
+        # Подсказка со всеми ролями, которые уже есть: так вторая строка получает
+        # ту же роль выбором из списка, а не повторным набором руками — опечатка
+        # в имени роли молча развалила бы группу на две.
+        $known = New-Object System.Windows.Forms.AutoCompleteStringCollection
+        foreach ($v in @($Settings.roles.Values)) { if ($v) { [void]$known.Add([string]$v) } }
+        foreach ($v in 'work', 'game') { if (-not $known.Contains($v)) { [void]$known.Add($v) } }
+
+        foreach ($display in $live) {
+            $label = New-Object System.Windows.Forms.Label
+            $label.AutoSize = $true
+            $label.Anchor = 'Left'
+            $label.Margin = New-Object System.Windows.Forms.Padding 0, 7, 20, 7
+            $label.Text = $display.Label
+            [void]$roleGrid.Controls.Add($label)
+
+            $box = New-Object System.Windows.Forms.TextBox
+            $box.Width = 170
+            $box.Margin = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+            $box.Text = [string]$display.Role
+            $box.AutoCompleteMode = 'SuggestAppend'
+            $box.AutoCompleteSource = 'CustomSource'
+            $box.AutoCompleteCustomSource = $known
+            [void]$roleGrid.Controls.Add($box)
+            $roleBoxes[$display.Label] = $box
+        }
+    }
+
     $startupBox = New-Object System.Windows.Forms.CheckBox
     $startupBox.Text = 'Start with Windows'
     $startupBox.AutoSize = $true
@@ -196,6 +264,7 @@ function New-SettingsForm {
     return [pscustomobject]@{
         Form        = $form
         Boxes       = $boxes
+        RoleBoxes   = $roleBoxes
         StartupBox  = $startupBox
         RefreshBox  = $refreshBox
         NotifyBox   = $notifyBox
@@ -236,7 +305,7 @@ function Show-SettingsDialog {
         }
     }
 
-    $ui = New-SettingsForm -Modes $modes -Settings $Settings -Icon $Icon
+    $ui = New-SettingsForm -Modes $modes -Settings $Settings -State $State -Icon $Icon
 
     # Галочку автозагрузки читаем из факта наличия ярлыка, а не из настроек:
     # ярлык могли удалить руками.
@@ -286,7 +355,7 @@ function Show-SettingsDialog {
         # элементами формы. Иначе каждая новая настройка без своего элемента
         # (autoGame, audio) заводила бы этот баг заново, и заметить это можно было
         # бы только по развалившейся раскладке.
-        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows', 'restoreLastMode')
+        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows', 'restoreLastMode', 'roles')
         foreach ($k in @($Settings.Keys)) {
             if ($fromForm -contains $k) { continue }
             $updated[$k] = $Settings[$k]
@@ -294,6 +363,13 @@ function Show-SettingsDialog {
         # У этих двух тип важен: они приезжают из JSON и уезжают в него обратно.
         $updated.layout  = @($Settings.layout | ForEach-Object { [string]$_ })
         $updated.primary = [string]$Settings.primary
+
+        # Роли не берём из формы «как есть»: в файле могут лежать записи для
+        # монитора, которого сейчас нет на столе, а окно про них не знает и
+        # стёрло бы их. Слияние оставляет их нетронутыми.
+        $assigned = [ordered]@{}
+        foreach ($name in $ui.RoleBoxes.Keys) { $assigned[$name] = $ui.RoleBoxes[$name].Text }
+        $updated.roles = Merge-RoleSettings -Existing $Settings.roles -Assigned $assigned -State $State
 
         Save-DisplaySettings $updated
         Set-RunAtStartup $ui.StartupBox.Checked
