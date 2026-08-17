@@ -5,16 +5,24 @@
         Displays.ps1      значок в трее
         Set-Display.ps1   командная строка
 
-    Всё делается через Windows API, напрямую. MultiMonitorTool.exe в работе
-    больше не участвует: чтение состояния он отдавал за 1100 мс против ~90 мс у
-    CCD, выключенный монитор в его дампе терял имя и идентификатор, а его
+    Всё делается через Windows API, напрямую. Проект начинался как обвязка вокруг
+    MultiMonitorTool Нира Софера, и тот в работе больше не участвует: чтение
+    состояния он отдавал за 1100 мс против ~90 мс у CCD, выключенный монитор в
+    его дампе терял имя и идентификатор (то есть включить его было нечем), а его
     команды шли через ту запись раскладки, которая на этой машине отвечает
-    отказом. Файл оставлен в папке — иногда полезен вручную, для сверки.
+    отказом. Частью проекта он не является и в репозитории не лежит.
 #>
 
 $script:ToolRoot     = $PSScriptRoot
-$script:LogFile      = Join-Path $PSScriptRoot 'last-run.log'
+# Путь к журналу можно перенаправить переменной окружения. Единственный
+# потребитель — tests\run-tests.ps1: подменить $script:LogFile ПОСЛЕ дот-сорса он
+# уже не успевает, первые строки (компиляция типов, поворот журнала) пишутся прямо
+# при загрузке этого файла, и прогон тестов оставлял их в настоящем last-run.log.
+# Журнал здесь — единственный инструмент разбора, и чужих следов в нём быть не
+# должно.
+$script:LogFile      = $(if ($env:MMT_LOG_FILE) { $env:MMT_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
+$script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 
 function Write-DisplayLog {
     param([string]$Message)
@@ -86,6 +94,10 @@ function Get-DefaultSettings {
         # Запоминать положение окон для каждой раскладки столов и возвращать их
         # обратно при возврате к ней (WindowLayout.ps1).
         restoreWindows  = $true
+        # Возвращать последний выбранный режим после включения компьютера.
+        # Windows поднимает свой набор экранов, а не тот, что был выбран перед
+        # выключением (см. Save-LastMode и Invoke-StartupRestore).
+        restoreLastMode = $true
         # Автоматический игровой режим. Своего элемента в окне настроек нет
         # намеренно: настройка редкая и правится руками в settings.json.
         #   enabled   включить слежение;
@@ -116,6 +128,7 @@ function Get-DisplaySettings {
             if ($null -ne $raw.maximizeRefresh) { $s.maximizeRefresh = [bool]$raw.maximizeRefresh }
             if ($null -ne $raw.notifications)   { $s.notifications   = [bool]$raw.notifications }
             if ($null -ne $raw.restoreWindows)  { $s.restoreWindows  = [bool]$raw.restoreWindows }
+            if ($null -ne $raw.restoreLastMode) { $s.restoreLastMode = [bool]$raw.restoreLastMode }
             if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
             if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
             if ($raw.hotkeys) {
@@ -153,6 +166,95 @@ function Save-DisplaySettings {
     param($Settings)
     $Settings | ConvertTo-Json -Depth 5 | Set-Content -Path $script:SettingsFile -Encoding UTF8
     Write-DisplayLog 'settings: saved'
+}
+
+# --- последний выбранный режим ----------------------------------------------
+# После включения компьютера Windows поднимает СВОЙ набор экранов, а не тот,
+# который был выбран перед выключением: своё представление о раскладке она хранит
+# сама, нам о нём не докладывает и восстанавливает как считает нужным. В журнале
+# это видно за все дни разом — почти за каждым «tray: started» через секунды или
+# минуты идёт переключение руками. Значит выбор надо помнить нам самим и
+# возвращать его при старте трея (Invoke-StartupRestore в Displays.ps1).
+#
+# Отдельным файлом, а не полем в settings.json: настройки лежат под git и правятся
+# человеком, а это состояние машины, меняющееся на каждом переключении.
+
+$script:SessionIdCache = ''
+
+# Отпечаток текущего включения машины. Нужен, чтобы отличить «трей запустился
+# после включения компьютера» от «трей перезапустили в той же сессии». В первом
+# случае режим надо вернуть, во втором — экраны трогать нельзя: набор мог сменить
+# сам человек через Win+P или параметры Windows, и это его решение.
+#
+# Два источника, потому что по отдельности ни одного не хватает:
+#   * ShutdownTime — время последнего завершения работы. Меняется при каждом
+#     выключении и перезагрузке, включая быстрый запуск (HiberbootEnabled=1 на
+#     этой машине), при котором счётчик времени работы может продолжить прошлый;
+#   * момент загрузки (сейчас минус время работы) — прикрывает случай, когда
+#     завершения работы не было вовсе: сбой, Reset, потеря питания.
+# Достаточно, чтобы ЛЮБОЙ из них изменился.
+#
+# Считаем один раз за процесс: в пределах одного включения ответ не меняется, а
+# счётчик времени работы после долгого сна слегка уползает.
+function Get-SystemSessionId {
+    if ($script:SessionIdCache) { return $script:SessionIdCache }
+
+    $parts = @()
+    try {
+        $raw = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Windows' `
+                                 -Name 'ShutdownTime' -ErrorAction Stop).ShutdownTime
+        $parts += ([System.BitConverter]::ToInt64([byte[]]$raw, 0)).ToString()
+    }
+    catch {
+        # Значения нет — обходимся одним источником. Молча: это не поломка.
+        $parts += 'no-shutdown-time'
+    }
+
+    # Минуты, а не секунды: два процесса считают это в разные моменты, и точность
+    # до секунды здесь только создавала бы расхождения на ровном месте.
+    $up = [System.Diagnostics.Stopwatch]::GetTimestamp() / [System.Diagnostics.Stopwatch]::Frequency
+    $parts += (Get-Date).AddSeconds(-$up).ToString('yyyy-MM-dd HH:mm')
+
+    $script:SessionIdCache = ($parts -join '/')
+    return $script:SessionIdCache
+}
+
+# Запомнить выбранный режим. Зовётся из Switch-DisplayMode на каждом доехавшем до
+# конца переключении — и из трея, и из командной строки.
+function Save-LastMode {
+    param([Parameter(Mandatory)][string]$Key)
+
+    try {
+        [ordered]@{
+            key     = $Key
+            session = Get-SystemSessionId
+            when    = (Get-Date).ToString('s')
+        } | ConvertTo-Json -Compress |
+            Set-Content -Path $script:LastModeFile -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        # Не запомнили — переключение всё равно состоялось. Ронять его нельзя.
+        Write-DisplayLog "warn: could not remember the mode - $($_.Exception.Message)"
+    }
+}
+
+# Что было выбрано в прошлый раз: Key, Session, When. $null, если файла нет или он
+# нечитаем.
+function Get-LastMode {
+    if (-not (Test-Path $script:LastModeFile)) { return $null }
+    try {
+        $raw = Get-Content $script:LastModeFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $raw.key) { return $null }
+        return [pscustomobject]@{
+            Key     = [string]$raw.key
+            Session = [string]$raw.session
+            When    = [string]$raw.when
+        }
+    }
+    catch {
+        Write-DisplayLog "warn: the remembered mode is unreadable - $($_.Exception.Message)"
+        return $null
+    }
 }
 
 # --- разбор комбинаций клавиш -----------------------------------------------
@@ -1889,6 +1991,13 @@ function Switch-DisplayMode {
     # разбор «стало медленнее» без цифр за прошлые недели невозможен.
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
 
+    # Объявлены здесь, а не только там, где присваиваются: оба выставляются лишь
+    # на ветке «топология менялась», а читаются ниже безусловно. PowerShell в
+    # таком случае ищет переменную в области вызывающего — и однажды нашёл бы
+    # чужую, после чего сводка соврала бы про «Still on:».
+    $refused = @()
+    $doWindows = $false
+
     try {
         Write-DisplayLog "--- start mode=$ModeKey primaryMatch='$PrimaryMatch' keepMode=$KeepMode dryRun=$DryRun"
 
@@ -2140,6 +2249,12 @@ function Switch-DisplayMode {
         # разделитель из текущей локали и на русской писал бы «4,2 s».
         $took = $watch.Elapsed.TotalSeconds.ToString('0.0', [cultureinfo]::InvariantCulture)
         Write-DisplayLog ("done: {0} ({1} s)" -f $text, $took)
+
+        # Запоминаем ВЫБОР, а не результат: даже если один монитор не поднялся,
+        # человек просил именно этот режим, и после включения компьютера
+        # возвращать надо его. Провал переключения сюда не доходит — он уходит
+        # исключением выше.
+        Save-LastMode -Key $ModeKey
 
         # Окна раскладываем последними: и смена режима, и назначение основного
         # монитора двигают их сами, поэтому раньше это делать бессмысленно.

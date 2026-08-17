@@ -154,11 +154,20 @@ function New-SettingsForm {
     $windowsBox = New-Object System.Windows.Forms.CheckBox
     $windowsBox.Text = 'Remember window positions per display layout'
     $windowsBox.AutoSize = $true
-    $windowsBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 18
+    $windowsBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 3
     # Значение по умолчанию — включено, поэтому отсутствие поля читается как $true,
     # а не как «выключено»: у старого settings.json этого ключа нет.
     $windowsBox.Checked = ($null -eq $Settings.restoreWindows -or [bool]$Settings.restoreWindows)
     [void]$root.Controls.Add($windowsBox)
+
+    $lastModeBox = New-Object System.Windows.Forms.CheckBox
+    $lastModeBox.Text = 'Restore the last mode after turning the computer on'
+    $lastModeBox.AutoSize = $true
+    $lastModeBox.Margin = New-Object System.Windows.Forms.Padding 0, 3, 0, 18
+    # Как и у соседа: ключа в старом settings.json нет, и его отсутствие означает
+    # «по умолчанию», то есть включено.
+    $lastModeBox.Checked = ($null -eq $Settings.restoreLastMode -or [bool]$Settings.restoreLastMode)
+    [void]$root.Controls.Add($lastModeBox)
 
     $buttons = New-Object System.Windows.Forms.FlowLayoutPanel
     $buttons.FlowDirection = 'RightToLeft'
@@ -185,12 +194,13 @@ function New-SettingsForm {
     $form.CancelButton = $cancel
 
     return [pscustomobject]@{
-        Form       = $form
-        Boxes      = $boxes
-        StartupBox = $startupBox
-        RefreshBox = $refreshBox
-        NotifyBox  = $notifyBox
-        WindowsBox = $windowsBox
+        Form        = $form
+        Boxes       = $boxes
+        StartupBox  = $startupBox
+        RefreshBox  = $refreshBox
+        NotifyBox   = $notifyBox
+        WindowsBox  = $windowsBox
+        LastModeBox = $lastModeBox
     }
 }
 
@@ -265,6 +275,7 @@ function Show-SettingsDialog {
         $updated.maximizeRefresh = $ui.RefreshBox.Checked
         $updated.notifications = $ui.NotifyBox.Checked
         $updated.restoreWindows = $ui.WindowsBox.Checked
+        $updated.restoreLastMode = $ui.LastModeBox.Checked
 
         # Окно правит только то, что в нём есть; остальные поля обязаны проехать
         # насквозь. Начинали с Get-DefaultSettings — значит всё, чего в форме нет,
@@ -275,7 +286,7 @@ function Show-SettingsDialog {
         # элементами формы. Иначе каждая новая настройка без своего элемента
         # (autoGame, audio) заводила бы этот баг заново, и заметить это можно было
         # бы только по развалившейся раскладке.
-        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows')
+        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows', 'restoreLastMode')
         foreach ($k in @($Settings.Keys)) {
             if ($fromForm -contains $k) { continue }
             $updated[$k] = $Settings[$k]

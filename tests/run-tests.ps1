@@ -21,6 +21,13 @@ param([string]$Only = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
+# Журнал уводим в сторону ДО дот-сорса: DisplayCore пишет в него уже при загрузке
+# (поворот журнала, компиляция типов), и подменять $script:LogFile после было
+# поздно — эти строки уезжали в настоящий last-run.log.
+$script:LogDir = Join-Path $env:TEMP ('mmt-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $script:LogDir | Out-Null
+$env:MMT_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
+
 # --- крошечный фреймворк -----------------------------------------------------
 
 $script:Total = 0
@@ -100,10 +107,10 @@ function Assert-Null {
 . (Join-Path $root 'SettingsDialog.ps1')
 
 # Настоящий settings.json не трогаем НИ В ОДНОМ тесте.
-$script:TestDir = Join-Path $env:TEMP ('mmt-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-New-Item -ItemType Directory -Path $script:TestDir | Out-Null
+$script:TestDir = $script:LogDir   # он же, создан выше ради журнала
 $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
+$script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 
 # Фиктивные мониторы: тесты не должны зависеть от того, что сейчас на столе.
 function New-FakeMonitor {
@@ -328,6 +335,7 @@ Test-Case 'settings: defaults have the shape the rest of the code expects' {
     Assert-True $s.maximizeRefresh 'maximizeRefresh on'
     Assert-True $s.notifications 'notifications on'
     Assert-True $s.restoreWindows 'restoreWindows on by default'
+    Assert-True $s.restoreLastMode 'restoreLastMode on by default'
     Assert-Equal 0 @($s.layout).Count 'layout empty'
     Assert-Equal '' $s.primary 'primary empty'
     Assert-True (-not $s.autoGame.enabled) 'autoGame off by default'
@@ -352,6 +360,17 @@ Test-Case 'settings: a half-written autoGame keeps the other defaults' {
     Assert-Equal '' $s.autoGame.gameMode 'gameMode stayed default, not null'
     Assert-Equal '' $s.autoGame.backMode 'backMode stayed default, not null'
     Remove-Item $script:SettingsFile -Force
+}
+
+Test-Case 'settings: restoreLastMode survives a round-trip when turned off' {
+    # Отсутствие ключа означает «по умолчанию», то есть включено, — а вот честный
+    # false обязан доехать. На этой паре уже ломался restoreWindows.
+    Set-Content -Path $script:SettingsFile -Value '{ "restoreLastMode": false }' -Encoding UTF8
+    $s = Get-DisplaySettings
+    Assert-True (-not $s.restoreLastMode) 'false read from the file'
+    Remove-Item $script:SettingsFile -Force
+
+    Assert-True (Get-DisplaySettings).restoreLastMode 'no file at all means the default, on'
 }
 
 Test-Case 'settings: round-trip through disk preserves everything' {
@@ -409,7 +428,8 @@ Test-Case 'regression: the Save branch keeps layout, primary and every non-UI fi
         $updated.maximizeRefresh = $ui.RefreshBox.Checked
         $updated.notifications = $ui.NotifyBox.Checked
         $updated.restoreWindows = $ui.WindowsBox.Checked
-        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows')
+        $updated.restoreLastMode = $ui.LastModeBox.Checked
+        $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows', 'restoreLastMode')
         foreach ($k in @($settings.Keys)) {
             if ($fromForm -contains $k) { continue }
             $updated[$k] = $settings[$k]
@@ -585,9 +605,184 @@ Test-Case 'layout key: empty and blank paths are ignored' {
     Assert-Equal 'a' (Get-DisplayLayoutKey -DevicePaths @('a', '', $null)) 'blanks dropped'
 }
 
+# --- последний выбранный режим -----------------------------------------------
+
+Write-Host ''
+Write-Host 'the remembered mode' -ForegroundColor White
+
+Test-Case 'last mode: nothing remembered yet gives null, not a crash' {
+    if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
+    Assert-Null (Get-LastMode) 'no file, no mode'
+}
+
+Test-Case 'last mode: a saved mode comes back with its session stamp' {
+    Save-LastMode -Key 'solo:XG27AQDMGR'
+    $last = Get-LastMode
+    Assert-Equal 'solo:XG27AQDMGR' $last.Key 'key'
+    Assert-Equal (Get-SystemSessionId) $last.Session 'stamped with the current session'
+    Assert-True ([bool]$last.When) 'remembered when it happened'
+    Remove-Item $script:LastModeFile -Force
+}
+
+Test-Case 'last mode: a damaged file reads as nothing remembered' {
+    Set-Content -Path $script:LastModeFile -Value '{ broken' -Encoding UTF8
+    Assert-Null (Get-LastMode) 'unreadable file is not a mode'
+    Remove-Item $script:LastModeFile -Force
+}
+
+Test-Case 'last mode: a file without a key reads as nothing remembered' {
+    # Так выглядел бы файл, дописанный до конца не полностью.
+    Set-Content -Path $script:LastModeFile -Value '{"session":"x","when":"y"}' -Encoding UTF8
+    Assert-Null (Get-LastMode) 'no key, no mode'
+    Remove-Item $script:LastModeFile -Force
+}
+
+# --- возврат режима при старте трея ------------------------------------------
+# Живьём это проверяется только перезагрузкой, поэтому решение («возвращать или
+# не трогать») тестируем отдельно от самого переключения. Функцию достаём из
+# Displays.ps1 разбором файла — дот-сорснуть его нельзя, он поднимает всё
+# приложение, а копия кода в тесте разошлась бы с оригиналом (тот же приём, что и
+# для Resolve-ModeKey выше).
+
+Write-Host ''
+Write-Host 'restoring the mode when the tray starts' -ForegroundColor White
+
+$trayAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'Displays.ps1'), [ref]$null, [ref]$null)
+$srAst = $trayAst.FindAll({ param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-StartupRestore' }, $true)
+if ($srAst.Count -ne 1) { throw "expected exactly one Invoke-StartupRestore in Displays.ps1, found $($srAst.Count)" }
+. ([scriptblock]::Create($srAst[0].Extent.Text))
+
+# Окружение трея, которое эта функция вокруг себя ожидает.
+$script:TestSettings = Get-DefaultSettings
+$script:TestState = @()
+$script:Invoked = $null
+$script:SwitchedOnce = $false
+
+function Get-ActiveSettings { return $script:TestSettings }
+function Get-CachedState { return $script:TestState }
+function Invoke-Mode {
+    param([string]$Key, [switch]$Auto, [switch]$Silent)
+    $script:Invoked = [pscustomobject]@{ Key = $Key; Auto = [bool]$Auto; Silent = [bool]$Silent }
+}
+
+# Включён только ASUS, все три монитора подключены — то же, что было на столе
+# 12 августа.
+function Set-RestoreScene {
+    param([bool]$UltraGearConnected = $true)
+    $script:TestState = @(
+        (New-FakeMonitor 'XG27AQDMGR'   'AUSAA1D' 'game' 'path-asus'      $true)
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'work' 'path-ultragear' $false (-not $UltraGearConnected))
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'work' 'path-ultrafine' $false)
+    )
+    $script:Invoked = $null
+    $script:SwitchedOnce = $false
+    $script:TestSettings = Get-DefaultSettings
+}
+
+# Запомненный режим из ПРОШЛОГО включения машины: сессия чужая.
+function Set-RememberedMode {
+    param([string]$Key, [string]$Session = 'a-previous-boot')
+    ([ordered]@{ key = $Key; session = $Session; when = '2026-08-12T15:28:25' } | ConvertTo-Json -Compress) |
+        Set-Content -Path $script:LastModeFile -Encoding UTF8
+}
+
+Test-Case 'startup: a mode chosen before the last shutdown comes back' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    Invoke-StartupRestore
+    Assert-True ($null -ne $script:Invoked) 'switched'
+    if ($script:Invoked) {
+        Assert-Equal 'solo:LG ULTRAGEAR' $script:Invoked.Key 'to the remembered mode'
+        Assert-True (-not $script:Invoked.Silent) 'the set really changes, so say so in a balloon'
+    }
+}
+
+Test-Case 'startup: the same session means the tray was restarted - do not touch the displays' {
+    # Иначе перезапуск трея отменял бы Win+P или ручную правку в параметрах Windows.
+    Set-RestoreScene
+    Set-RememberedMode 'solo:LG ULTRAGEAR' (Get-SystemSessionId)
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'left alone'
+}
+
+Test-Case 'startup: the right set already on means no balloon, only a layout check' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:XG27AQDMGR'
+    Invoke-StartupRestore
+    Assert-True ($null -ne $script:Invoked) 'still called - layout and primary may have drifted'
+    if ($script:Invoked) { Assert-True $script:Invoked.Silent 'but silently' }
+}
+
+Test-Case 'startup: all-vs-work with the ASUS unplugged is the same desk, so no balloon' {
+    # Ключи режимов разные, а стол один: сравнение по ключам объявило бы
+    # переключением то, чего не происходит.
+    $script:TestState = @(
+        (New-FakeMonitor 'XG27AQDMGR'   'AUSAA1D' 'game' 'path-asus'      $false $true)
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'work' 'path-ultragear' $true)
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'work' 'path-ultrafine' $true)
+    )
+    $script:Invoked = $null
+    $script:SwitchedOnce = $false
+    $script:TestSettings = Get-DefaultSettings
+    Set-RememberedMode 'all'
+    Invoke-StartupRestore
+    Assert-True ($null -ne $script:Invoked) 'still checks the layout'
+    if ($script:Invoked) { Assert-True $script:Invoked.Silent 'but silently - the same displays are on' }
+}
+
+Test-Case 'startup: a display that is not there is never restored to' {
+    # Самая дорогая ошибка из возможных: погасить работающий монитор ради того,
+    # которого нет, — это чёрный стол после включения компьютера.
+    Set-RestoreScene -UltraGearConnected $false
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'nothing was turned off'
+}
+
+Test-Case 'startup: a mode key that no longer exists is not a crash' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:SOME OLD MONITOR'
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'skipped'
+}
+
+Test-Case 'startup: a hotkey pressed first wins - his choice is newer than ours' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    $script:SwitchedOnce = $true
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'we stay out of it'
+}
+
+Test-Case 'startup: turned off in settings means nothing happens' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    $script:TestSettings.restoreLastMode = $false
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'off is off'
+}
+
+Test-Case 'startup: nothing remembered at all means nothing happens' {
+    Set-RestoreScene
+    if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'first run ever'
+}
+
+Test-Case 'session id: the same within one run, and not empty' {
+    # Ровно на этом равенстве держится «трей перезапустили, экраны не трогаем».
+    $a = Get-SystemSessionId
+    $b = Get-SystemSessionId
+    Assert-Equal $a $b 'stable inside one process'
+    Assert-True ($a.Length -gt 0) 'not empty'
+    Assert-True ($a -like '*/*') 'built from both sources'
+}
+
 # --- итог --------------------------------------------------------------------
 
 Remove-Item -LiteralPath $script:TestDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item Env:\MMT_LOG_FILE -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($script:Failed -eq 0) {

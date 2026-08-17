@@ -217,8 +217,15 @@ function Show-Balloon {
     $tray.ShowBalloonTip(4000)
 }
 
+# Было ли в этом запуске трея хоть одно переключение. Нужно возврату режима при
+# старте: человек успевает нажать хоткей раньше, чем срабатывает наш таймер (по
+# журналу — через 3 секунды после запуска трея), и его выбор новее нашего.
+$script:SwitchedOnce = $false
+
 function Invoke-Mode {
-    param([string]$Key, [switch]$Auto)
+    param([string]$Key, [switch]$Auto, [switch]$Silent)
+
+    $script:SwitchedOnce = $true
 
     # Человек переключил сам — значит авто-режим больше не хозяин положения и
     # возвращать ничего не должен. С людьми не воюем: если во время игры руками
@@ -236,7 +243,10 @@ function Invoke-Mode {
             Show-Balloon 'Skipped' $result.Message 'Warning'
         }
         elseif ($result.Message -and $result.Ok) {
-            Show-Balloon 'Displays switched' $result.Message
+            # -Silent: набор экранов и так был правильный, чинили разве что
+            # раскладку. Всплывашка «Displays switched» на каждом включении
+            # компьютера сообщала бы о работе, которой не было.
+            if (-not $Silent) { Show-Balloon 'Displays switched' $result.Message }
         }
         elseif ($result.Message) {
             # Частичный провал — тоже провал. Раньше он показывался зелёной
@@ -255,6 +265,61 @@ function Invoke-Mode {
         $tray.Text = $script:AppName
         Update-StateCache
     }
+}
+
+# --- возврат режима после включения компьютера ------------------------------
+# Windows после включения поднимает свой набор экранов, а не тот, который был
+# выбран перед выключением. Режим помнит Save-LastMode (DisplayCore.ps1), здесь мы
+# его возвращаем.
+#
+# Почему не сравниваем текущий набор с запомненным и не выходим, если он совпал:
+# Switch-DisplayMode сам пропускает то, что уже сделано — топология, раскладка и
+# режимы проверяются по отдельности, поэтому вызов на уже правильном столе стоит
+# 0.2-0.3 с и ничем не моргает. Зато лечится случай, когда экраны те же, а
+# раскладка или основной монитор после загрузки разъехались: панель задач
+# приезжала на другой монитор при том же наборе.
+#
+# Отдельной функцией, а не кодом в обработчике таймера: см. Get-ActiveSettings.
+function Invoke-StartupRestore {
+    if (-not (Get-ActiveSettings).restoreLastMode) { return }
+
+    if ($script:SwitchedOnce) {
+        Write-DisplayLog 'startup: a mode was already chosen by hand, not restoring'
+        return
+    }
+
+    $last = Get-LastMode
+    if (-not $last) { return }
+
+    # Тот же сеанс работы машины — значит трей просто перезапустили. Экраны в этом
+    # случае не трогаем: набор мог сменить сам человек мимо приложения, через
+    # Win+P или параметры Windows, и возвращать его назад мы не в праве.
+    if ($last.Session -and $last.Session -eq (Get-SystemSessionId)) {
+        Write-DisplayLog 'startup: same session as the last switch, leaving the displays alone'
+        return
+    }
+
+    $state = Get-CachedState
+    $modes = @(Get-DisplayModes $state)
+    $mode = $modes | Where-Object { $_.Key -eq $last.Key } | Select-Object -First 1
+    if (-not $mode -or -not $mode.Available) {
+        # Монитора нет на месте. Гасить ради него остальные нельзя — останется
+        # чёрный экран, а это ровно та цена ошибки, из-за которой здесь проверка.
+        Write-DisplayLog ("startup: '{0}' is not available right now, leaving the displays as Windows set them" -f `
+            (Get-ModeTitleFromKey $last.Key))
+        return
+    }
+
+    # Набор уже правильный — значит всплывашка не нужна, чинить будем разве что
+    # раскладку (см. -Silent в Invoke-Mode). Сравниваем НАБОРЫ экранов, а не ключи
+    # режимов: пока ASUS не воткнут, «все» и «рабочие» — это один и тот же стол, и
+    # сравнение ключей объявило бы переключением то, чего не происходит.
+    $wanted = @(Get-ModeMembers $mode $state | ForEach-Object { $_.Id } | Sort-Object)
+    $on = @($state | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
+    $silent = ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
+
+    Write-DisplayLog ("startup: restoring '{0}', chosen at {1}" -f $mode.Title, $last.When)
+    Invoke-Mode $last.Key -Auto -Silent:$silent
 }
 
 # Окно настроек живёт в SettingsDialog.ps1 — его можно собрать и проверить
@@ -472,12 +537,29 @@ if (-not (Test-Path $script:SettingsFile)) {
 Register-Hotkeys
 Write-DisplayLog ("tray: started in {0} ms" -f [int]$script:StartWatch.ElapsedMilliseconds)
 
+# Возврат последнего режима — не здесь, а через одноразовый таймер: цикл сообщений
+# должен уже крутиться, иначе на несколько секунд переключения не открывается меню
+# и не показываются всплывашки. Полторы секунды — чтобы стол после входа в Windows
+# устоялся; человек к этому моменту обычно ещё смотрит на рабочий стол.
+#
+# После «tray: started» намеренно: строка меряет, как быстро становятся рабочими
+# клавиши, и переключение экранов не должно попадать в этот замер.
+$script:StartupTimer = New-Object System.Windows.Forms.Timer
+$script:StartupTimer.Interval = 1500
+$script:StartupTimer.add_Tick({
+    $script:StartupTimer.Stop()
+    try { Invoke-StartupRestore }
+    catch { Write-DisplayLog "startup: could not restore the last mode - $($_.Exception.Message)" }
+})
+$script:StartupTimer.Start()
+
 try {
     [System.Windows.Forms.Application]::Run()
 }
 finally {
     Write-DisplayLog 'tray: stopped'
     if ($script:WatchTimer) { $script:WatchTimer.Stop(); $script:WatchTimer.Dispose() }
+    if ($script:StartupTimer) { $script:StartupTimer.Stop(); $script:StartupTimer.Dispose() }
     if ($script:DisplayChanged) {
         [Microsoft.Win32.SystemEvents]::remove_DisplaySettingsChanged($script:DisplayChanged)
     }
