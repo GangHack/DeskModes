@@ -1,0 +1,28 @@
+{
+    "hotkeys": {
+        "solo:DELL U2720Q": "Ctrl+Alt+F1",
+        "solo:LG ULTRAGEAR": "Ctrl+Alt+F2",
+        "role:work": "Ctrl+Alt+F3",
+        "all": "Ctrl+Alt+F5"
+    },
+    "maximizeRefresh": true,
+    "notifications": true,
+    "layout": [
+        "DELL U2720Q",
+        "LG ULTRAGEAR"
+    ],
+    "primary": "ULTRAGEAR",
+    "roles": {
+        "DELL U2720Q": "work",
+        "LG ULTRAGEAR": "work"
+    },
+    "restoreWindows": true,
+    "restoreLastMode": true,
+    "autoGame": {
+        "enabled": false,
+        "process": "",
+        "gameMode": "",
+        "backMode": ""
+    },
+    "audio": {}
+}
