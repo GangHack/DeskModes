@@ -23,6 +23,7 @@ $script:ToolRoot     = $PSScriptRoot
 $script:LogFile      = $(if ($env:MMT_LOG_FILE) { $env:MMT_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
+$script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
 
 function Write-DisplayLog {
     param([string]$Message)
@@ -91,18 +92,35 @@ function Get-DefaultSettings {
         # Какой монитор делать основным (то есть где панель задач), если он есть
         # среди включённых. Часть названия, как и в layout.
         primary         = ''
-        # Роли мониторов: кусок названия -> имя роли. Из них строятся групповые
-        # режимы «включить все рабочие» / «включить игровой»:
+        # УСТАРЕЛО, читается только ради переезда. Роли были вторым способом
+        # сказать то же, что говорят combos: «эти мониторы — вместе». Ролью
+        # помечался монитор (кусок названия -> имя роли), и режим появлялся сам,
+        # когда роль делили двое:
         #   "roles": { "ULTRAFINE": "work", "XG27AQDMGR": "game" }
-        # Имя роли произвольное — work, game, coding, что угодно; режим получает
-        # ключ role:<роль>. Группа появляется, когда роль делят хотя бы два
-        # подключённых монитора: для одного уже есть соло-режим.
         #
-        # Раньше роль угадывалась по бренду прямо в коде (ASUS -> игровой,
-        # LG -> рабочий). Это описывало один конкретный стол, а не общее правило:
-        # у соседа LG UltraGear — игровой монитор, и угадать это нельзя никак.
-        # Пустой словарь = групповых режимов нет, остаются соло и «все».
+        # Два способа для одной вещи не выжили при встрече с человеком: «Work
+        # displays» и «Movie night» в списке выглядели одинаково, а удалялись
+        # по-разному — комбинация кнопкой, группа стиранием имени в другой
+        # карточке. Роль вдобавок у монитора одна, поэтому пересекающиеся наборы
+        # ею не выразить, и своего монитора для панели задач у неё нет. То есть
+        # группа — это комбинация, только слабее.
+        #
+        # Теперь роли из файла превращаются в комбинации при чтении настроек
+        # (Convert-RoleSettingsToCombos), а ключ остаётся пустым: он нужен, чтобы
+        # старый settings.json и записи, сделанные рукой, продолжали работать.
         roles           = [ordered]@{}
+        # Комбинации: имя -> произвольный набор мониторов. Роли этого не умеют:
+        # роль у монитора одна, а комбинаций с его участием может быть сколько
+        # угодно. Ключ режима — combo:<имя>, заголовок — само имя, как введено.
+        #   "combos": {
+        #       "Movie night": { "displays": ["ULTRAFINE", "XG27AQDMGR"], "primary": "ULTRAFINE" }
+        #   }
+        # displays — куски названий, правила совпадения те же, что у layout и
+        # ролей. primary — кому достанется панель задач в этом режиме; пустая
+        # строка или отсутствие монитора на столе — работают общие правила (см.
+        # Select-PrimaryDisplay). Правится в окне настроек; руками допустима и
+        # краткая запись — просто массив названий вместо объекта.
+        combos          = [ordered]@{}
         # Запоминать положение окон для каждой раскладки столов и возвращать их
         # обратно при возврате к ней (WindowLayout.ps1).
         restoreWindows  = $true
@@ -155,6 +173,26 @@ function Get-DisplaySettings {
             if ($raw.roles) {
                 foreach ($p in $raw.roles.PSObject.Properties) { $s.roles[$p.Name] = [string]$p.Value }
             }
+            if ($raw.combos) {
+                foreach ($p in $raw.combos.PSObject.Properties) {
+                    if (-not $p.Name) { continue }
+                    # Три формы записи: полная ({ displays, primary }) — её пишет окно
+                    # настроек; краткая (массив названий) и совсем краткая (одно
+                    # название строкой) — для правки рукой. Внутри всегда полная.
+                    $displays = @()
+                    $prim = ''
+                    if ($p.Value -is [array])       { $displays = @($p.Value | ForEach-Object { [string]$_ }) }
+                    elseif ($p.Value -is [string])  { $displays = @([string]$p.Value) }
+                    elseif ($p.Value) {
+                        if ($null -ne $p.Value.displays) { $displays = @($p.Value.displays | ForEach-Object { [string]$_ }) }
+                        if ($null -ne $p.Value.primary)  { $prim = [string]$p.Value.primary }
+                    }
+                    $s.combos[$p.Name] = [ordered]@{
+                        displays = @($displays | Where-Object { $_ })
+                        primary  = $prim
+                    }
+                }
+            }
             if ($raw.autoGame) {
                 if ($null -ne $raw.autoGame.enabled)  { $s.autoGame.enabled  = [bool]$raw.autoGame.enabled }
                 if ($null -ne $raw.autoGame.process)  { $s.autoGame.process  = [string]$raw.autoGame.process }
@@ -174,8 +212,20 @@ function Get-DisplaySettings {
             catch { }
         }
     }
+
+    # Роли — устаревший способ описать набор мониторов; превращаем их в
+    # комбинации ЗДЕСЬ, на чтении, чтобы весь остальной код (меню, режимы,
+    # переключатель, командная строка) знал только один вид набора. В памяти, без
+    # записи: писать из функции чтения нельзя — два процесса читают настройки
+    # одновременно. Файл приберёт трей при следующем запуске, по этому флагу.
+    $script:LegacyRolesOnDisk = Convert-RoleSettingsToCombos $s
+
     return $s
 }
+
+# Признак того, что в settings.json ещё лежат роли. Ставится на каждом чтении;
+# читает его трей, чтобы один раз перезаписать файл (см. Displays.ps1).
+$script:LegacyRolesOnDisk = $false
 
 function Save-DisplaySettings {
     param($Settings)
@@ -272,6 +322,163 @@ function Get-LastMode {
     }
 }
 
+# --- проверенные режимы мониторов -------------------------------------------
+# Что именно каждый монитор реально показывал в прошлый раз: путь -> {W;H;Hz}.
+#
+# Нужно, чтобы стол вставал одним переходом. Set-CcdFullConfig задаёт разрешение
+# и частоту сразу, вместе с набором экранов, — но для ПОГАШЕННОГО монитора взять
+# частоту негде: EnumDisplaySettings перечисляет режимы только у активного
+# выхода, а из EDID система отдаёт лишь родное разрешение (Get-CcdTargets,
+# GET_TARGET_PREFERRED_MODE). Без этого файла монитор, который просыпается —
+# а он просыпается почти в каждом переключении, — поднимался бы на частоте из
+# записи Windows, и её пришлось бы править вторым перестроением стола.
+#
+# Пишем то, что монитор ОТДАЛ, а не то, что мы просили: это заодно защита от
+# невозможных режимов. 19 августа 2026 ULTRAGEAR по HDMI получил запрос на
+# 2560x1440@240 («bad mode» в журнале) и остался на 144 — в файл уйдут именно
+# 144, и следующее переключение попросит сразу их.
+#
+# Частота хранится ДРОБЬЮ (num/den), а не только целыми герцами, и это не
+# педантизм. CCD принимает лишь точное значение: на этой машине 144 Гц — это
+# 143999/1000, а 60 Гц — 59997/1000. Запрос «144/1» система отвергает целиком
+# (проверено 20 августа, validate -> 1610), и переключение теряло подсказку о
+# частоте. Целые герцы остаются рядом — по ним видно, к какому режиму дробь
+# относится, и их читает человек.
+#
+# Отдельным файлом, а не полем в settings.json: настройки правит человек и они
+# лежат под git, а это состояние машины.
+
+function Get-ModeCache {
+    if (-not (Test-Path $script:ModeCacheFile)) { return @{} }
+    try {
+        $raw = Get-Content $script:ModeCacheFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $out = @{}
+        foreach ($p in $raw.PSObject.Properties) {
+            $v = $p.Value
+            if ($null -eq $v) { continue }
+            $w = [int]$v.w; $h = [int]$v.h; $hz = [int]$v.hz
+            # Мусор в файле не должен превратиться в запрос невозможного режима.
+            if ($w -le 0 -or $h -le 0) { continue }
+            $num = [int]$v.num; $den = [int]$v.den
+            if ($num -le 0 -or $den -le 0) { $num = 0; $den = 0 }
+            $out[$p.Name] = [pscustomobject]@{
+                Width = $w; Height = $h; Hz = $hz
+                RateNum = $num; RateDen = $den
+            }
+        }
+        return $out
+    }
+    catch {
+        # Испорченный файл — это всего лишь «частоту спящего монитора не знаем»:
+        # переключение состоится, просто с ремонтным шагом. Молча, как и с
+        # запомненным режимом.
+        return @{}
+    }
+}
+
+# Дописать в кэш то, что мониторы показывают сейчас. Слиянием, а не заменой:
+# монитор, которого в этом режиме не было, свою запись сохраняет — она понадобится,
+# когда его включат снова.
+function Save-ModeCache {
+    param([Parameter(Mandatory)]$Modes)
+
+    if (@($Modes.Keys).Count -eq 0) { return }
+    try {
+        $merged = Get-ModeCache
+        foreach ($k in @($Modes.Keys)) { $merged[$k] = $Modes[$k] }
+
+        $flat = [ordered]@{}
+        foreach ($k in @($merged.Keys | Sort-Object)) {
+            $m = $merged[$k]
+            $flat[$k] = [ordered]@{
+                w   = [int]$m.Width
+                h   = [int]$m.Height
+                hz  = [int]$m.Hz
+                num = [int]$m.RateNum
+                den = [int]$m.RateDen
+            }
+        }
+        $flat | ConvertTo-Json -Depth 4 -Compress |
+            Set-Content -Path $script:ModeCacheFile -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        # Не записали — следующее переключение просто не будет знать частоту
+        # спящего монитора. Ронять из-за кэша нечего.
+        Write-DisplayLog "warn: could not remember the display modes - $($_.Exception.Message)"
+    }
+}
+
+# Целевое состояние каждого монитора для перехода одним вызовом: DevicePath,
+# Label, Width, Height, Hz. Пустой массив означает «так не выйдет» — вызывающий
+# идёт старой дорогой из трёх шагов.
+#
+# Откуда берутся размеры, по убыванию доверия:
+#   1. BestMode — он уже посчитан Get-DisplayState для включённого монитора;
+#   2. кэш проверенных режимов — для того, кто сейчас спит (см. Get-ModeCache);
+#   3. родное разрешение из EDID — есть даже у погашенного, но без частоты.
+# При -KeepMode разрешение и частоту менять не просят, поэтому для включённого
+# берётся то, что на нём стоит.
+#
+# Частота уходит дальше ДРОБЬЮ и только из кэша: CCD принимает лишь точное
+# значение (144 Гц здесь — это 143999/1000), а целые герцы из EnumDisplaySettings
+# округлены, и запрос по ним система отвергает. Дробь годится, только если она от
+# ТОГО ЖЕ режима: кэш помнит 144 Гц, а просят 240 — значит дроби для 240 у нас нет,
+# частоту выберет система, а ремонтный шаг доведёт её и научит кэш на будущее.
+#
+# Чистая функция: ничего не спрашивает у системы, только считает.
+function Get-SwitchTargets {
+    param(
+        [Parameter(Mandatory)]$Wanted,
+        $Cache = @{},
+        [switch]$KeepMode
+    )
+
+    if (-not $Cache) { $Cache = @{} }
+    $out = @()
+    foreach ($m in @($Wanted)) {
+        $w = 0; $h = 0; $hz = 0
+        $cached = $null
+        if ($Cache.ContainsKey([string]$m.Id)) { $cached = $Cache[[string]$m.Id] }
+
+        if ($KeepMode -and $m.Active -and $m.Width -gt 0 -and $m.Height -gt 0) {
+            $w = [int]$m.Width; $h = [int]$m.Height; $hz = [int]$m.Hz
+        }
+        elseif (-not $KeepMode -and $m.BestMode) {
+            $w = [int]$m.BestMode.Width; $h = [int]$m.BestMode.Height; $hz = [int]$m.BestMode.Hz
+        }
+        elseif ($cached) {
+            $w = [int]$cached.Width; $h = [int]$cached.Height
+            # При -KeepMode частоту не навязываем: человек просил не трогать режим.
+            if (-not $KeepMode) { $hz = [int]$cached.Hz }
+        }
+        elseif ($m.Native) {
+            $w = [int]$m.Native.Width; $h = [int]$m.Native.Height
+        }
+
+        # Размеров нет ни одного — задать исходный режим нечем, а мешать заданные
+        # с незаданными в одном запросе значит гадать, что система сделает с
+        # остатком. Такой набор целиком уходит на старую дорогу.
+        if ($w -le 0 -or $h -le 0) { return @() }
+
+        $num = 0; $den = 0
+        if ($hz -gt 0 -and $cached -and [int]$cached.RateDen -gt 0 -and
+            [int]$cached.Width -eq $w -and [int]$cached.Height -eq $h -and [int]$cached.Hz -eq $hz) {
+            $num = [int]$cached.RateNum; $den = [int]$cached.RateDen
+        }
+
+        $out += [pscustomobject]@{
+            DevicePath = [string]$m.Id
+            Label      = [string]$m.Label
+            Width      = $w
+            Height     = $h
+            Hz         = $hz
+            RateNum    = $num
+            RateDen    = $den
+        }
+    }
+    return $out
+}
+
 # --- разбор комбинаций клавиш -----------------------------------------------
 
 $script:ModAlt = 0x1; $script:ModControl = 0x2; $script:ModShift = 0x4
@@ -328,8 +535,57 @@ function Format-HotkeyString {
     return ($parts -join '+')
 }
 
+# --- тема оформления ----------------------------------------------------------
+# Меню трея и окно настроек рисуются под системную тему. Оба факта — тёмная ли
+# тема и какой акцентный цвет — Windows держит в реестре; официального API для
+# Win32-приложений так и нет (UISettings — это WinRT, и тянуть его в PowerShell
+# 5.1 дороже, чем прочитать два значения). Читается при каждом открытии меню или
+# окна, поэтому смена темы подхватывается без перезапуска.
+
+# Тёмная ли тема ПРИЛОЖЕНИЙ (в Windows она отдельная от темы системы). Значения
+# нет на старых сборках — тогда светлая, как и было до появления тёмной.
+function Test-DarkTheme {
+    try {
+        $v = Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' `
+                              -Name 'AppsUseLightTheme' -ErrorAction Stop
+        return ($v.AppsUseLightTheme -eq 0)
+    }
+    catch { return $false }
+}
+
+# Акцентный цвет системы, строкой #RRGGBB.
+#
+# Основной источник — AccentPalette: 8 цветов по 4 байта RGBA, от светлого к
+# тёмному, базовый — четвёртый (индекс 3). Нужен он потому, что у палитры есть
+# осветлённые варианты: на тёмном фоне сам акцент часто нечитаем (у Windows он
+# может быть почти чёрным), и система в тёмной теме использует light2 (индекс 1)
+# — его и просим через -ForDarkTheme. Нет палитры — берём DWM AccentColor (там
+# ABGR-число), нет и его — синий по умолчанию, как у Windows из коробки.
+function Get-AccentColor {
+    param([switch]$ForDarkTheme)
+
+    try {
+        $pal = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent' `
+                                 -Name 'AccentPalette' -ErrorAction Stop).AccentPalette
+        if ($pal -and $pal.Count -ge 32) {
+            $i = $(if ($ForDarkTheme) { 1 } else { 3 }) * 4
+            return ('#{0:X2}{1:X2}{2:X2}' -f $pal[$i], $pal[$i + 1], $pal[$i + 2])
+        }
+    }
+    catch { }
+
+    try {
+        $abgr = [uint32]((Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\DWM' `
+                                           -Name 'AccentColor' -ErrorAction Stop).AccentColor)
+        return ('#{0:X2}{1:X2}{2:X2}' -f ($abgr -band 0xFF), (($abgr -shr 8) -band 0xFF), (($abgr -shr 16) -band 0xFF))
+    }
+    catch { }
+
+    return $(if ($ForDarkTheme) { '#4CC2FF' } else { '#0067C0' })
+}
+
 # --- Windows API ------------------------------------------------------------
-# Все четыре класса живут в ОДНОМ исходнике и компилируются одним вызовом.
+# Все классы живут в ОДНОМ исходнике и компилируются одним вызовом.
 #
 # Раньше их было четыре отдельных Add-Type (три здесь и HotkeyWindow в
 # Displays.ps1), а каждый Add-Type -TypeDefinition — это отдельная компиляция.
@@ -344,6 +600,8 @@ function Format-HotkeyString {
 $script:NativeSource = @'
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -488,6 +746,19 @@ public class NativeCcd {
     public const uint PATH_ACTIVE = 0x00000001;
     public const uint MODE_IDX_INVALID = 0xFFFFFFFF;
     public const uint MODE_INFO_TYPE_SOURCE = 1;
+
+    // Формат пикселя исходного режима: 32 бита. Обязателен, когда режим задаём мы
+    // сами (Set-CcdFullConfig): ноль здесь — недопустимое значение, и валидация
+    // отвечает отказом.
+    public const uint PIXELFORMAT_32BPP = 4;
+    // Развёртка цели: прогрессивная. Идёт вместе с частотой, когда частота
+    // передаётся подсказкой в targetInfo (см. Set-CcdFullConfig).
+    public const uint SCANLINE_PROGRESSIVE = 1;
+    // Без поворота и без растяжения. Нужны там же: у ПОГАШЕННОГО пути система
+    // отдаёт эти поля нулями, а ноль в обоих перечислениях недопустим, и вместе
+    // с заданной частотой такой путь валидацию не проходит.
+    public const uint ROTATION_IDENTITY = 1;
+    public const uint SCALING_IDENTITY = 1;
 
     public const uint SDC_VALIDATE = 0x00000040;
     public const uint SDC_APPLY = 0x00000080;
@@ -879,6 +1150,195 @@ public class HotkeyWindow : NativeWindow, IDisposable {
 
     public void Dispose() { UnregisterAll(); DestroyHandle(); }
 }
+
+// Оформление окон через DWM: тёмный заголовок и скруглённые углы. Появлялись
+// они в Windows постепенно (тёмный заголовок — атрибут 19, с 20H1 — 20; углы —
+// только в Windows 11), поэтому оба метода Try*: на старой сборке вызов молча
+// возвращает ошибку, и окно остаётся как было — со светлым заголовком и
+// прямыми углами. Ломать из-за косметики нечего.
+public static class NativeTheme {
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;   // сборки 1809-1909
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE     = 20;   // с 20H1
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE    = 33;   // с Windows 11
+    private const int DWMWCP_ROUND      = 2;
+    private const int DWMWCP_ROUNDSMALL = 3;
+
+    public static void TryDarkTitleBar(IntPtr hwnd, bool dark) {
+        int v = dark ? 1 : 0;
+        if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, 4) != 0)
+            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref v, 4);
+    }
+
+    public static void TryRoundCorners(IntPtr hwnd, bool small) {
+        int v = small ? DWMWCP_ROUNDSMALL : DWMWCP_ROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref v, 4);
+    }
+}
+
+// Отрисовка меню трея в духе Windows 11: плоский фон под системную тему,
+// скруглённая подсветка строки, галочка в цвет акцента. Штатные отрисовщики
+// WinForms застряли в прошлом — System рисует Windows 7, Professional рисует
+// Office 2007 с градиентами, — а сам значок в трее без WinForms не живёт,
+// поэтому современный вид меню достижим только своим ToolStripRenderer.
+//
+// Цвета приходят из PowerShell готовыми (там же читается тема и акцент):
+// рендерер создаётся на каждое открытие меню, и смена темы Windows
+// подхватывается без перезапуска трея.
+//
+// Смысловые роли строк передаются через Tag: "header" — заголовок раздела,
+// "info" — информационная строка (CONNECTED DISPLAYS). Обе выключены, чтобы
+// не ловить клики, но заголовок должен быть приглушён, а информация — читаться
+// как обычный текст: с системным отрисовщиком всё это было одинаково серым.
+public class ModernMenuRenderer : ToolStripRenderer {
+    private readonly Color _back, _text, _dim, _hover, _line, _accent;
+
+    public ModernMenuRenderer(bool dark, Color accent) {
+        _accent = accent;
+        if (dark) {
+            _back  = Color.FromArgb(0x2C, 0x2C, 0x2C);
+            _text  = Color.FromArgb(0xF2, 0xF2, 0xF2);
+            // Приглушённый тон, а не «почти фон»: им пишутся режим монитора и заголовки
+            // разделов, и на 0x8F они читались с трудом (контраст к фону ~4:1).
+            _dim   = Color.FromArgb(0xAD, 0xAD, 0xAD);
+            _hover = Color.FromArgb(0x3D, 0x3D, 0x3D);
+            _line  = Color.FromArgb(0x45, 0x45, 0x45);
+        } else {
+            _back  = Color.FromArgb(0xF9, 0xF9, 0xF9);
+            _text  = Color.FromArgb(0x1B, 0x1B, 0x1B);
+            _dim   = Color.FromArgb(0x66, 0x66, 0x66);
+            _hover = Color.FromArgb(0xEA, 0xEA, 0xEA);
+            _line  = Color.FromArgb(0xE0, 0xE0, 0xE0);
+        }
+    }
+
+    private static GraphicsPath Rounded(Rectangle r, int radius) {
+        var p = new GraphicsPath();
+        int d = radius * 2;
+        p.AddArc(r.X, r.Y, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) {
+        using (var b = new SolidBrush(_back)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+    }
+
+    // Пустое намеренно: полоса под значки не должна отличаться от фона.
+    protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { }
+
+    protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) {
+        // Тонкая рамка, чтобы меню не сливалось с тем, что под ним. Углы у неё
+        // прямые — на Windows 11 их срежет DWM вместе с углами самого окна.
+        var r = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+        using (var p = new Pen(_line)) e.Graphics.DrawRectangle(p, r);
+    }
+
+    protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
+        if (!e.Item.Selected || !e.Item.Enabled) return;
+        var g = e.Graphics;
+        var r = new Rectangle(3, 1, e.Item.Width - 6, e.Item.Height - 2);
+        var old = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var path = Rounded(r, 4))
+        using (var b = new SolidBrush(_hover)) g.FillPath(b, path);
+        g.SmoothingMode = old;
+    }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e) {
+        if (e.Vertical) { base.OnRenderSeparator(e); return; }
+        int y = e.Item.Height / 2;
+        using (var p = new Pen(_line)) e.Graphics.DrawLine(p, 10, y, e.Item.Width - 10, y);
+    }
+
+    // Цвет ЗАДАЁМ САМИ, потому что базовый ToolStripRenderer.OnRenderItemText
+    // делает `textColor = item.Enabled ? textColor : SystemColors.GrayText` — то
+    // есть для любой выключенной строки выбрасывает наш цвет и берёт системный
+    // тёмно-серый. А строки мониторов выключены намеренно (по ним нельзя щёлкать),
+    // и на тёмном фоне системный серый читался с трудом: раздел CONNECTED
+    // DISPLAYS выглядел как выцветшая заглушка, хотя это самое полезное в меню.
+    //
+    // Заодно строка монитора рисуется в два тона: название — полной яркостью,
+    // режим и пометки — приглушённо. Так видно и что подключено, и на чём оно
+    // стоит, без того чтобы второе спорило с первым за внимание.
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e) {
+        bool header = "header".Equals(e.Item.Tag as string);
+        bool info   = "info".Equals(e.Item.Tag as string);
+
+        if (e.Item.Enabled) {
+            // Комбинация клавиш тише названия режима: она подсказка, а не сам пункт.
+            // ToolStripMenuItem рисует её отдельным вызовом с тем же цветом, что и
+            // текст, и меню выходило одинаково громким по всей ширине.
+            var mi = e.Item as ToolStripMenuItem;
+            bool isShortcut = mi != null && !string.IsNullOrEmpty(mi.ShortcutKeyDisplayString)
+                              && e.Text == mi.ShortcutKeyDisplayString;
+            e.TextColor = isShortcut ? _dim : _text;
+            base.OnRenderItemText(e);
+            return;
+        }
+
+        // Горизонтальное выравнивание убираем: части рисуются подряд, слева.
+        // NoPadding — чтобы измеренная ширина названия совпала с нарисованной,
+        // иначе второй тон уезжал бы на пиксель-два от первого.
+        TextFormatFlags flags = (e.TextFormat | TextFormatFlags.NoPadding)
+                                & ~(TextFormatFlags.HorizontalCenter | TextFormatFlags.Right);
+        Rectangle r = e.TextRectangle;
+
+        int split = info ? e.Text.IndexOf("    ") : -1;
+        if (split <= 0) {
+            // Заголовок раздела, недоступный режим или строка без разделителя —
+            // одним тоном. Заголовок приглушён намеренно, он служебный.
+            TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, r,
+                                  (header || !info) ? _dim : _text, flags);
+            return;
+        }
+
+        string name = e.Text.Substring(0, split);
+        string rest = e.Text.Substring(split);
+        Size nameSize = TextRenderer.MeasureText(e.Graphics, name, e.TextFont,
+                                                new Size(int.MaxValue, r.Height), flags);
+        TextRenderer.DrawText(e.Graphics, name, e.TextFont, r, _text, flags);
+        Rectangle tail = new Rectangle(r.X + nameSize.Width, r.Y,
+                                       Math.Max(0, r.Width - nameSize.Width), r.Height);
+        TextRenderer.DrawText(e.Graphics, rest, e.TextFont, tail, _dim, flags);
+    }
+
+    // Точку состояния рисуем сами, полным цветом. Базовый отрисовщик прогоняет
+    // картинку выключенного пункта через ControlPaint.DrawImageDisabled, а строки
+    // мониторов выключены намеренно (по ним нельзя щёлкать) — и зелёная точка
+    // «на максимуме», янтарная «частота ниже» и серая «выключен» превращались в
+    // три одинаковых серых пятна. Проверено пиксельным дампом офф-скрин рендера:
+    // #828282, #7D7D7D, #8B8B8B вместо зелёного, янтарного и серого.
+    protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e) {
+        if (e.Image == null) { base.OnRenderItemImage(e); return; }
+        e.Graphics.DrawImage(e.Image, e.ImageRectangle);
+    }
+
+    // Галочка текущего режима — рисуется пером, а не глифом шрифта: Segoe MDL2
+    // есть не везде, а GDI+ при отсутствии шрифта молча подставляет другой, и
+    // вместо галочки вышел бы квадратик.
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e) {
+        var g = e.Graphics;
+        var r = e.ImageRectangle;
+        var old = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var p = new Pen(_accent, 1.8f)) {
+            p.StartCap = LineCap.Round;
+            p.EndCap = LineCap.Round;
+            p.LineJoin = LineJoin.Round;
+            g.DrawLines(p, new PointF[] {
+                new PointF(r.Left + r.Width * 0.24f, r.Top + r.Height * 0.55f),
+                new PointF(r.Left + r.Width * 0.44f, r.Top + r.Height * 0.74f),
+                new PointF(r.Left + r.Width * 0.78f, r.Top + r.Height * 0.30f) });
+        }
+        g.SmoothingMode = old;
+    }
+}
 '@
 
 # Компиляция один раз, дальше — из кэша рядом со скриптами.
@@ -896,7 +1356,8 @@ function Initialize-NativeTypes {
     if ('NativeDisplay' -as [type]) { return }
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $refs = @('System.Windows.Forms')
+    # System.Drawing — ради ModernMenuRenderer: цвета, перья и кисти оттуда.
+    $refs = @('System.Windows.Forms', 'System.Drawing')
     $how = 'compiled'
 
     try {
@@ -1104,6 +1565,68 @@ function Get-CcdPathDevice {
     return $t.monitorDevicePath
 }
 
+# Выбрать по одному пути CCD на каждый из запрошенных мониторов.
+#
+# Общая часть двух способов перестроить стол — Set-CcdFullConfig (обычный путь) и
+# Set-CcdTopology (откат). Вынесена, чтобы правило выбора пути существовало в
+# одном экземпляре: разойдись эти две копии, и откат менял бы стол иначе, чем
+# основной путь, причём заметно это стало бы только в тот день, когда основной
+# путь откажет.
+#
+# Возвращает $null, если CCD не отвечает или ни одного пути не нашлось, иначе
+# Paths (весь массив от QueryDisplayConfig) и Chosen (индексы выбранных путей).
+function Get-CcdPathChoice {
+    param([Parameter(Mandatory)][string[]]$DevicePaths)
+
+    $want = @{}
+    foreach ($p in $DevicePaths) { if ($p) { $want[$p] = $true } }
+    # Пустой набор — это чёрный экран. Такого запроса просто не бывает, но цена
+    # ошибки здесь такая, что проверка стоит одной строки.
+    if ($want.Count -eq 0) { return $null }
+
+    $np = 0; $nm = 0
+    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ALL_PATHS, [ref]$np, [ref]$nm) -ne 0) { return $null }
+    $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
+    $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
+    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ALL_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return $null }
+
+    # QDC_ALL_PATHS отдаёт все сочетания «источник x цель». Берём по одному пути
+    # на монитор со свободным источником: два монитора на одном источнике — это
+    # клон, а нужно расширение. Уже активный путь предпочтительнее — меньше
+    # перестроений.
+    $chosen = @()
+    $usedSources = @{}
+    $covered = @{}
+    # DevicePath по индексу выбранного пути: по нему Set-CcdFullConfig находит
+    # целевой режим монитора. Запоминаем здесь, где путь уже опознан, — второй
+    # раз спрашивать систему об известном незачем.
+    $byIndex = @{}
+
+    foreach ($onlyActive in $true, $false) {
+        for ($i = 0; $i -lt $np; $i++) {
+            $isActive = (($paths[$i].flags -band [NativeCcd]::PATH_ACTIVE) -ne 0)
+            if ($onlyActive -ne $isActive) { continue }
+            if ($paths[$i].targetInfo.targetAvailable -eq 0) { continue }
+            $dp = Get-CcdPathDevice $paths[$i]
+            if (-not $dp -or -not $want.ContainsKey($dp) -or $covered.ContainsKey($dp)) { continue }
+            $sid = '' + $paths[$i].sourceInfo.id
+            if ($usedSources.ContainsKey($sid)) { continue }
+            $usedSources[$sid] = $true
+            $covered[$dp] = $true
+            $byIndex[$i] = $dp
+            $chosen += $i
+        }
+    }
+
+    $missing = @($want.Keys | Where-Object { -not $covered.ContainsKey($_) })
+    if ($missing.Count -gt 0) {
+        Write-DisplayLog ("ccd: no usable path for {0} display(s)" -f $missing.Count)
+    }
+    if ($chosen.Count -eq 0) { return $null }
+
+    return [pscustomobject]@{ Paths = $paths; Chosen = @($chosen); DeviceByIndex = $byIndex }
+}
+
 # Задать НАБОР включённых мониторов целиком: перечисленные включаются, все
 # остальные гаснут. Одним вызовом, атомарно.
 #
@@ -1121,49 +1644,17 @@ function Get-CcdPathDevice {
 # SDC_ALLOW_CHANGES здесь нужен: режимы и позиции мы не задаём (индексы
 # недействительны), пусть система подберёт их сама. Свои мы поставим следом —
 # Set-CcdLayout для позиций, Set-BestModeFor для частоты.
+#
+# Это откат: обычный путь — Set-CcdFullConfig, который задаёт набор, позиции и
+# режимы одним переходом. Сюда приходят, когда тот отказался (см. там же).
 function Set-CcdTopology {
     param([Parameter(Mandatory)][string[]]$DevicePaths)
 
-    $want = @{}
-    foreach ($p in $DevicePaths) { if ($p) { $want[$p] = $true } }
-    # Пустой набор — это чёрный экран. Такого запроса просто не бывает, но цена
-    # ошибки здесь такая, что проверка стоит одной строки.
-    if ($want.Count -eq 0) { return $false }
+    $choice = Get-CcdPathChoice -DevicePaths $DevicePaths
+    if (-not $choice) { return $false }
 
-    $np = 0; $nm = 0
-    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ALL_PATHS, [ref]$np, [ref]$nm) -ne 0) { return $false }
-    $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
-    $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
-    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ALL_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return $false }
-
-    # QDC_ALL_PATHS отдаёт все сочетания «источник x цель». Берём по одному пути
-    # на монитор со свободным источником: два монитора на одном источнике — это
-    # клон, а нужно расширение. Уже активный путь предпочтительнее — меньше
-    # перестроений.
-    $chosen = @()
-    $usedSources = @{}
-    $covered = @{}
-
-    foreach ($onlyActive in $true, $false) {
-        for ($i = 0; $i -lt $np; $i++) {
-            $isActive = (($paths[$i].flags -band [NativeCcd]::PATH_ACTIVE) -ne 0)
-            if ($onlyActive -ne $isActive) { continue }
-            if ($paths[$i].targetInfo.targetAvailable -eq 0) { continue }
-            $dp = Get-CcdPathDevice $paths[$i]
-            if (-not $dp -or -not $want.ContainsKey($dp) -or $covered.ContainsKey($dp)) { continue }
-            $sid = '' + $paths[$i].sourceInfo.id
-            if ($usedSources.ContainsKey($sid)) { continue }
-            $usedSources[$sid] = $true
-            $covered[$dp] = $true
-            $chosen += $i
-        }
-    }
-
-    $missing = @($want.Keys | Where-Object { -not $covered.ContainsKey($_) })
-    if ($missing.Count -gt 0) {
-        Write-DisplayLog ("ccd: no usable path for {0} display(s)" -f $missing.Count)
-    }
-    if ($chosen.Count -eq 0) { return $false }
+    $paths = $choice.Paths
+    $chosen = $choice.Chosen
 
     $out = New-Object 'NativeCcd+PATH_INFO[]' $chosen.Count
     for ($k = 0; $k -lt $chosen.Count; $k++) {
@@ -1193,6 +1684,185 @@ function Set-CcdTopology {
         return $false
     }
     Write-DisplayLog ("ccd: topology set - {0} display(s) on" -f $out.Count)
+    return $true
+}
+
+# --- стол целиком, одним переходом ------------------------------------------
+# Задать ВСЁ сразу: какие мониторы горят, где они стоят, кто основной, в каком
+# разрешении и на какой частоте. Один SetDisplayConfig вместо трёх шагов.
+#
+# Зачем. Раньше переключение с изменением набора экранов состояло из трёх
+# перестроений стола: Set-CcdTopology включал набор (с обнулённой частотой и
+# SDC_ALLOW_CHANGES — Windows поднимала экраны на той частоте, что записана у неё,
+# часто не на родной), Set-CcdLayout вторым переходом двигал позиции, а
+# Set-BestModeFor третьим доводил частоту через ChangeDisplaySettingsEx. Каждый
+# переход замораживает DWM и ввод: курсор замирал и «выстреливал» вперёд, экраны
+# моргали по три раза, и всем окнам трижды приходил WM_DISPLAYCHANGE. В журнале
+# 20 августа 2026 такое переключение стоило 6.3 с.
+#
+# Все три вещи CCD умеет задать одной структурой, и тогда система перестраивает
+# стол один раз.
+#
+# $Targets — объекты с DevicePath, Label, Width, Height, Hz (Hz = 0 значит «пусть
+# система выберет сама»). Ширина и высота обязательны: без них исходный режим не
+# задать, и такой набор сюда не приходит (см. Get-SwitchTargets).
+#
+# Возвращает $true/$false. Провал не страшен: вызывающий уходит на старую
+# лестницу из трёх шагов, она никуда не делась.
+function Set-CcdFullConfig {
+    param(
+        [Parameter(Mandatory)]$Targets,
+        [string]$PrimaryPath = '',
+        [string[]]$Order = @()
+    )
+
+    $list = @($Targets)
+    if ($list.Count -eq 0) { return $false }
+    foreach ($t in $list) {
+        if ([int]$t.Width -le 0 -or [int]$t.Height -le 0) { return $false }
+    }
+
+    # Без порядка мониторов этой дорогой идти нельзя. Задавая стол целиком, мы
+    # обязаны назвать координаты КАЖДОГО экрана, а «не знаю» среди них не бывает:
+    # получилось бы, что мы расставляем мониторы по собственному разумению — то
+    # есть по алфавиту, — там где человек об этом не просил. Старый путь в этом
+    # случае честнее: он двигает только основной монитор, остальные оставляет как
+    # стоят (см. Invoke-CcdLayoutAttempt).
+    if (-not $Order -or @($Order | Where-Object { $_ }).Count -eq 0) {
+        Write-DisplayLog 'ccd: no display order in the settings - rebuilding the desk the long way'
+        return $false
+    }
+
+    # Две попытки, и вторая — не повтор, а осознанное упрощение запроса. Частота
+    # — самое хрупкое в этом наборе: у ASUS запись 240 Гц не проходит вообще, а у
+    # ULTRAGEAR по HDMI 240 Гц просто нет («bad mode» в журнале 19 августа).
+    # Отказ по частоте не повод терять остальное: разрешения и раскладку система
+    # примет и без подсказки о герцах, а частоту потом доведёт Set-BestModeFor —
+    # одним ремонтным шагом вместо трёх обязательных.
+    #
+    # Первую попытку пропускаем, когда точной дроби нет ни для одного монитора:
+    # просить частоту нечем, и попытка была бы заведомо той же, что вторая.
+    foreach ($withHz in $true, $false) {
+        if ($withHz -and -not (@($list | Where-Object { [int]$_.RateDen -gt 0 }).Count)) { continue }
+        if (Invoke-CcdFullConfigAttempt -Targets $list -PrimaryPath $PrimaryPath -Order $Order -WithHz:$withHz) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# Одна попытка задать стол целиком. Отдельной функцией по тому же правилу, что и
+# Invoke-CcdLayoutAttempt: вся работа с CCD здесь, а решение «повторить или
+# упростить» — у вызывающего, и тесты могут подменить попытку целиком.
+function Invoke-CcdFullConfigAttempt {
+    param(
+        [Parameter(Mandatory)]$Targets,
+        [string]$PrimaryPath = '',
+        [string[]]$Order = @(),
+        [switch]$WithHz
+    )
+
+    $tag = $(if ($WithHz) { ' (with refresh rates)' } else { ' (rates left to Windows)' })
+
+    $byPath = @{}
+    foreach ($t in @($Targets)) { $byPath[[string]$t.DevicePath] = $t }
+
+    $choice = Get-CcdPathChoice -DevicePaths @($byPath.Keys)
+    if (-not $choice) { return $false }
+
+    $paths = $choice.Paths
+    $chosen = $choice.Chosen
+
+    # Раскладку считаем по ЦЕЛЕВЫМ размерам, а не по текущим: часть мониторов
+    # сейчас погашена и своих размеров не имеет вовсе, а встать они должны сразу
+    # на свои места — иначе ремонтный проход двинет их вторым перестроением.
+    $screens = @()
+    foreach ($i in $chosen) {
+        $t = $byPath[$choice.DeviceByIndex[$i]]
+        if (-not $t) { continue }
+        $screens += [pscustomobject]@{
+            DevicePath = [string]$t.DevicePath
+            Label      = [string]$t.Label
+            Width      = [int]$t.Width
+            Height     = [int]$t.Height
+        }
+    }
+    if ($screens.Count -ne $chosen.Count) { return $false }
+    $pos = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
+
+    # По одной записи режима на путь: исходный режим (разрешение и положение).
+    # Режим ЦЕЛИ не задаём — для него хватает подсказки о частоте в targetInfo,
+    # а полный набор таймингов нам взять негде и незачем.
+    $out = New-Object 'NativeCcd+PATH_INFO[]' $chosen.Count
+    $modes = New-Object 'NativeCcd+MODE_INFO[]' $chosen.Count
+
+    for ($k = 0; $k -lt $chosen.Count; $k++) {
+        $p = $paths[$chosen[$k]]
+        $t = $byPath[$choice.DeviceByIndex[$chosen[$k]]]
+        $where = $pos[[string]$t.DevicePath]
+        if (-not $where) { return $false }
+
+        $m = New-Object NativeCcd+MODE_INFO
+        $m.infoType = [NativeCcd]::MODE_INFO_TYPE_SOURCE
+        $m.id = $p.sourceInfo.id
+        $m.adapterId = $p.sourceInfo.adapterId
+        $m.srcWidth = [uint32][int]$t.Width
+        $m.srcHeight = [uint32][int]$t.Height
+        $m.srcPixelFormat = [NativeCcd]::PIXELFORMAT_32BPP
+        $m.srcPosX = [int]$where.X
+        $m.srcPosY = [int]$where.Y
+        $modes[$k] = $m
+
+        $p.flags = $p.flags -bor [NativeCcd]::PATH_ACTIVE
+        $s = $p.sourceInfo; $s.modeInfoIdx = [uint32]$k; $p.sourceInfo = $s
+
+        $ti = $p.targetInfo
+        # Режим цели индексом не задаём — тогда система берёт частоту из
+        # refreshRate. Нули означают «выбери сама», и это же значение уходит на
+        # второй попытке, когда частота оказалась неподъёмной.
+        $ti.modeInfoIdx = [NativeCcd]::MODE_IDX_INVALID
+        $rate = New-Object NativeCcd+RATIONAL
+        $num = [int]$t.RateNum
+        $den = [int]$t.RateDen
+        if ($WithHz -and $num -gt 0 -and $den -gt 0) {
+            $rate.Numerator = [uint32]$num
+            $rate.Denominator = [uint32]$den
+            $ti.scanLineOrdering = [NativeCcd]::SCANLINE_PROGRESSIVE
+            # У погашенного пути система отдаёт поворот и растяжение нулями, а ноль
+            # в обоих перечислениях недопустим: вместе с заданной частотой такой
+            # путь валидацию не проходит. Чиним только нули — если значение есть,
+            # оно чужое и трогать его не наше дело.
+            if ($ti.rotation -eq 0) { $ti.rotation = [NativeCcd]::ROTATION_IDENTITY }
+            if ($ti.scaling -eq 0)  { $ti.scaling  = [NativeCcd]::SCALING_IDENTITY }
+        }
+        else {
+            $rate.Numerator = 0
+            $rate.Denominator = 0
+            $ti.scanLineOrdering = 0
+        }
+        $ti.refreshRate = $rate
+        $p.targetInfo = $ti
+
+        $out[$k] = $p
+    }
+
+    # SDC_ALLOW_CHANGES намеренно НЕ ставим: здесь задано всё, и система обязана
+    # применить ровно это или отказать. С ним она вправе подобрать своё — и мы
+    # снова не знали бы, что на самом деле стоит на столе.
+    $base = [NativeCcd]::SDC_USE_SUPPLIED_DISPLAY_CONFIG
+    $rc = [NativeCcd]::SetDisplayConfig($out.Count, $out, $modes.Count, $modes, ($base -bor [NativeCcd]::SDC_VALIDATE))
+    if ($rc -ne 0) {
+        Write-DisplayLog ("ccd: full config validate -> $rc" + $tag)
+        return $false
+    }
+    $rc = [NativeCcd]::SetDisplayConfig($out.Count, $out, $modes.Count, $modes,
+        ($base -bor [NativeCcd]::SDC_APPLY -bor [NativeCcd]::SDC_SAVE_TO_DATABASE))
+    if ($rc -ne 0) {
+        Write-DisplayLog ("ccd: full config apply -> $rc" + $tag)
+        return $false
+    }
+
+    Write-DisplayLog ("ccd: full config applied - {0} display(s) on{1}" -f $out.Count, $tag)
     return $true
 }
 
@@ -1228,6 +1898,78 @@ function Set-CcdTopology {
 function New-LayoutResult {
     param([bool]$Ok, [bool]$Changed)
     return [pscustomobject]@{ Ok = $Ok; Changed = $Changed }
+}
+
+# Куда какой монитор встаёт: путь устройства -> @{X;Y}. Чистая математика, без
+# единого обращения к системе — поэтому проверяется тестами и не зависит от того,
+# кто спрашивает.
+#
+# Спрашивают двое: Set-CcdFullConfig, который задаёт стол целиком одним переходом
+# (там размеры ЦЕЛЕВЫЕ, монитор может быть ещё погашен), и Invoke-CcdLayoutAttempt,
+# который правит уже стоящий стол (там размеры текущие). Раскладка обязана
+# получаться одна и та же: разойдись эти два расчёта, и ремонтный проход двигал бы
+# мониторы после основного — то самое лишнее перестроение, от которого весь стол
+# и подлагивает.
+#
+# $Screens — объекты с DevicePath, Label, Width, Height.
+function Get-LayoutPositions {
+    param(
+        [Parameter(Mandatory)]$Screens,
+        [string[]]$Order = @(),
+        [string]$PrimaryPath = ''
+    )
+
+    $list = @($Screens)
+    $out = @{}
+    if ($list.Count -eq 0) { return $out }
+
+    # Место в списке: сравниваем по вхождению, чтобы «UltraGear» находил
+    # «LG ULTRAGEAR» и наоборот — названия у системы короче человеческих.
+    $ranked = @()
+    foreach ($s in $list) {
+        $rank = $(if ($Order) { $Order.Count } else { 0 })
+        if ($Order) {
+            for ($k = 0; $k -lt $Order.Count; $k++) {
+                $o = $Order[$k]
+                if (-not $o) { continue }
+                if ($s.Label -like ('*' + $o + '*') -or $o -like ('*' + $s.Label + '*')) { $rank = $k; break }
+            }
+        }
+        $ranked += [pscustomobject]@{
+            DevicePath = $s.DevicePath
+            Label      = $s.Label
+            Width      = [int]$s.Width
+            Height     = [int]$s.Height
+            Rank       = $rank
+        }
+    }
+    $ordered = @($ranked | Sort-Object Rank, Label)
+
+    # По вертикали — по центру: экраны разной высоты в пикселях (1440 и 2160), и
+    # при выравнивании по верху внизу большого остаётся полоса, из которой курсор
+    # не может перейти на соседний.
+    $tallest = ($ordered | Measure-Object -Property Height -Maximum).Maximum
+    $x = 0
+    foreach ($s in $ordered) {
+        $out[$s.DevicePath] = [pscustomobject]@{ X = $x; Y = [int](($tallest - $s.Height) / 2) }
+        $x += $s.Width
+    }
+
+    # Сдвигаем всё так, чтобы основной оказался в (0,0): основным в Windows
+    # становится монитор, чей левый верхний угол там лежит.
+    $anchorPath = ''
+    if ($PrimaryPath -and $out.ContainsKey($PrimaryPath)) { $anchorPath = $PrimaryPath }
+    else { $anchorPath = $ordered[0].DevicePath }
+
+    $dx = $out[$anchorPath].X
+    $dy = $out[$anchorPath].Y
+    if ($dx -ne 0 -or $dy -ne 0) {
+        foreach ($k in @($out.Keys)) {
+            $out[$k] = [pscustomobject]@{ X = ($out[$k].X - $dx); Y = ($out[$k].Y - $dy) }
+        }
+    }
+
+    return $out
 }
 
 function Set-CcdLayout {
@@ -1318,44 +2060,33 @@ function Invoke-CcdLayoutAttempt {
     }
 
     if ($Order -and $Order.Count -gt 0) {
-        # Место в списке: сравниваем по вхождению, чтобы «UltraGear» находил
-        # «LG ULTRAGEAR» и наоборот — названия у системы короче человеческих.
+        $want = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
         foreach ($s in $screens) {
-            $rank = $Order.Count
-            for ($k = 0; $k -lt $Order.Count; $k++) {
-                $o = $Order[$k]
-                if (-not $o) { continue }
-                if ($s.Label -like ('*' + $o + '*') -or $o -like ('*' + $s.Label + '*')) { $rank = $k; break }
-            }
-            $s | Add-Member -NotePropertyName Rank -NotePropertyValue $rank -Force
-        }
-        $ordered = @($screens | Sort-Object Rank, Label)
-
-        $tallest = ($ordered | Measure-Object -Property Height -Maximum).Maximum
-        $x = 0
-        foreach ($s in $ordered) {
+            $p = $want[$s.DevicePath]
+            if (-not $p) { continue }
             $m = $modes[$s.ModeIdx]
-            $m.srcPosX = $x
-            $m.srcPosY = [int](($tallest - $s.Height) / 2)
+            $m.srcPosX = $p.X
+            $m.srcPosY = $p.Y
             $modes[$s.ModeIdx] = $m
-            $x += $s.Width
         }
     }
+    else {
+        # Порядка нет — расставлять нечего, но основной монитор всё равно обязан
+        # оказаться в (0,0): в Windows «основной» — это не флаг, а место.
+        $anchor = $null
+        if ($PrimaryPath) { $anchor = @($screens | Where-Object { $_.DevicePath -eq $PrimaryPath }) | Select-Object -First 1 }
+        if (-not $anchor) { $anchor = $screens[0] }
 
-    # Сдвигаем всё так, чтобы основной оказался в (0,0).
-    $anchor = $null
-    if ($PrimaryPath) { $anchor = @($screens | Where-Object { $_.DevicePath -eq $PrimaryPath }) | Select-Object -First 1 }
-    if (-not $anchor) { $anchor = $screens[0] }
-
-    $dx = $modes[$anchor.ModeIdx].srcPosX
-    $dy = $modes[$anchor.ModeIdx].srcPosY
-    if ($dx -ne 0 -or $dy -ne 0) {
-        for ($i = 0; $i -lt $nm; $i++) {
-            if ($modes[$i].infoType -ne [NativeCcd]::MODE_INFO_TYPE_SOURCE) { continue }
-            $m = $modes[$i]
-            $m.srcPosX = $m.srcPosX - $dx
-            $m.srcPosY = $m.srcPosY - $dy
-            $modes[$i] = $m
+        $dx = $modes[$anchor.ModeIdx].srcPosX
+        $dy = $modes[$anchor.ModeIdx].srcPosY
+        if ($dx -ne 0 -or $dy -ne 0) {
+            for ($i = 0; $i -lt $nm; $i++) {
+                if ($modes[$i].infoType -ne [NativeCcd]::MODE_INFO_TYPE_SOURCE) { continue }
+                $m = $modes[$i]
+                $m.srcPosX = $m.srcPosX - $dx
+                $m.srcPosY = $m.srcPosY - $dy
+                $modes[$i] = $m
+            }
         }
     }
 
@@ -1397,6 +2128,27 @@ function Invoke-CcdLayoutAttempt {
         Write-DisplayLog 'warn: layout did not settle'
     }
     return (New-LayoutResult -Ok $true -Changed $true)
+}
+
+# Точная частота активных мониторов: путь -> @{Num;Den}. Целых герцов здесь нет
+# намеренно — за ними ходят в EnumDisplaySettings, а сюда именно за дробью,
+# которую потом можно вернуть системе слово в слово (см. Get-ModeCache).
+function Get-CcdActiveRates {
+    $np = 0; $nm = 0
+    if ([NativeCcd]::GetDisplayConfigBufferSizes([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, [ref]$nm) -ne 0) { return @{} }
+    $paths = New-Object 'NativeCcd+PATH_INFO[]' $np
+    $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
+    if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ONLY_ACTIVE_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return @{} }
+
+    $out = @{}
+    for ($i = 0; $i -lt $np; $i++) {
+        $r = $paths[$i].targetInfo.refreshRate
+        if ($r.Numerator -le 0 -or $r.Denominator -le 0) { continue }
+        $dp = Get-CcdPathDevice $paths[$i]
+        if (-not $dp -or $out.ContainsKey($dp)) { continue }
+        $out[$dp] = [pscustomobject]@{ Num = [int]$r.Numerator; Den = [int]$r.Denominator }
+    }
+    return $out
 }
 
 # Позиции исходных режимов по пути монитора: путь -> @{X;Y}. Отдельной функцией,
@@ -1758,15 +2510,15 @@ function Set-BestModeFor {
 # (GoldStar), AUS = ASUS. Он стабилен для модели, но НЕ для экземпляра и не для
 # входа, поэтому ключом настроек служит название монитора (см. Get-DisplayModes).
 
-# Подходит ли шаблон из настроек этому монитору. Сравниваем по вхождению в обе
-# стороны — тем же правилом, что layout и primary: система знает монитор как
-# «XG27AQDMGR», а человек мог написать «ROG STRIX XG27AQDMGR», и наоборот
-# «UltraGear» должен находить «LG ULTRAGEAR». Регистр не важен: -like без -c.
+# Подходит ли кусок названия из настроек этому монитору. Сравниваем по вхождению
+# в обе стороны: система знает монитор как «XG27AQDMGR», а человек мог написать
+# «ROG STRIX XG27AQDMGR», и наоборот «UltraGear» должен находить «LG ULTRAGEAR».
+# Регистр не важен: -like без -c.
 #
-# Одной функцией, потому что «совпало» нужно в двух местах: когда роль читают и
-# когда окно настроек решает, чью запись в файле оно вправе перезаписать. Два
-# определения одного правила разошлись бы на первом же нестандартном названии.
-function Test-RolePatternMatch {
+# Одно правило на всё, где человек называет монитор словами: layout, primary,
+# состав комбинации. Два определения разошлись бы на первом же нестандартном
+# названии. (Называлась Test-DisplayNameMatch, пока в проекте были роли.)
+function Test-DisplayNameMatch {
     param([string]$Pattern, [string]$Label, [string]$ShortId)
 
     if (-not $Pattern) { return $false }
@@ -1777,31 +2529,11 @@ function Test-RolePatternMatch {
     return $false
 }
 
-# Роль монитора по настройкам: кусок названия -> имя роли (settings.json, ключ
-# roles). Пусто — роли нет, монитор просто не попадёт ни в одну группу.
-#
-# Здесь раньше стояла эвристика по бренду: AUS/ROG/XG -> game, GSM/LG -> work.
-# Она описывала стол автора и врала на любом другом: у LG есть игровые серии, у
-# ASUS — рабочие, а Dell не попадал никуда. Угадывать роль монитора по названию
-# невозможно в принципе — это решение человека, а не свойство железа.
-function Get-MonitorRole {
-    param([string]$Label, [string]$ShortId, $Roles)
-
-    if (-not $Roles) { return '' }
-    # Первое совпадение выигрывает, а словарь [ordered] — значит порядок в файле
-    # и есть порядок разбора: результат не зависит от того, как перечислился хеш.
-    foreach ($pattern in $Roles.Keys) {
-        if (Test-RolePatternMatch -Pattern $pattern -Label $Label -ShortId $ShortId) {
-            return [string]$Roles[$pattern]
-        }
-    }
-    return ''
-}
-
-# Название группового режима по имени роли: work -> «Work displays». Группа
-# показывается только когда роль делят двое и больше, поэтому множественное
-# число здесь всегда уместно. ToUpperInvariant, а не ToUpper: на турецкой локали
-# «i» превращается в «İ», и заголовок поехал бы от настроек системы.
+# Название режима из имени роли: work -> «Work displays». Осталось ради ключей
+# role:<роль>, которые могут лежать в чужом старом settings.json и после переезда
+# ролей превращаются в строку-сироту в окне настроек: показать её надо
+# по-человечески. ToUpperInvariant, а не ToUpper: на турецкой локали «i»
+# превращается в «İ», и заголовок поехал бы от настроек системы.
 function Get-RoleTitle {
     param([string]$Role)
 
@@ -1809,38 +2541,87 @@ function Get-RoleTitle {
     return $Role.Substring(0, 1).ToUpperInvariant() + $Role.Substring(1) + ' displays'
 }
 
-# Слить роли, назначенные в окне настроек, с тем, что уже лежит в файле.
+# --- переезд ролей в комбинации ------------------------------------------------
+# Роли и комбинации описывали одно и то же — именованный набор мониторов, — но
+# роль была слабее (одна на монитор, без своей панели задач) и удалялась иначе.
+# Один вид набора вместо двух: роли из файла превращаются в комбинации при чтении
+# настроек, вместе с привязками клавиш, звуком и авто-игровым режимом.
 #
-# Окно показывает только подключённые мониторы, а в файле могут быть записи для
-# отключённого монитора или шаблон вроде «ROG» на несколько моделей сразу.
-# Сохранять из формы «как есть» значило бы стирать их при каждом Save — ровно
-# так этот проект однажды уже терял layout и primary. Поэтому: чужие записи,
-# которые не относятся ни к одному монитору на столе, остаются нетронутыми, а
-# для подключённых источник правды — форма.
-function Merge-RoleSettings {
-    param($Existing, $Assigned, $State)
+# Чистая функция над словарём настроек: меняет $Settings на месте и возвращает
+# $true, если что-то поменяла. Идемпотентна — второй вызов не находит ролей и не
+# делает ничего.
+function Convert-RoleSettingsToCombos {
+    param($Settings)
 
-    $result = [ordered]@{}
-    if ($Existing) {
-        foreach ($pattern in @($Existing.Keys)) {
-            $touchesLiveDisplay = $false
-            foreach ($m in @($State)) {
-                if (Test-RolePatternMatch -Pattern $pattern -Label $m.Label -ShortId $m.ShortId) {
-                    $touchesLiveDisplay = $true
-                    break
-                }
-            }
-            if (-not $touchesLiveDisplay) { $result[$pattern] = [string]$Existing[$pattern] }
+    if (-not $Settings -or -not $Settings.roles) { return $false }
+    if (@($Settings.roles.Keys).Count -eq 0) { return $false }
+
+    if ($null -eq $Settings.combos) { $Settings.combos = [ordered]@{} }
+
+    # Имя роли -> её шаблоны, в порядке файла: порядок выбрал человек, и
+    # комбинации должны встать в том же.
+    $byRole = [ordered]@{}
+    foreach ($pattern in @($Settings.roles.Keys)) {
+        if (-not $pattern) { continue }
+        $role = ([string]$Settings.roles[$pattern]).Trim()
+        if (-not $role) { continue }
+        if (-not $byRole.Contains($role)) { $byRole[$role] = @() }
+        $byRole[$role] += [string]$pattern
+    }
+
+    # Ключи режимов тоже переезжают: role:work -> combo:Work. Клавиша, записанная
+    # в файле, обязана продолжать работать — иначе переезд выглядел бы как
+    # «настройки сбросились».
+    $renames = [ordered]@{}
+
+    foreach ($role in @($byRole.Keys)) {
+        # Имя комбинации — роль с заглавной буквы: «work» -> «Work». Так оно
+        # остаётся тем словом, которое человек написал сам (и `Set-Display.ps1
+        # work` находит его как раньше — сравнение имени регистр не различает),
+        # но в меню выглядит как название, а не как строчка из файла.
+        $name = $role.Substring(0, 1).ToUpperInvariant() + $role.Substring(1)
+
+        # Одноимённая комбинация уже есть — её состав трогать нельзя, он мог быть
+        # задан руками. Уступаем ей имя и берём соседнее.
+        if ($Settings.combos.Contains($name)) {
+            $try = $name + ' (group)'
+            $n = 2
+            while ($Settings.combos.Contains($try)) { $try = $name + ' (group ' + $n + ')'; $n++ }
+            $name = $try
+        }
+
+        $Settings.combos[$name] = [ordered]@{
+            displays = @($byRole[$role])
+            # Своей панели задач у роли не было — работают общие правила.
+            primary  = ''
+        }
+        $renames['role:' + $role] = 'combo:' + $name
+    }
+
+    # Переименование ключей с сохранением порядка: словари [ordered] уезжают в
+    # settings.json как есть, и перетасовка выглядела бы в diff'е правкой,
+    # которой никто не делал.
+    foreach ($field in 'hotkeys', 'audio') {
+        if (-not $Settings[$field]) { continue }
+        $moved = [ordered]@{}
+        foreach ($key in @($Settings[$field].Keys)) {
+            $newKey = $(if ($renames.Contains($key)) { [string]$renames[$key] } else { [string]$key })
+            # Ключ уже занят — не перетираем: у него своё значение, и молча
+            # выбросить одно из двух хуже, чем оставить старое.
+            if (-not $moved.Contains($newKey)) { $moved[$newKey] = $Settings[$field][$key] }
+        }
+        $Settings[$field] = $moved
+    }
+
+    if ($Settings.autoGame) {
+        foreach ($field in 'gameMode', 'backMode') {
+            $v = [string]$Settings.autoGame[$field]
+            if ($v -and $renames.Contains($v)) { $Settings.autoGame[$field] = [string]$renames[$v] }
         }
     }
-    if ($Assigned) {
-        foreach ($name in @($Assigned.Keys)) {
-            $role = ([string]$Assigned[$name]).Trim()
-            if (-not $role) { continue }
-            $result[$name] = $role
-        }
-    }
-    return $result
+
+    $Settings.roles = [ordered]@{}
+    return $true
 }
 
 # Кто сейчас основной. Спрашиваем только адаптеры: у них флаг PRIMARY_DEVICE
@@ -1901,7 +2682,6 @@ function Get-DisplayState {
             Model        = $label
             ShortId      = $t.ShortId
             Native       = $t.Native
-            Role         = Get-MonitorRole -Label $label -ShortId $t.ShortId -Roles $Settings.roles
             Id           = $t.DevicePath
             Active       = $t.Active
             Primary      = ($t.Active -and $t.Output -and $t.Output -eq $primaryOutput)
@@ -1921,7 +2701,12 @@ function Get-DisplayState {
 # переподключение кабеля и смену номеров выходов.
 
 function Get-DisplayModes {
-    param($State)
+    # $Settings нужны только ради комбинаций. Диск здесь не читается НИКОГДА:
+    # меню трея зовёт эту функцию на каждое открытие, и чтение файла стоило бы
+    # ровно той задержки, ради которой заведён кэш состояния. Не передали
+    # настройки — значит комбинаций в списке не будет; все настоящие вызывающие
+    # (трей, переключатель, CLI, окно настроек) настройки передают.
+    param($State, $Settings)
 
     # Именно $null, а не «ложь»: пустой массив в PowerShell тоже ложь, и на нём
     # эта строка запускала дамп MultiMonitorTool заново — секунда с лишним прямо
@@ -1967,26 +2752,44 @@ function Get-DisplayModes {
         }
     }
 
-    # Групповые режимы — из ролей, которые человек задал в настройках. Раньше
-    # здесь стояла жёсткая пара work + game, а роль угадывалась по бренду: это
-    # был стол автора, а не общее правило. Теперь ролей может быть сколько
-    # угодно и называться они могут как угодно.
-    #
-    # Сортируем по имени роли: порядок мониторов в перечислении CCD меняется от
-    # переподключения кабеля, и без сортировки пункты меню (а с ними и порядок
-    # ключей в settings.json) переставлялись бы местами сами собой.
-    $roles = @($State | Where-Object { $_.Role } | ForEach-Object { $_.Role } | Sort-Object -Unique)
-    foreach ($role in $roles) {
-        $members = @($State | Where-Object { $_.Role -eq $role -and -not $_.Disconnected })
-        # Группу из одного монитора не показываем — для него уже есть соло-режим.
-        if ($members.Count -lt 2) { continue }
-        $modes += [pscustomobject]@{
-            Key       = 'role:' + $role
-            Title     = Get-RoleTitle $role
-            Kind      = 'role'
-            Role      = $role
-            Primary   = $null
-            Available = $true
+    # Групповых режимов (role:<роль>) здесь больше нет: роль была вторым,
+    # более слабым способом сказать то же, что говорит комбинация, и роли из
+    # файла превращаются в комбинации при чтении настроек
+    # (Convert-RoleSettingsToCombos). Дальше по коду набор бывает одного вида.
+
+    # Комбинации — в порядке файла, без сортировки: их порядок выбрал человек в
+    # окне настроек, и переставлять его самовольно не наше дело.
+    if ($Settings -and $Settings.combos) {
+        foreach ($name in @($Settings.combos.Keys)) {
+            $c = $Settings.combos[$name]
+            $patterns = @()
+            $comboPrimary = ''
+            if ($c -is [array]) { $patterns = @($c | ForEach-Object { [string]$_ }) }
+            elseif ($c) {
+                if ($null -ne $c.displays) { $patterns = @($c.displays | ForEach-Object { [string]$_ }) }
+                if ($null -ne $c.primary)  { $comboPrimary = [string]$c.primary }
+            }
+
+            # Доступность — хоть один участник на столе: комбинация включает
+            # то, что есть, как «все». Пустой список участников честно даёт
+            # недоступный режим — Switch-DisplayMode скажет об этом словами.
+            $available = $false
+            foreach ($m in $State) {
+                if ($m.Disconnected) { continue }
+                foreach ($pat in $patterns) {
+                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $available = $true; break }
+                }
+                if ($available) { break }
+            }
+
+            $modes += [pscustomobject]@{
+                Key       = 'combo:' + $name
+                Title     = [string]$name
+                Kind      = 'combo'
+                Patterns  = $patterns
+                Primary   = $comboPrimary
+                Available = $available
+            }
         }
     }
 
@@ -2009,10 +2812,11 @@ function Get-ModeTitleFromKey {
     param([Parameter(Mandatory)][string]$Key)
 
     switch -Regex ($Key) {
-        '^solo:(.+)$' { return 'Only ' + $Matches[1] }
-        '^role:(.+)$' { return Get-RoleTitle $Matches[1] }
-        '^all$'       { return 'All displays' }
-        default       { return $Key }
+        '^solo:(.+)$'  { return 'Only ' + $Matches[1] }
+        '^role:(.+)$'  { return Get-RoleTitle $Matches[1] }
+        '^combo:(.+)$' { return $Matches[1] }
+        '^all$'        { return 'All displays' }
+        default        { return $Key }
     }
 }
 
@@ -2066,10 +2870,24 @@ function Get-ModeMembers {
     $usable = @($State | Where-Object { -not $_.Disconnected })
     switch ($Mode.Kind) {
         'all'  { return $usable }
-        'role' { return @($usable | Where-Object { $_.Role -eq $Mode.Role }) }
         # По полному Monitor ID, а не по короткому: короткий — это модель, и у
         # двух одинаковых мониторов он один на двоих.
         'solo' { return @($usable | Where-Object { $_.Id -eq $Mode.Id }) }
+        # Участник комбинации — монитор, на который подошёл хоть один из её
+        # шаблонов. Циклы, а не конвейер: вложенный Where-Object с двумя $_
+        # читается хуже, чем то, что он делает.
+        'combo' {
+            $members = @()
+            foreach ($m in $usable) {
+                foreach ($pat in @($Mode.Patterns)) {
+                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) {
+                        $members += $m
+                        break
+                    }
+                }
+            }
+            return $members
+        }
     }
     return @()
 }
@@ -2126,6 +2944,59 @@ function Format-SwitchResult {
     }
 }
 
+# Кто из включаемых мониторов станет основным (то есть где панель задач).
+# Вынесено из Switch-DisplayMode чистой функцией: с появлением у комбинаций
+# собственного primary лестница выросла до шести ступеней, и проверить её можно
+# только тестами — внутри переключателя она была непроверяемой.
+#
+# Ступени, сверху вниз, первый найденный выигрывает:
+#   1. -PrimaryMatch из командной строки — ЖЁСТКИЙ: не совпал ни с кем, значит
+#      человек опечатался, и молча подменить его выбор своим нельзя — ошибка.
+#   2. primary самого режима (у комбинаций) — мягкий: этого монитора может не
+#      быть на столе, а комбинация обязана работать и без него.
+#   3. primary из настроек — мягкий, по той же причине.
+#   4. кто основной прямо сейчас, если он среди включаемых: не двигать без нужды.
+#   5. самый правый по layout: у стола есть «главная» сторона.
+#   6. первый попавшийся.
+function Select-PrimaryDisplay {
+    param(
+        $Wanted,
+        [string]$PrimaryMatch,
+        [string]$ModePrimary,
+        [string]$SettingsPrimary,
+        $Layout,
+        [string]$ModeTitle = ''
+    )
+
+    $wanted = @($Wanted)
+
+    if ($PrimaryMatch) {
+        $hit = $wanted | Where-Object { $_.Label -match [regex]::Escape($PrimaryMatch) } | Select-Object -First 1
+        if (-not $hit) {
+            $where = $(if ($ModeTitle) { "in '$ModeTitle'" } else { 'that are being turned on' })
+            throw "-PrimaryMatch '$PrimaryMatch' matched none of the displays $where."
+        }
+        return $hit
+    }
+
+    foreach ($soft in @($ModePrimary, $SettingsPrimary)) {
+        if (-not $soft) { continue }
+        $hit = $wanted | Where-Object { $_.Label -like ('*' + $soft + '*') } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+
+    $hit = $wanted | Where-Object { $_.Primary } | Select-Object -First 1
+    if ($hit) { return $hit }
+
+    $order = @($Layout)
+    for ($k = $order.Count - 1; $k -ge 0; $k--) {
+        $hit = $wanted | Where-Object { $_.Label -like ('*' + $order[$k] + '*') } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+
+    return ($wanted | Select-Object -First 1)
+}
+
 function Switch-DisplayMode {
     [CmdletBinding()]
     param(
@@ -2175,13 +3046,17 @@ function Switch-DisplayMode {
         # ролями на диск само, и внутри одного переключения оказались бы две
         # версии файла (его могут править из окна настроек прямо сейчас).
         $monitors = @(Get-DisplayState -Settings $settings)
-        $modes = Get-DisplayModes $monitors
+        $modes = Get-DisplayModes $monitors $settings
         $mode = $modes | Where-Object { $_.Key -eq $ModeKey } | Select-Object -First 1
         if (-not $mode) {
             # Клавиша может быть назначена на монитор, который сейчас не воткнут —
             # это нормальная ситуация, а не поломка, и говорить надо по-человечески.
             if ($ModeKey -like 'solo:*' -or $ModeKey -like 'role:*') {
                 throw "That display is not connected right now."
+            }
+            # Комбинацию могли удалить в настройках, а клавиша осталась.
+            if ($ModeKey -like 'combo:*') {
+                throw ("The combination '{0}' no longer exists in the settings." -f (Get-ModeTitleFromKey $ModeKey))
             }
             throw "Unknown mode '$ModeKey'."
         }
@@ -2196,37 +3071,15 @@ function Switch-DisplayMode {
         $wantedIds = @($wanted | ForEach-Object { $_.Id })
         $toDisable = @($usable | Where-Object { $wantedIds -notcontains $_.Id })
 
-        if (-not $PrimaryMatch) { $PrimaryMatch = $mode.Primary }
-
-        $primary = $null
-        if ($PrimaryMatch) {
-            $primary = $wanted | Where-Object { $_.Label -match [regex]::Escape($PrimaryMatch) } | Select-Object -First 1
-            if (-not $primary) { throw "-PrimaryMatch '$PrimaryMatch' matched none of the displays in '$($mode.Title)'." }
-        }
-
-        # Предпочтение из настроек — мягкое: если этого монитора в режиме нет,
-        # молча идём дальше. Без него основным оставался тот, кто им был раньше,
-        # и панель задач переезжала от переключения к переключению непредсказуемо.
-        if (-not $primary) {
-            $prefer = [string]$settings.primary
-            if ($prefer) {
-                $primary = $wanted | Where-Object { $_.Label -like ('*' + $prefer + '*') } | Select-Object -First 1
-            }
-        }
-        if (-not $primary) { $primary = $wanted | Where-Object { $_.Primary } | Select-Object -First 1 }
-
-        # Последний довод — самый правый по физической раскладке: у стола есть
-        # «главная» сторона, и случайный выбор по порядку опроса ей не помогает.
-        if (-not $primary) {
-            $order = @($settings.layout)
-            if ($order.Count -gt 0) {
-                for ($k = $order.Count - 1; $k -ge 0; $k--) {
-                    $primary = $wanted | Where-Object { $_.Label -like ('*' + $order[$k] + '*') } | Select-Object -First 1
-                    if ($primary) { break }
-                }
-            }
-        }
-        if (-not $primary) { $primary = $wanted | Select-Object -First 1 }
+        # Вся лестница выбора — в Select-PrimaryDisplay (и в его тестах). У
+        # комбинаций есть собственный primary — он мягче, чем -PrimaryMatch: тот
+        # набирает человек прямо сейчас и опечатка должна быть ошибкой, а primary
+        # комбинации записан однажды, и отсутствие того монитора на столе не
+        # повод ронять весь режим.
+        $primary = Select-PrimaryDisplay -Wanted $wanted -PrimaryMatch $PrimaryMatch `
+                                         -ModePrimary ([string]$mode.Primary) `
+                                         -SettingsPrimary ([string]$settings.primary) `
+                                         -Layout @($settings.layout) -ModeTitle $mode.Title
 
         if (-not $Quiet) {
             Write-Host "$($mode.Title):" -ForegroundColor Cyan
@@ -2284,7 +3137,23 @@ function Switch-DisplayMode {
                     catch { Write-DisplayLog "warn: windows - saving failed: $($_.Exception.Message)" }
                 }
 
-                if (-not (Set-CcdTopology -DevicePaths $wantedIds)) {
+                # Обычный путь — задать стол целиком одним переходом: набор,
+                # позиции, основной, разрешения и частоты сразу. Так система
+                # перестраивает стол ОДИН раз вместо трёх, и именно это убирает
+                # тройное подвисание ввода и моргание экранов.
+                #
+                # Проверки ниже (Wait-ForTopology, Set-CcdLayout, Set-BestModeFor)
+                # остаются на месте и работают как ремонт: когда всё встало сразу,
+                # они видят «уже правильно» и ничего не делают.
+                $full = $false
+                $targets = @(Get-SwitchTargets -Wanted $wanted -Cache (Get-ModeCache) -KeepMode:$KeepMode)
+                if ($targets.Count -eq $wanted.Count) {
+                    $full = Set-CcdFullConfig -Targets $targets -PrimaryPath $primary.Id -Order @($settings.layout)
+                }
+
+                # Не вышло — старая дорога из трёх шагов. Она рабочая, просто
+                # моргает: набор без режимов, а позиции и частоту доводят следом.
+                if (-not $full -and -not (Set-CcdTopology -DevicePaths $wantedIds)) {
                     throw "Windows refused the display configuration for '$($mode.Title)'. Nothing was changed, so you keep a picture."
                 }
 
@@ -2354,10 +3223,16 @@ function Switch-DisplayMode {
             }
         }
 
+        # Что мониторы реально показывают в итоге. Уходит в кэш проверенных
+        # режимов, чтобы следующее переключение могло задать частоту сразу, не
+        # дожидаясь, пока спящий монитор проснётся и расскажет о себе.
+        $applied = @{}
+
         if ($alreadyBest) {
             $summary = @()
             foreach ($m in $wanted) {
                 $summary += '{0} {1}x{2} @ {3} Hz' -f $m.Label, $m.Width, $m.Height, $m.Hz
+                $applied[[string]$m.Id] = [pscustomobject]@{ Width = $m.Width; Height = $m.Height; Hz = $m.Hz }
             }
             $failed = @()
             Write-DisplayLog 'switch: modes already correct'
@@ -2405,6 +3280,9 @@ function Switch-DisplayMode {
                 }
                 $cur = Get-CurrentMode $output
                 $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
+                if ($cur -and $cur.Width -gt 0) {
+                    $applied[[string]$m.Id] = [pscustomobject]@{ Width = $cur.Width; Height = $cur.Height; Hz = $cur.Hz }
+                }
             }
         }
 
@@ -2420,6 +3298,20 @@ function Switch-DisplayMode {
         # возвращать надо его. Провал переключения сюда не доходит — он уходит
         # исключением выше.
         Save-LastMode -Key $ModeKey
+
+        # А здесь наоборот — только факт: что монитор показал, то и запомнили.
+        # Точную дробь частоты берём у CCD: целых герцов для запроса режима не
+        # хватает (см. Get-ModeCache), а один обход активных путей стоит единицы
+        # миллисекунд.
+        if (@($applied.Keys).Count -gt 0) {
+            $rates = Get-CcdActiveRates
+            foreach ($k in @($applied.Keys)) {
+                $r = $rates[$k]
+                $applied[$k] | Add-Member -NotePropertyName RateNum -NotePropertyValue $(if ($r) { $r.Num } else { 0 }) -Force
+                $applied[$k] | Add-Member -NotePropertyName RateDen -NotePropertyValue $(if ($r) { $r.Den } else { 0 }) -Force
+            }
+            Save-ModeCache -Modes $applied
+        }
 
         # Окна раскладываем последними: и смена режима, и назначение основного
         # монитора двигают их сами, поэтому раньше это делать бессмысленно.

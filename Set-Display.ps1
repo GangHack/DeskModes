@@ -2,13 +2,13 @@
     Set-Display.ps1 — переключение мониторов из командной строки.
     Вся логика в DisplayCore.ps1, здесь только разбор аргументов и вывод.
 
-        .\Set-Display.ps1 status        что видит система прямо сейчас
-        .\Set-Display.ps1 all           включить все подключённые
-        .\Set-Display.ps1 work          все рабочие мониторы (LG)
-        .\Set-Display.ps1 game          игровой монитор (ASUS)
-        .\Set-Display.ps1 ULTRAGEAR     только этот монитор (поиск по названию)
-        .\Set-Display.ps1 GSM5CBB       только этот монитор (короткий Monitor ID)
-        .\Set-Display.ps1 modes         показать ключи всех режимов
+        .\Set-Display.ps1 status          что видит система прямо сейчас
+        .\Set-Display.ps1 all             включить все подключённые
+        .\Set-Display.ps1 "Movie night"   комбинация из настроек, по имени
+        .\Set-Display.ps1 work            она же, если названа одним словом
+        .\Set-Display.ps1 ULTRAGEAR       только этот монитор (поиск по названию)
+        .\Set-Display.ps1 GSM5CBB         только этот монитор (короткий Monitor ID)
+        .\Set-Display.ps1 modes           показать ключи всех режимов
 
     -PrimaryMatch  кого сделать основным, по куску названия
     -KeepMode      не поднимать разрешение и частоту до максимума
@@ -35,24 +35,16 @@ function Resolve-ModeKey {
     $hit = $Modes | Where-Object { $_.Key -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
-    # короткие имена групп
-    $hit = $Modes | Where-Object { $_.Key -eq "role:$Text" } | Select-Object -First 1
+    # имя комбинации, как оно записано в настройках (без учёта регистра). Сюда же
+    # приходят work.cmd и game.cmd: их 'work' и 'game' были именами ролей, а после
+    # переезда ролей стали именами комбинаций («Work», «Game») — сравнение имени
+    # регистр не различает, поэтому обёртки продолжают работать без правок.
+    $hit = $Modes | Where-Object { $_.Kind -eq 'combo' -and $_.Title -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
     # короткий Monitor ID
     $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
-
-    # Группы из одного монитора в меню не показываются (для него есть соло-режим),
-    # но по имени роли всё равно должно находиться: 'game' -> единственный ASUS.
-    # Раньше здесь стоял список 'work', 'game' — теперь роли задаёт человек в
-    # settings.json, и подходит любое их имя; сравнение с ролью само отсекает
-    # лишнее.
-    $byRole = @($State | Where-Object { $_.Role -eq $Text -and -not $_.Disconnected })
-    if ($byRole.Count -eq 1) {
-        $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $byRole[0].ShortId } | Select-Object -First 1
-        if ($hit) { return $hit }
-    }
 
     # часть названия монитора
     $hit = @($Modes | Where-Object { $_.Title -match [regex]::Escape($Text) })
@@ -63,13 +55,16 @@ function Resolve-ModeKey {
     throw "Unknown mode '$Text'. Run: .\Set-Display.ps1 modes"
 }
 
-$state = @(Get-DisplayState)
+# Настройки читаются один раз и раздаются дальше: состоянию — ради ролей,
+# режимам — ради комбинаций. Иначе каждый потребитель шёл бы на диск сам.
+$settings = Get-DisplaySettings
+$state = @(Get-DisplayState -Settings $settings)
 
 if ($Mode -eq 'status') {
     Write-Host ''
     Write-Host 'Displays:' -ForegroundColor Cyan
     $state |
-        Select-Object Output, Label, ShortId, Role,
+        Select-Object Output, Label, ShortId,
                       @{n = 'Current'; e = { '{0}x{1} @ {2}' -f $_.Width, $_.Height, $_.Hz } },
                       @{n = 'Best';    e = {
                             if ($_.BestMode) { '{0}x{1} @ {2}' -f $_.BestMode.Width, $_.BestMode.Height, $_.BestMode.Hz } else { '?' } } },
@@ -96,10 +91,9 @@ if ($Mode -eq 'audio') {
     return
 }
 
-$modes = @(Get-DisplayModes $state)
+$modes = @(Get-DisplayModes $state $settings)
 
 if ($Mode -eq 'modes') {
-    $settings = Get-DisplaySettings
     Write-Host ''
     Write-Host 'Modes:' -ForegroundColor Cyan
     $modes |

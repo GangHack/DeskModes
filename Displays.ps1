@@ -129,7 +129,7 @@ function Invoke-AutoGameCheck {
     if ($running -and -not $script:AutoGameOwned) {
         $state = Get-CachedState
         $current = $null
-        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state) }
+        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state (Get-ActiveSettings)) }
         # Уже в нужном режиме — управление брать незачем: возвращать потом будет
         # нечего, и это правильно.
         if ($current -eq $cfg.gameMode) { return }
@@ -156,7 +156,7 @@ function Invoke-AutoGameCheck {
     if ($running -and $script:AutoGameOwned) {
         $state = Get-CachedState
         $current = $null
-        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state) }
+        if ($state) { $current = Get-ActiveModeKey $state @(Get-DisplayModes $state (Get-ActiveSettings)) }
         if ($current -and $current -ne $cfg.gameMode) {
             Write-DisplayLog 'auto: the displays were changed by hand, letting go'
             $script:AutoGameOwned = $false
@@ -204,12 +204,80 @@ $tray.Icon = New-TrayIcon
 $tray.Text = $script:AppName
 $tray.Visible = $true
 
+# --- оформление меню ---------------------------------------------------------
+# Рисует ModernMenuRenderer (DisplayCore.ps1): плоский фон под системную тему,
+# скруглённая подсветка, галочка в цвет акцента. Штатный System-отрисовщик
+# застрял в Windows 7 и был главной причиной «выглядит как из XP».
+
+# Шрифты меню, с кэшем. Segoe UI Variable появился в Windows 11; на Windows 10
+# его нет, а GDI+ при неизвестном имени молча подставляет Microsoft Sans Serif —
+# поэтому наличие семейства проверяется по списку установленных.
+$script:UiFonts = @{}
+
+function Get-UiFont {
+    param([single]$Size = 9.75, [switch]$Semibold)
+
+    $key = '{0}|{1}' -f $Size, [bool]$Semibold
+    if ($script:UiFonts.Contains($key)) { return $script:UiFonts[$key] }
+
+    $names = $(if ($Semibold) { @('Segoe UI Variable Text Semibold', 'Segoe UI Semibold') }
+               else           { @('Segoe UI Variable Text', 'Segoe UI') })
+    $installed = [System.Drawing.FontFamily]::Families | ForEach-Object { $_.Name }
+    $pick = 'Segoe UI'
+    foreach ($name in $names) {
+        if ($installed -contains $name) { $pick = $name; break }
+    }
+
+    $font = New-Object System.Drawing.Font $pick, $Size
+    $script:UiFonts[$key] = $font
+    return $font
+}
+
+# Точки состояния мониторов: зелёная — включён и на максимуме, янтарная — частота
+# ниже максимальной, серая — выключен, контурная — не подключён. Текст говорит то
+# же словами; точка отдаёт это одним взглядом. Рисуются по одной на вид и живут
+# до конца процесса.
+$script:StatusDots = @{}
+
+function Get-StatusDot {
+    param([string]$Kind)
+
+    if ($script:StatusDots.Contains($Kind)) { return $script:StatusDots[$Kind] }
+
+    $bmp = New-Object System.Drawing.Bitmap 16, 16
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        switch ($Kind) {
+            'on'    { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(63, 185, 80))
+                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
+            'below' { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(210, 153, 34))
+                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
+            'off'   { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(138, 138, 138))
+                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
+            default { $p = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(138, 138, 138)), 1.4
+                      $g.DrawEllipse($p, 5.0, 5.0, 6.0, 6.0); $p.Dispose() }
+        }
+    }
+    finally { $g.Dispose() }
+
+    $script:StatusDots[$Kind] = $bmp
+    return $bmp
+}
+
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
-$menu.RenderMode = [System.Windows.Forms.ToolStripRenderMode]::System
-$menu.Font = New-Object System.Drawing.Font 'Segoe UI', 9
+$menu.Font = Get-UiFont
 $menu.ShowImageMargin = $true
 $menu.ImageScalingSize = New-Object System.Drawing.Size 16, 16
+$menu.Padding = New-Object System.Windows.Forms.Padding 4, 6, 4, 6
 $tray.ContextMenuStrip = $menu
+
+# Скруглить углы окна меню умеет только DWM (и только на Windows 11; на десятке
+# вызов молча не сработает). Хэндл существует лишь у открытого меню — поэтому
+# здесь, а не при создании.
+$menu.add_Opened({
+    try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }
+})
 
 function Show-Balloon {
     param([string]$Title, [string]$Text, [string]$Kind = 'Info')
@@ -303,7 +371,7 @@ function Invoke-StartupRestore {
     }
 
     $state = Get-CachedState
-    $modes = @(Get-DisplayModes $state)
+    $modes = @(Get-DisplayModes $state (Get-ActiveSettings))
     $mode = $modes | Where-Object { $_.Key -eq $last.Key } | Select-Object -First 1
     if (-not $mode -or -not $mode.Available) {
         # Монитора нет на месте. Гасить ради него остальные нельзя — останется
@@ -370,37 +438,61 @@ function Add-MenuHeader {
     param([string]$Text)
     $item = New-Object System.Windows.Forms.ToolStripMenuItem $Text
     $item.Enabled = $false
-    $item.Font = New-Object System.Drawing.Font 'Segoe UI Semibold', 8.5
+    # По Tag отрисовщик отличает заголовок раздела (приглушить) от информационной
+    # строки (обычный цвет текста) — Enabled у обоих false, чтобы не ловить клики.
+    $item.Tag = 'header'
+    $item.Font = Get-UiFont -Size 8.5 -Semibold
+    $item.Padding = New-Object System.Windows.Forms.Padding 0, 3, 0, 1
     [void]$menu.Items.Add($item)
 }
 
 $menu.add_Opening({
     $menu.Items.Clear()
 
+    # Отрисовщик пересоздаётся на каждое открытие: тема и акцент могли смениться,
+    # пока трей жил, а объект дешёвый. Ошибка оформления меню не должна оставлять
+    # без самого меню — тогда откат на системный вид.
+    try {
+        $dark = Test-DarkTheme
+        $accent = [System.Drawing.ColorTranslator]::FromHtml((Get-AccentColor -ForDarkTheme:$dark))
+        $menu.Renderer = New-Object ModernMenuRenderer $dark, $accent
+    }
+    catch {
+        Write-DisplayLog "tray: menu renderer failed, using the system one - $($_.Exception.Message)"
+        $menu.RenderMode = [System.Windows.Forms.ToolStripRenderMode]::System
+    }
+
     $state = Get-CachedState
 
     if ($state) {
         Add-MenuHeader 'CONNECTED DISPLAYS'
         foreach ($m in $state) {
+            $dot = 'unplugged'
             if ($m.Disconnected)  { $what = 'not connected' }
-            elseif ($m.Active)    { $what = '{0} x {1} @ {2} Hz' -f $m.Width, $m.Height, $m.Hz }
-            else                  { $what = 'off' }
+            elseif ($m.Active)    { $what = '{0} x {1} @ {2} Hz' -f $m.Width, $m.Height, $m.Hz; $dot = 'on' }
+            else                  { $what = 'off'; $dot = 'off' }
             $suffix = ''
             if ($m.Primary) { $suffix = '   - primary' }
 
             $line = New-Object System.Windows.Forms.ToolStripMenuItem ('{0}    {1}{2}' -f $m.Label, $what, $suffix)
             $line.Enabled = $false
+            $line.Tag = 'info'
+            $line.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
             # Расхождение с максимальным режимом стоит видеть сразу: обычно это
             # деградировавшая линия DisplayPort, а не настройка.
             if ($m.Active -and $m.BestMode -and $m.Hz -lt $m.BestMode.Hz) {
                 $line.Text += ('   (below {0} Hz)' -f $m.BestMode.Hz)
+                $dot = 'below'
             }
+            $line.Image = Get-StatusDot $dot
             [void]$menu.Items.Add($line)
         }
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     }
 
-    $modes = @(Get-DisplayModes $state)
+    # Настройки — ради комбинаций: без них Get-DisplayModes отдал бы только соло,
+    # группы и «все». Через функцию, а не $script:Settings (см. Get-ActiveSettings).
+    $modes = @(Get-DisplayModes $state (Get-ActiveSettings))
     $activeKey = $null
     if ($state) { $activeKey = Get-ActiveModeKey $state $modes }
 
@@ -409,6 +501,7 @@ $menu.add_Opening({
         $item = New-Object System.Windows.Forms.ToolStripMenuItem
         $item.Text = $mode.Title
         $item.Tag = $mode.Key
+        $item.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
 
         # Через функцию, а не $script:Settings: см. комментарий у Get-ActiveSettings.
         # Здесь та же ловушка не падала, а просто молча не показывала комбинации.
@@ -421,7 +514,7 @@ $menu.add_Opening({
         }
         if ($mode.Key -eq $activeKey) {
             $item.Checked = $true
-            $item.Font = New-Object System.Drawing.Font 'Segoe UI Semibold', 9
+            $item.Font = Get-UiFont -Semibold
         }
 
         $item.add_Click({ Invoke-Mode $this.Tag }.GetNewClosure())
@@ -431,6 +524,7 @@ $menu.add_Opening({
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
     $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
+    $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     # Имя приложения кладём в локальную переменную: замыкание её захватит, а вот
     # $script:AppName внутри .GetNewClosure() разрешается в пустоту — заголовок
     # окна с ошибкой из-за этого был пустым.
@@ -456,6 +550,7 @@ $menu.add_Opening({
     [void]$menu.Items.Add($settingsItem)
 
     $logItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open log'
+    $logItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     $logItem.add_Click({
         if (Test-Path $script:LogFile) { Start-Process notepad.exe $script:LogFile }
         else { Show-Balloon 'No log yet' 'It appears after the first switch.' }
@@ -463,12 +558,14 @@ $menu.add_Opening({
     [void]$menu.Items.Add($logItem)
 
     $folderItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open folder'
+    $folderItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
     $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Exit'
+    $exitItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     $exitItem.add_Click({ [System.Windows.Forms.Application]::Exit() })
     [void]$menu.Items.Add($exitItem)
 })
@@ -515,9 +612,18 @@ catch { Write-DisplayLog "windows: could not clean stale snapshots - $($_.Except
 
 # Монитор мог переехать на другой вход, пока приложение не работало — тогда
 # привязка сама переезжает на новый ключ. Делаем это до регистрации клавиш.
-if (Update-HotkeyKeys $script:Settings (Get-CachedState)) {
-    Save-DisplaySettings $script:Settings
+$needSave = Update-HotkeyKeys $script:Settings (Get-CachedState)
+
+# Роли из старого settings.json уже превратились в комбинации при чтении — но
+# только в памяти: писать из функции чтения нельзя, настройки читают и другие
+# процессы. Прибираем файл здесь, один раз за переезд.
+if ($script:LegacyRolesOnDisk) {
+    Write-DisplayLog ('settings: display groups moved into combinations - ' +
+                      (@($script:Settings.combos.Keys) -join ', '))
+    $needSave = $true
 }
+
+if ($needSave) { Save-DisplaySettings $script:Settings }
 
 # Признак первого запуска — ОТСУТСТВИЕ файла настроек, а не пустой список
 # клавиш. Пустой список — это законный выбор: человек снял все привязки в окне
@@ -528,7 +634,7 @@ if (Update-HotkeyKeys $script:Settings (Get-CachedState)) {
 if (-not (Test-Path $script:SettingsFile)) {
     $state = Get-CachedState
     $i = 1
-    foreach ($mode in @(Get-DisplayModes $state)) {
+    foreach ($mode in @(Get-DisplayModes $state (Get-ActiveSettings))) {
         if ($i -gt 8) { break }
         $script:Settings.hotkeys[$mode.Key] = "Ctrl+Alt+F$i"
         $i++
