@@ -25,11 +25,32 @@
     },
     "restoreWindows": true,
     "restoreLastMode": true,
+    "reapply": {
+        "onResume": true,
+        "onUnplug": true,
+        "onPlug": ""
+    },
+    "rules": [
+        { "when": "process", "process": "cs2", "mode": "solo:LG ULTRAGEAR" },
+        { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work", "enabled": false }
+    ],
+    "hooks": {
+        "combo:Movie night": { "after": "taskkill /im slack.exe" },
+        "combo:Work": "C:\\tools\\morning.ps1"
+    },
+    "brightness": {
+        "combo:Work": 80,
+        "combo:Movie night": { "DELL": 25 }
+    },
+    "contrast": {},
+    "stats": false,
+    "audio": {
+        "combo:Movie night": "DELL"
+    },
     "autoGame": {
         "enabled": false,
         "process": "",
         "gameMode": "",
         "backMode": ""
-    },
-    "audio": {}
+    }
 }

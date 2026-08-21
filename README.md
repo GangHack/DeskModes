@@ -35,8 +35,23 @@ Every one of these exists because the naive version broke on a real desk:
   with it.
 - **Remembers the last set across a reboot.** Windows brings up whatever it feels like
   after a restart, not what you had chosen.
+- **Rebuilds the desk when the world changes.** Woke up from sleep, monitor unplugged,
+  monitor switched on by its own button — Windows rearranges the desk on every one of
+  those. The set you chose comes back by itself.
 - **Follows with audio, optionally.** A mode can carry a default playback device — handy
   when the gaming monitor has the speakers.
+- **Carries brightness with the mode.** Over DDC/CI — the same channel inside the cable
+  that the buttons on the monitor's own bezel use. The evening mode dims the 4K panel to
+  25%, the work mode puts it back to 80%, and you stop reaching for the bezel.
+- **Runs your own command around a switch.** One line per mode: close an app, change the
+  power plan, turn off the lights in the room. What it does is your business.
+- **Switches by itself on a rule.** A process started, or nobody has touched the computer
+  for twenty minutes — go to this mode, and come back when it is over.
+- **Turns the computer off on a timer.** From the tray menu, with the countdown on the
+  icon and a warning a minute before, cancellable at any point.
+- **Keeps a diary, if you ask it to.** How long in which app, on which display, in which
+  mode — with a report you can actually look at. Off by default, window titles never
+  recorded, one local file you can delete.
 - **Tells the truth in the log.** Every switch writes what it asked for and what actually
   happened, in English, with timings. Refused to turn a display off? Layout would not
   apply? It says so, in the log and in the notification.
@@ -87,6 +102,14 @@ your accent color:
 - **SWITCH TO** — your modes: one per display, your combinations, all. The one
   matching the current desk is ticked; modes whose displays are unplugged are greyed with
   `(not connected)`.
+- **Shut down in…** and **Sleep in…** — 15 minutes, 30, an hour, two, or a time you type
+  (`20`, `90m`, `1h30`). While a timer is armed, the icon's tooltip counts down, the menu
+  entry shows what is coming and when, and there is a **Cancel the timer** entry at the top
+  of its submenu. A minute before, a notification says so — that minute is the whole
+  difference between a handy timer and lost work. The countdown lives in memory only: a
+  computer that switches itself off a day after you asked would be worse than no timer.
+- **Statistics…** — the diary as a page in your browser, in your theme and accent colour.
+  Greyed out with `(diary is off)` until you turn the diary on in Settings.
 - **Settings…**, **Open log**, **Open folder**, **Exit**.
 
 ## Combinations
@@ -143,7 +166,12 @@ Written by the Settings window, and safe to edit by hand. See
 | `notifications` | show a balloon after switching |
 | `restoreWindows` | remember and restore window positions per display set |
 | `restoreLastMode` | re-apply the last chosen mode after the computer starts |
-| `autoGame` | switch modes automatically when a given process starts. Off by default |
+| `reapply` | rebuild the desk when the world changes: `onResume`, `onUnplug`, `onPlug` |
+| `rules` | switch by itself when something happens. See [Rules](#rules) |
+| `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after* |
+| `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }` |
+| `stats` | keep the diary. Off by default |
+| `autoGame` | legacy single rule; turned into the first entry of `rules` on first read |
 | `audio` | mode key → part of a playback device name |
 
 Names are matched by substring, in either direction: `UltraGear` finds `LG ULTRAGEAR`, and
@@ -162,12 +190,178 @@ there or not, so you need a way to see and clear it.
 If the file is ever unreadable, defaults are used and a copy is kept as `settings.json.bad`
 rather than being overwritten.
 
+## When the world changes by itself
+
+Three things rearrange your desk without asking: waking from sleep, a monitor going away,
+and a monitor coming back. Windows decides what the desk looks like in all three cases, and
+its decision is not the one you made.
+
+```json
+"reapply": { "onResume": true, "onUnplug": true, "onPlug": "" }
+```
+
+- **`onResume`** — after the computer wakes up, the mode you chose last comes back. Five
+  seconds after the wake-up event, because straight after it the monitors are still coming
+  up and Windows answers questions about half a desk.
+- **`onUnplug`** — a display went away (cable out, or switched off with its own button), so
+  the last chosen mode is applied to what is left: the arrangement and the taskbar are put
+  back on the remaining screens. Nothing new is ever switched on by this.
+- **`onPlug`** — a display appeared. Empty by default, and that is deliberate: switching off
+  the monitor somebody just switched on by hand is a war with a human. Name a mode here
+  (`"all"`, `"combo:Movie night"`) and it will be applied when a display shows up.
+
+Only **connected** displays are compared, never the ones that are on. The switcher turns
+displays on and off constantly; reacting to its own work would be an endless loop.
+
+## Rules
+
+`autoGame` could express one thing: this process started, go to that mode, come back when
+it exits. Rules say the same and more.
+
+```json
+"rules": [
+    { "when": "process", "process": "cs2", "mode": "solo:LG ULTRAGEAR" },
+    { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work" }
+]
+```
+
+| Field | What it is |
+| --- | --- |
+| `when` | `process` — that process is running; `idle` — nobody has touched the computer for `minutes` |
+| `process` | process name, with or without `.exe`, as Task Manager shows it |
+| `minutes` | for `idle` only. Zero means the rule never fires |
+| `mode` | mode key to go to |
+| `back` | where to return when the condition ends. Empty — back to wherever the desk was |
+| `enabled` | `false` switches a rule off without deleting it |
+
+Checked every fifteen seconds. Rules are tried in order and **the first match wins**; while
+a rule holds the desk, the others stay quiet. Three things it will not do:
+
+- **Take over when you are already there.** No switch, and nothing to give back later.
+- **Go somewhere with no way back.** If the current set of displays matches no known mode
+  and the rule names no `back`, it stays put and says so in the log.
+- **Argue with you.** Switch the desk by hand while a rule holds it and the rule lets go —
+  by hotkey, from the menu or from the command line, it makes no difference.
+
+Your old `autoGame` keeps working: it becomes the first rule the first time the new version
+reads the file, and it keeps its seniority over rules you write later.
+
+## Brightness
+
+A monitor's brightness lives in its own firmware, not in Windows, and is reached over
+DDC/CI — the service channel inside the HDMI/DisplayPort cable that the buttons on the
+bezel use. So a mode can carry it.
+
+**In the Settings window**, the **Brightness** card does it with sliders: pick a mode, then
+say what should happen to it —
+
+- **leave the brightness alone** — the mode does not touch it (the default for everything);
+- **one level for every display of this mode** — a single slider;
+- **a level for each display** — a slider per display, with a tick that turns each one on
+  or off. Unticked means *not set*, not zero: that display keeps whatever it had.
+
+**Ask the monitors** asks over DDC/CI right there and reports who answered and at what
+level. It is a button rather than something the window does when it opens, because one
+question costs tens of milliseconds per monitor — and up to a second on a wedged bus.
+
+By hand it is the same setting, and both shapes are valid:
+
+```json
+"brightness": { "combo:Work": 80, "combo:Movie night": { "ULTRAFINE": 25 } },
+"contrast":   { "combo:Work": 70 }
+```
+
+A number goes to every display of that mode; an object gives each its own, matched by part
+of the name like everywhere else. Values outside 0..100 are clamped rather than obeyed — a
+typo should not black out a monitor.
+
+The window never turns one shape into the other behind your back. A hand-written
+`"all": 80` is still `80` after a Save: expanding it into a per-display object would use the
+displays that happen to be plugged in *now*, quietly dropping the one that is unplugged and
+changing what the setting means for a monitor you buy tomorrow. Switching shapes is the
+"Then…" list, which is your decision — and switching to per-display seeds every slider with
+the number you were looking at.
+
+Contrast has no sliders: it is the same idea and stays in `settings.json`.
+
+Only displays that are **on** in that mode are set: a sleeping monitor does not answer.
+Run `.\Set-Display.ps1 brightness` to see which of yours answer at all and what they
+currently sit at.
+
+Three things worth knowing about that channel.
+
+It is **slow**: tens of milliseconds per question, and a confirmed level costs about 150 ms
+per display. That happens after the desk is already up, so it does not delay the picture —
+but it is why nothing is asked at all unless you configured a level.
+
+It is **unreliable by nature**: the same call to the same monitor sometimes comes back as
+rubbish (`0xC0262589`, "invalid message command"), so every call is tried three times before
+being believed. If a monitor answers nothing, look for DDC/CI in its own on-screen menu;
+some monitors also need their link cycled — a switch to standby and back — after something
+else has wedged the bus.
+
+And **a write is not a promise**. Setting a level needs no reply, so Windows reports success
+whether or not the monitor listened — on the machine this was built for, one monitor
+accepted every brightness while refusing to report any. So every level is read back and
+compared, and the log says which of them the monitor actually took:
+
+```
+levels: XG27AQDMGR - brightness 95, contrast 55
+levels: LG ULTRAGEAR did not take brightness 95 - DDC/CI may be off in its own menu
+```
+
+## Commands around a switch
+
+One line per mode, and what it does is your business:
+
+```json
+"hooks": {
+    "combo:Movie night": { "after": "taskkill /im slack.exe" },
+    "combo:Work": "C:\\tools\\morning.ps1"
+}
+```
+
+`before` runs just before the desk is rebuilt, `after` when it is done and the switch
+succeeded. A bare string means `after`, which is the one you want nine times out of ten.
+A path ending in `.ps1` is run through PowerShell with the execution policy bypassed;
+anything else goes to `cmd /c`, so `.exe`, `.bat` and built-ins like `start` all work.
+
+The command is **launched, not waited for**. A switch is something you do with a hotkey and
+measure in tenths of a second; a hung program of somebody else's has no right to hold it,
+and a hung `before` would mean a black screen.
+
+## The diary
+
+Off by default. Turn on **Keep a diary** in Settings and the tray starts counting, every ten
+seconds, which app is in front, which display it is on and which mode the desk is in.
+**Statistics…** in the menu turns that into a page: time at the computer, per display, per
+mode, per app, which app on which display, an hour-of-the-day histogram, your usual day
+from first to last, longest single session, switches, days in a row.
+
+Three decisions matter more than the code:
+
+- **Window titles are never read.** A window title holds the document you have open, the
+  page you are on, the subject of the letter you are writing. For "how long in what", the
+  process name is enough. What is not in the file cannot leak out of it.
+- **Sums are kept, not events.** The file holds "chrome — 3600 seconds" for a day, not a
+  stream of "at 14:03:10 it was chrome". It stays a few kilobytes forever, and it cannot
+  tell anybody what you were doing at three o'clock on Thursday.
+- **Nothing leaves the machine.** `activity.json` sits next to the scripts, is listed in
+  `.gitignore`, and deleting it forgets everything. Days older than a year are dropped by
+  themselves.
+
+Time is only counted while somebody is actually there: ninety seconds without a keypress or
+a mouse move and counting stops until you come back. `.\Set-Display.ps1 stats` prints the
+same report in the console.
+
 ## Command line
 
 ```powershell
 .\Set-Display.ps1 status        what Windows reports right now (read-only)
 .\Set-Display.ps1 modes         mode keys and their bound hotkeys
 .\Set-Display.ps1 audio         playback devices, to fill in the audio setting
+.\Set-Display.ps1 brightness    which displays answer over DDC/CI, and at what level
+.\Set-Display.ps1 stats         the diary, as a report in the console
 .\Set-Display.ps1 all           every connected display
 .\Set-Display.ps1 "Movie night" a combination, by its name
 .\Set-Display.ps1 work          the same, when the name is one word
@@ -263,9 +457,12 @@ costs tenths of a second rather than seconds.
 Pure functions only: hotkey parsing, mode keys, display-name matching, combinations, the
 legacy-group migration, the primary-display ladder, settings round-trips, command-line name
 resolution, layout retry and the switch verdict, the Settings window's save path (the window
-is built but never shown), window-layout keys, the remembered mode, and the startup-restore
-decision. **No test touches your displays, your `settings.json`, or your log** — those are
-redirected to temporary files. Non-zero exit on failure.
+is built but never shown), window-layout keys, the remembered mode, the startup-restore
+decision, rule decisions, the rebuild-the-desk decision, brightness plans and the sliders
+that write them (rows really built, not just the model), hook launching,
+duration parsing, the desk preview, and the whole diary — sums, report, streaks and the page
+it produces. **No test touches your displays, your `settings.json`, your log or your diary**
+— those are redirected to temporary files. Non-zero exit on failure.
 
 No Pester on purpose: PowerShell 5.1 ships an ancient 3.4, and installing a newer one would
 break the "nothing is installed on your system" promise.
@@ -275,14 +472,16 @@ break the "nothing is installed on your system" promise.
 | File | What it is |
 | --- | --- |
 | `DisplayCore.ps1` | all the logic, definitions only — one source of truth for tray and CLI |
-| `Displays.ps1` | the app: tray icon, menu, hotkeys, auto-game mode |
+| `Displays.ps1` | the app: tray icon, menu, hotkeys, rules, timers |
 | `SettingsDialog.ps1` | the Settings window (WPF, themed after the system), separate so it can be built in isolation |
 | `WindowLayout.ps1` | window-position snapshots per display set |
+| `Activity.ps1` | the diary and its report |
 | `Set-Display.ps1` | the command line |
 | `tests\run-tests.ps1` | the test runner |
 | `Make-Icon.ps1` | regenerates `app.ico` |
+| `render-preview.ps1` | renders the Settings window to a PNG without showing it, for checking the UI (`-Fake` invents a desk) |
 | `last-run.log` | the log; rotates past 1 MB |
-| `settings.json`, `window-state.json`, `last-mode.json`, `native-*.dll` | created as needed, safe to delete |
+| `settings.json`, `window-state.json`, `last-mode.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
 
 Code comments and the engineering notes are in Russian; the interface, the log and this
 README are in English. The notes are worth a look if you are here for the display API

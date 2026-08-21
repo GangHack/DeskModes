@@ -120,6 +120,68 @@ $script:UiResourcesXaml = @'
             <Setter Property="Margin" Value="0,1,0,0"/>
         </Style>
 
+        <!-- Ползунок уровня. Свой шаблон, потому что системный Slider не знает
+             ни тёмной темы, ни акцента: в тёмном окне он оставался светлым.
+             Заполненная часть — DecreaseRepeatButton трека, это штатный способ
+             показать пройденное; правая половина прозрачная. -->
+        <Style x:Key="Level" TargetType="Slider">
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100"/>
+            <Setter Property="IsSnapToTickEnabled" Value="True"/>
+            <Setter Property="TickFrequency" Value="1"/>
+            <Setter Property="SmallChange" Value="1"/>
+            <Setter Property="LargeChange" Value="10"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Background="Transparent">
+                            <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                    Background="{StaticResource InputBorderBrush}"/>
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                                        Background="{StaticResource AccentBrush}"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="14" Height="14">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="{StaticResource TextBrush}"
+                                                         Stroke="{StaticResource InputBorderBrush}" StrokeThickness="1"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
@@ -494,6 +556,16 @@ $script:SettingsWindowXaml = @'
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Arrange the cards in the order the displays stand on your desk, left to right - the cursor will cross between screens the same way. The star marks the display that keeps the taskbar."/>
                         <WrapPanel x:Name="DeskPanel"/>
+                        <Border x:Name="PreviewBox" CornerRadius="6" Padding="12,10" Margin="0,4,0,0"
+                                Background="{StaticResource MiniBrush}"
+                                BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1">
+                            <StackPanel>
+                                <Canvas x:Name="PreviewCanvas" Width="540" Height="132" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="PreviewHint" Style="{StaticResource Hint}" Margin="0,8,0,0"
+                                           TextAlignment="Center"
+                                           Text="Your desk as Windows will see it: sizes to scale, centred vertically so the cursor can cross between panels of different heights."/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
@@ -512,6 +584,44 @@ $script:SettingsWindowXaml = @'
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Every mode you can switch to: one per display, every combination you made, and all of them at once. Click a box and press the keys; the cross removes a shortcut. Modes are not removed here - a display's mode exists while the display does, and a combination is removed in the card above."/>
                         <StackPanel x:Name="ModesPanel"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource H2}" Text="Brightness"/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="A mode can carry the brightness of your monitors - the evening one dims the big panel, the work one puts it back, and you stop reaching for the buttons on the bezel. It goes over DDC/CI, the service channel inside the cable, so only monitors that answer it can be set: press &quot;Ask the monitors&quot; to see which of yours do. Contrast is the same idea and lives in settings.json."/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Mode" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="LevelModeBox" Grid.Column="1" Style="{StaticResource Select}" Height="30"/>
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Then" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="LevelKindBox" Grid.Column="1" Style="{StaticResource Select}" Height="30"/>
+                        </Grid>
+                        <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </Grid>
+                        <StackPanel x:Name="LevelRowsPanel" Margin="0,10,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"/>
+                            <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" VerticalAlignment="Center"
+                                       Margin="12,0,0,0" MaxWidth="380"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
@@ -571,6 +681,18 @@ $script:SettingsWindowXaml = @'
                                 <TextBlock Style="{StaticResource RowSub}" Text="After turning the computer on, return to the mode you chose last - not to whatever Windows picked."/>
                             </StackPanel>
                             <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
+                                <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
+                                           Text="Count how long you spend in which app, on which display and in which mode - Statistics in the tray menu shows it. Kept in activity.json next to the scripts, never sent anywhere; window titles are not recorded. Delete the file to forget everything."/>
+                            </StackPanel>
+                            <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -833,6 +955,24 @@ function New-SettingsWindow {
         NotifyBox         = $win.FindName('NotifyBox')
         WindowsBox        = $win.FindName('WindowsBox')
         LastModeBox       = $win.FindName('LastModeBox')
+        StatsBox          = $win.FindName('StatsBox')
+        PreviewCanvas     = $win.FindName('PreviewCanvas')
+        PreviewHint       = $win.FindName('PreviewHint')
+        LevelModeBox      = $win.FindName('LevelModeBox')
+        LevelKindBox      = $win.FindName('LevelKindBox')
+        LevelOnePanel     = $win.FindName('LevelOnePanel')
+        LevelOneSlider    = $win.FindName('LevelOneSlider')
+        LevelOneValue     = $win.FindName('LevelOneValue')
+        LevelRowsPanel    = $win.FindName('LevelRowsPanel')
+        LevelTestBtn      = $win.FindName('LevelTestBtn')
+        LevelNote         = $win.FindName('LevelNote')
+        # Ключ режима -> модель яркости (см. ConvertTo-LevelModel). Правится
+        # ползунками, уезжает в settings.json на Save.
+        Levels            = [ordered]@{}
+        # Пока карточка перестраивается, обработчики ползунков молчат: иначе
+        # программная установка значения тут же считалась бы правкой человека.
+        LevelBusy         = $false
+        Modes             = @($Modes)
         Settings          = $Settings
         State             = @($State)
         Result            = $null
@@ -863,6 +1003,7 @@ function New-SettingsWindow {
     Update-DeskPanel  -Ui $ui
     Update-CombosPanel -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
+    Initialize-LevelCard -Ui $ui -Settings $Settings
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
     $ui.NotifyBox.IsChecked   = [bool]$Settings.notifications
@@ -870,9 +1011,56 @@ function New-SettingsWindow {
     # включено — ровно как в WinForms-версии, на этом уже ломался restoreWindows.
     $ui.WindowsBox.IsChecked  = ($null -eq $Settings.restoreWindows -or [bool]$Settings.restoreWindows)
     $ui.LastModeBox.IsChecked = ($null -eq $Settings.restoreLastMode -or [bool]$Settings.restoreLastMode)
+    # Дневник — наоборот: отсутствие ключа означает «выключено». Это данные о
+    # человеке, и по умолчанию их не собирают.
+    $ui.StatsBox.IsChecked    = [bool]$Settings.stats
 
     # Окно собрано — с этого момента обработчики находят его здесь.
     $script:ActiveUi = $ui
+
+    # Яркость. Обработчики — обычные блоки, состояние через $script:ActiveUi:
+    # .GetNewClosure() в этом окне запрещён (см. заголовок файла).
+    $ui.LevelModeBox.add_SelectionChanged({
+        $ui = $script:ActiveUi
+        if (-not $ui -or $ui.LevelBusy) { return }
+        Update-LevelCard -Ui $ui
+    })
+
+    $ui.LevelKindBox.add_SelectionChanged({
+        $ui = $script:ActiveUi
+        if (-not $ui -or $ui.LevelBusy) { return }
+        $item = $ui.LevelKindBox.SelectedItem
+        if (-not $item) { return }
+        $model = Get-SelectedLevelModel -Ui $ui
+        if (-not $model) { return }
+        $model.Kind = [string]$item.Tag
+        # Переход «одно число» -> «каждому своё»: заполняем мониторы режима тем
+        # самым числом. Так человек получает то, что видел, и правит от него, а
+        # не пустой список. Обратный переход карту не стирает — вернувшись, он
+        # найдёт свои значения на месте.
+        if ($model.Kind -eq 'each' -and $model.Map.Count -eq 0) {
+            $key = [string]$ui.LevelModeBox.SelectedItem.Tag
+            foreach ($name in @(Get-LevelRowNames -Ui $ui -ModeKey $key -Map $model.Map)) {
+                $model.Map[$name] = [int]$model.Value
+            }
+        }
+        Update-LevelCard -Ui $ui
+    })
+
+    $ui.LevelOneSlider.add_ValueChanged({
+        $ui = $script:ActiveUi
+        if (-not $ui -or $ui.LevelBusy) { return }
+        $model = Get-SelectedLevelModel -Ui $ui
+        if (-not $model) { return }
+        $model.Value = [int]$ui.LevelOneSlider.Value
+        $ui.LevelOneValue.Text = [string][int]$ui.LevelOneSlider.Value
+    })
+
+    $ui.LevelTestBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        Invoke-LevelProbe -Ui $ui
+    })
 
     $ui.AddComboBtn.add_Click({
         $ui = $script:ActiveUi
@@ -958,6 +1146,8 @@ function Update-DeskPanel {
             }
         }
     }
+
+    Update-DeskPreview -Ui $Ui
 }
 
 function Add-DeskCard {
@@ -1026,22 +1216,46 @@ function Add-DeskCard {
 
     if (-not $connected) { $outer.Opacity = 0.55 }
 
+    # Размер в пикселях — для предпросмотра стола. У включённого монитора берём
+    # то, что он показывает сейчас, у погашенного — его родное разрешение (оно
+    # известно из EDID даже когда монитор спит), у отсутствующего не берём
+    # ничего: предпросмотр поставит на его место обычные 16:9.
+    $pw = 0; $ph = 0
+    if ($Display) {
+        if ($Display.Active -and $Display.Width -gt 0) { $pw = [int]$Display.Width; $ph = [int]$Display.Height }
+        elseif ($Display.Native)   { $pw = [int]$Display.Native.Width; $ph = [int]$Display.Native.Height }
+        elseif ($Display.BestMode) { $pw = [int]$Display.BestMode.Width; $ph = [int]$Display.BestMode.Height }
+    }
+
     $outer.Tag = [pscustomobject]@{
         Label     = $Label
         ShortId   = $(if ($Display) { [string]$Display.ShortId } else { '' })
         Connected = $connected
         Radio     = $radio
+        Width     = $pw
+        Height    = $ph
     }
 
     # Стрелке нужны ряд и своя карточка — приезжают на ней самой (см. комментарий
     # про обработчики выше). Ряд не через $script:ActiveUi: карточки строятся до
     # того, как окно объявлено активным.
     $panel = $Ui.DeskPanel
-    $left.Tag  = [pscustomobject]@{ Panel = $panel; Card = $outer; Delta = -1 }
-    $right.Tag = [pscustomobject]@{ Panel = $panel; Card = $outer; Delta = 1 }
-    $move = { Move-DeskCard -Panel $this.Tag.Panel -Card $this.Tag.Card -Delta $this.Tag.Delta }
+    $left.Tag  = [pscustomobject]@{ Panel = $panel; Card = $outer; Delta = -1; Ui = $Ui }
+    $right.Tag = [pscustomobject]@{ Panel = $panel; Card = $outer; Delta = 1; Ui = $Ui }
+    # Предпросмотр перерисовываем сразу: он затем и нужен, чтобы видеть, что
+    # получится, ДО сохранения. Ряд и окно приезжают на кнопке — карточки
+    # строятся до того, как окно объявлено активным (см. комментарий выше).
+    $move = {
+        Move-DeskCard -Panel $this.Tag.Panel -Card $this.Tag.Card -Delta $this.Tag.Delta
+        Update-DeskPreview -Ui $this.Tag.Ui
+    }
     $left.add_Click($move)
     $right.add_Click($move)
+
+    # Звезда панели задач тоже меняет картинку: основной монитор в ней обведён
+    # акцентом, и от него же считается сдвиг всей раскладки к нулю координат.
+    $radio.Tag = $Ui
+    $radio.add_Checked({ Update-DeskPreview -Ui $this.Tag })
 
     [void]$panel.Children.Add($outer)
 }
@@ -1055,6 +1269,460 @@ function Move-DeskCard {
     if ($j -lt 0 -or $j -ge $Panel.Children.Count) { return }
     $Panel.Children.RemoveAt($i)
     $Panel.Children.Insert($j, $Card)
+}
+
+# --- предпросмотр стола ---------------------------------------------------------
+# Карточки говорят, в каком порядке мониторы стоят, но не показывают, что из
+# этого получится: экраны разной высоты (1440 и 2160) выстраиваются по центру, и
+# по краям остаются полосы, через которые курсор не переходит. Раньше это
+# выяснялось только после Save — на живом столе.
+#
+# Координаты берём у Get-LayoutPositions — той самой функции, которой считает
+# переключатель. Не «похожая картинка», а ровно то, что будет применено: если
+# картинка врёт, значит врёт и переключение, и виден один и тот же баг.
+
+# Чистая функция: карточки (в их видимом порядке) -> экраны для Get-LayoutPositions.
+# Размер в пикселях берётся из текущего режима монитора, а если он выключен — из
+# его максимального; неизвестный считаем обычным 16:9, чтобы место в ряду он всё
+# равно занял.
+function ConvertTo-PreviewScreens {
+    param($Cards)
+
+    $screens = @()
+    $i = 0
+    foreach ($info in @($Cards)) {
+        if (-not $info) { continue }
+        $w = [int]$info.Width
+        $h = [int]$info.Height
+        if ($w -le 0 -or $h -le 0) { $w = 1920; $h = 1080 }
+        $screens += [pscustomobject]@{
+            DevicePath = 'preview-' + $i
+            Label      = [string]$info.Label
+            Width      = $w
+            Height     = $h
+            Connected  = [bool]$info.Connected
+            Primary    = [bool]$info.Primary
+        }
+        $i++
+    }
+    return $screens
+}
+
+# Координаты для картинки — через Get-LayoutPositions, ту же функцию, которой
+# считает переключатель.
+#
+# Порядок ей надо передать ЯВНО, названиями в порядке карточек: с пустым Order у
+# всех экранов одинаковый ранг, и она сортирует их по названию. Первая версия так
+# и рисовала — по алфавиту: ULTRAFINE, ULTRAGEAR, XG27AQDMGR вместо ULTRAFINE,
+# XG27AQDMGR, ULTRAGEAR, то есть показывала не тот стол, который получится.
+function Get-PreviewPlacement {
+    param($Screens)
+
+    $list = @($Screens)
+    if ($list.Count -eq 0) { return @{} }
+    $primary = @($list | Where-Object { $_.Primary } | Select-Object -First 1)
+    return Get-LayoutPositions -Screens $list -Order @($list | ForEach-Object { [string]$_.Label }) `
+                               -PrimaryPath $(if ($primary.Count -gt 0) { $primary[0].DevicePath } else { '' })
+}
+
+function Update-DeskPreview {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.PreviewCanvas) { return }
+    $canvas = $Ui.PreviewCanvas
+    $canvas.Children.Clear()
+
+    # Сведения о карточках — в их ВИДИМОМ порядке: он и есть раскладка.
+    $cards = @()
+    foreach ($child in @($Ui.DeskPanel.Children)) {
+        $info = $child.Tag
+        if (-not $info) { continue }
+        $cards += [pscustomobject]@{
+            Label     = [string]$info.Label
+            Width     = [int]$info.Width
+            Height    = [int]$info.Height
+            Connected = [bool]$info.Connected
+            Primary   = [bool]($info.Radio -and $info.Radio.IsChecked)
+        }
+    }
+    if ($cards.Count -eq 0) { return }
+
+    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
+    $positions = Get-PreviewPlacement -Screens $screens
+
+    # Масштаб: вся раскладка должна поместиться в холст целиком.
+    $minX = 0; $maxX = 0; $minY = 0; $maxY = 0
+    foreach ($s in $screens) {
+        $p = $positions[$s.DevicePath]
+        if (-not $p) { continue }
+        if ($p.X -lt $minX) { $minX = $p.X }
+        if ($p.Y -lt $minY) { $minY = $p.Y }
+        if (($p.X + $s.Width) -gt $maxX) { $maxX = $p.X + $s.Width }
+        if (($p.Y + $s.Height) -gt $maxY) { $maxY = $p.Y + $s.Height }
+    }
+    $spanX = [math]::Max(1, $maxX - $minX)
+    $spanY = [math]::Max(1, $maxY - $minY)
+    # Зазор между экранами рисуем, а в координатах его нет: на настоящем столе
+    # мониторы стоят в рамках и вплотную не сходятся.
+    $gap = 3
+    $room = [double]$canvas.Width - ($gap * ($screens.Count + 1))
+    $scale = [math]::Min($room / $spanX, ([double]$canvas.Height - 22) / $spanY)
+    if ($scale -le 0) { return }
+
+    $win = $Ui.Window
+    $offsetX = ($canvas.Width - ($spanX * $scale) - ($gap * ($screens.Count - 1))) / 2
+    $index = 0
+    foreach ($s in $screens) {
+        $p = $positions[$s.DevicePath]
+        if (-not $p) { continue }
+
+        $box = New-Object System.Windows.Controls.Border
+        $box.Width = [math]::Max(24, $s.Width * $scale)
+        $box.Height = [math]::Max(18, $s.Height * $scale)
+        $box.CornerRadius = New-Object System.Windows.CornerRadius 3
+        $box.Background = $win.FindResource('CardBrush')
+        $box.BorderThickness = New-Object System.Windows.Thickness $(if ($s.Primary) { 2 } else { 1 })
+        $box.BorderBrush = $win.FindResource($(if ($s.Primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
+        if (-not $s.Connected) { $box.Opacity = 0.5 }
+        $box.ToolTip = '{0} - {1} x {2}{3}' -f $s.Label, $s.Width, $s.Height,
+                        $(if ($s.Primary) { ', taskbar here' } else { '' })
+
+        $text = New-Object System.Windows.Controls.TextBlock
+        $text.Text = '{0}{1}{2} x {3}' -f $s.Label, [environment]::NewLine, $s.Width, $s.Height
+        $text.FontSize = 9.5
+        $text.TextAlignment = 'Center'
+        $text.TextWrapping = 'Wrap'
+        $text.VerticalAlignment = 'Center'
+        $text.HorizontalAlignment = 'Center'
+        $text.Foreground = $win.FindResource('DimBrush')
+        $box.Child = $text
+
+        [void]$canvas.Children.Add($box)
+        [System.Windows.Controls.Canvas]::SetLeft($box, $offsetX + (($p.X - $minX) * $scale) + ($gap * $index))
+        [System.Windows.Controls.Canvas]::SetTop($box, ($p.Y - $minY) * $scale)
+        $index++
+    }
+}
+
+# --- яркость --------------------------------------------------------------------
+# Яркость в настройках записана двумя способами, и оба нужны: число («всем
+# мониторам режима поровну», так пишут чаще всего) и объект («каждому своё»).
+# Окно обязано уметь оба И НЕ ПРЕВРАЩАТЬ ОДИН В ДРУГОЙ САМО: развернув число в
+# объект по тем мониторам, что сейчас на столе, оно потеряло бы яркость для
+# выдернутого монитора и изменило бы смысл записи «all» для монитора, который
+# появится завтра. Поэтому форма — это выбор человека («Then...» в карточке), а
+# не догадка окна.
+
+# Значение из настроек -> модель для окна. Чистая функция.
+#   Kind = 'none'  яркость этому режиму не задана;
+#          'one'   одно число на все мониторы режима (Value);
+#          'each'  своё число каждому (Map: имя -> число).
+function ConvertTo-LevelModel {
+    param($Setting)
+
+    $model = [pscustomobject]@{ Kind = 'none'; Value = 80; Map = [ordered]@{} }
+    if ($null -eq $Setting) { return $model }
+
+    if ($Setting -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Setting.Keys)) {
+            if (-not $key) { continue }
+            $parsed = 0
+            if ([int]::TryParse([string]$Setting[$key], [ref]$parsed)) {
+                $model.Map[[string]$key] = [math]::Max(0, [math]::Min(100, $parsed))
+            }
+        }
+        if ($model.Map.Count -gt 0) { $model.Kind = 'each' }
+        return $model
+    }
+
+    $parsed = 0
+    if ([int]::TryParse([string]$Setting, [ref]$parsed)) {
+        $model.Kind = 'one'
+        $model.Value = [math]::Max(0, [math]::Min(100, $parsed))
+    }
+    return $model
+}
+
+# И обратно, в то, что уезжает в settings.json. $null означает «ключа быть не
+# должно»: пустой объект в файле выглядел бы как настройка, которой нет.
+function ConvertFrom-LevelModel {
+    param($Model)
+
+    if (-not $Model) { return $null }
+    switch ([string]$Model.Kind) {
+        'one'  { return [int]$Model.Value }
+        'each' {
+            if (-not $Model.Map -or $Model.Map.Count -eq 0) { return $null }
+            $out = [ordered]@{}
+            foreach ($key in @($Model.Map.Keys)) { $out[[string]$key] = [int]$Model.Map[$key] }
+            return $out
+        }
+        default { return $null }
+    }
+}
+
+# Все модели окна -> то, что уезжает в settings.json. Режимы без яркости в файл
+# не попадают вовсе: ключ со словарём-пустышкой выглядел бы как настройка,
+# которой нет. Чистая функция.
+function ConvertTo-BrightnessSettings {
+    param($Levels)
+
+    $out = [ordered]@{}
+    if (-not $Levels) { return $out }
+    foreach ($key in @($Levels.Keys)) {
+        $value = ConvertFrom-LevelModel $Levels[$key]
+        if ($null -ne $value) { $out[[string]$key] = $value }
+    }
+    return $out
+}
+
+# Мониторы режима — по именам, как их запишут в файл. Плюс «сироты»: имена,
+# которые уже есть в карте, но ни одному монитору режима не соответствуют
+# (монитор увезли, комбинацию правили рукой). Их надо ПОКАЗАТЬ, иначе настройку
+# нельзя ни увидеть, ни снять — тем же правилом живут привязки клавиш.
+function Get-LevelRowNames {
+    param($Ui, [string]$ModeKey, $Map)
+
+    $names = @()
+    $state = @($Ui.State | Where-Object { $_ })
+
+    if ($ModeKey -eq 'all') {
+        $names = @($state | Where-Object { -not $_.Disconnected } | ForEach-Object { [string]$_.Label })
+    }
+    elseif ($ModeKey -like 'solo:*') {
+        $names = @($ModeKey.Substring(5))
+    }
+    elseif ($ModeKey -like 'combo:*') {
+        $name = $ModeKey.Substring(6)
+        $combo = @($Ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
+        if ($combo.Count -gt 0) {
+            foreach ($pattern in @($combo[0].Patterns)) {
+                if (-not $pattern) { continue }
+                # Название монитора точнее шаблона: «ULTRAFINE» из файла станет
+                # «LG ULTRAFINE», и обе записи по-прежнему совпадают (сравнение
+                # идёт вхождением в обе стороны).
+                $hit = @($state | Where-Object { Test-DisplayNameMatch -Pattern $pattern -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1)
+                $names += $(if ($hit.Count -gt 0) { [string]$hit[0].Label } else { [string]$pattern })
+            }
+        }
+    }
+
+    foreach ($key in @($Map.Keys)) {
+        if ($names -notcontains [string]$key) { $names += [string]$key }
+    }
+    return @($names | Where-Object { $_ })
+}
+
+# Список режимов для выпадающего списка: все известные окну плюс те, у которых
+# яркость уже задана, а самого режима сейчас нет (монитор увезли). Иначе такая
+# запись стала бы невидимой и неудаляемой.
+function Get-LevelModeChoices {
+    param($Ui)
+
+    $choices = @()
+    foreach ($mode in @($Ui.Modes)) {
+        $choices += [pscustomobject]@{ Key = [string]$mode.Key; Title = [string]$mode.Title }
+    }
+    $known = @($choices | ForEach-Object { $_.Key })
+    foreach ($key in @($Ui.Levels.Keys)) {
+        if ($known -contains [string]$key) { continue }
+        $choices += [pscustomobject]@{ Key = [string]$key; Title = (Get-ModeTitleFromKey ([string]$key)) }
+    }
+    return @($choices)
+}
+
+$script:LevelKindTitles = [ordered]@{
+    none = 'leave the brightness alone'
+    one  = 'one level for every display of this mode'
+    each = 'a level for each display'
+}
+
+function Initialize-LevelCard {
+    param($Ui, $Settings)
+
+    $Ui.Levels = [ordered]@{}
+    if ($Settings -and $Settings.brightness) {
+        foreach ($key in @($Settings.brightness.Keys)) {
+            $Ui.Levels[[string]$key] = ConvertTo-LevelModel $Settings.brightness[$key]
+        }
+    }
+
+    $Ui.LevelBusy = $true
+    try {
+        $Ui.LevelKindBox.Items.Clear()
+        foreach ($kind in @($script:LevelKindTitles.Keys)) {
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = [string]$script:LevelKindTitles[$kind]
+            $item.Tag = [string]$kind
+            [void]$Ui.LevelKindBox.Items.Add($item)
+        }
+
+        $Ui.LevelModeBox.Items.Clear()
+        foreach ($choice in @(Get-LevelModeChoices -Ui $Ui)) {
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = $choice.Title
+            $item.Tag = $choice.Key
+            [void]$Ui.LevelModeBox.Items.Add($item)
+        }
+        if ($Ui.LevelModeBox.Items.Count -gt 0) { $Ui.LevelModeBox.SelectedIndex = 0 }
+    }
+    finally { $Ui.LevelBusy = $false }
+
+    Update-LevelCard -Ui $Ui
+}
+
+# Модель выбранного режима, заводя её при первом обращении.
+function Get-SelectedLevelModel {
+    param($Ui)
+
+    $item = $Ui.LevelModeBox.SelectedItem
+    if (-not $item) { return $null }
+    $key = [string]$item.Tag
+    if (-not $Ui.Levels.Contains($key)) { $Ui.Levels[$key] = ConvertTo-LevelModel $null }
+    return $Ui.Levels[$key]
+}
+
+function Update-LevelCard {
+    param($Ui)
+
+    $item = $Ui.LevelModeBox.SelectedItem
+    if (-not $item) { return }
+    $model = Get-SelectedLevelModel -Ui $Ui
+
+    $Ui.LevelBusy = $true
+    try {
+        # Выбор формы записи — в том же порядке, в котором заведены пункты.
+        $index = @($script:LevelKindTitles.Keys).IndexOf([string]$model.Kind)
+        if ($index -lt 0) { $index = 0 }
+        $Ui.LevelKindBox.SelectedIndex = $index
+
+        $Ui.LevelOnePanel.Visibility = $(if ($model.Kind -eq 'one') { 'Visible' } else { 'Collapsed' })
+        $Ui.LevelOneSlider.Value = [double][int]$model.Value
+        $Ui.LevelOneValue.Text = [string][int]$model.Value
+
+        $Ui.LevelRowsPanel.Children.Clear()
+        if ($model.Kind -eq 'each') {
+            foreach ($name in @(Get-LevelRowNames -Ui $Ui -ModeKey ([string]$item.Tag) -Map $model.Map)) {
+                Add-LevelRow -Ui $Ui -Model $model -Name $name
+            }
+        }
+    }
+    finally { $Ui.LevelBusy = $false }
+}
+
+function Add-LevelRow {
+    param($Ui, $Model, [string]$Name)
+
+    $win = $Ui.Window
+    $set = $Model.Map.Contains($Name)
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 0, 4, 0, 4
+    # Ширины задаём объектами, а не строками: у GridLength нет Parse (первая
+    # версия звала его и падала при переходе на «каждому своё» — поймал не тест, а
+    # снимок окна, поэтому тест на построение строк теперь есть).
+    foreach ($width in @((New-Object System.Windows.GridLength 150),
+                         (New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                         [System.Windows.GridLength]::Auto)) {
+        $column = New-Object System.Windows.Controls.ColumnDefinition
+        $column.Width = $width
+        [void]$grid.ColumnDefinitions.Add($column)
+    }
+
+    # Галочка и есть «задано / не задано»: снятая означает, что этому монитору
+    # яркость в этом режиме не трогают, а не «ноль».
+    $check = New-Object System.Windows.Controls.CheckBox
+    $check.Style = $win.FindResource('Check')
+    $check.Content = $Name
+    $check.IsChecked = $set
+    $check.VerticalAlignment = 'Center'
+    [void]$grid.Children.Add($check)
+
+    $slider = New-Object System.Windows.Controls.Slider
+    $slider.Style = $win.FindResource('Level')
+    $slider.VerticalAlignment = 'Center'
+    $slider.IsEnabled = $set
+    $slider.Value = [double]$(if ($set) { [int]$Model.Map[$Name] } else { 80 })
+    [System.Windows.Controls.Grid]::SetColumn($slider, 1)
+    [void]$grid.Children.Add($slider)
+
+    $value = New-Object System.Windows.Controls.TextBlock
+    $value.Width = 34
+    $value.TextAlignment = 'Right'
+    $value.VerticalAlignment = 'Center'
+    $value.Margin = New-Object System.Windows.Thickness 10, 0, 0, 0
+    $value.Text = $(if ($set) { [string][int]$Model.Map[$Name] } else { 'off' })
+    if (-not $set) { $value.Foreground = $win.FindResource('DimBrush') }
+    [System.Windows.Controls.Grid]::SetColumn($value, 2)
+    [void]$grid.Children.Add($value)
+
+    # Состояние строки — на самих элементах (.Tag), как и во всех остальных
+    # обработчиках этого окна: .GetNewClosure() здесь запрещён (см. заголовок).
+    $row = [pscustomobject]@{ Ui = $Ui; Model = $Model; Name = $Name; Slider = $slider; Value = $value; Check = $check }
+    $check.Tag = $row
+    $slider.Tag = $row
+
+    $check.add_Click({
+        $row = $this.Tag
+        if ($row.Ui.LevelBusy) { return }
+        if ($this.IsChecked) {
+            $row.Model.Map[$row.Name] = [int]$row.Slider.Value
+            $row.Slider.IsEnabled = $true
+            $row.Value.Text = [string][int]$row.Slider.Value
+            $row.Value.Foreground = $row.Ui.Window.FindResource('TextBrush')
+        }
+        else {
+            $row.Model.Map.Remove($row.Name)
+            $row.Slider.IsEnabled = $false
+            $row.Value.Text = 'off'
+            $row.Value.Foreground = $row.Ui.Window.FindResource('DimBrush')
+        }
+    })
+
+    $slider.add_ValueChanged({
+        $row = $this.Tag
+        if ($row.Ui.LevelBusy) { return }
+        if (-not $row.Check.IsChecked) { return }
+        $row.Model.Map[$row.Name] = [int]$this.Value
+        $row.Value.Text = [string][int]$this.Value
+    })
+
+    [void]$Ui.LevelRowsPanel.Children.Add($grid)
+}
+
+# «Ask the monitors» — спросить DDC/CI прямо сейчас. Отдельной кнопкой, а не при
+# открытии окна: один опрос стоит десятки миллисекунд на монитор, а на зависшей
+# шине — до секунды с повторами, и платить это за каждое открытие настроек
+# незачем.
+function Invoke-LevelProbe {
+    param($Ui)
+
+    $Ui.LevelNote.Text = 'asking...'
+    $answers = @()
+    try { $answers = @(Get-MonitorLevels) }
+    catch {
+        $Ui.LevelNote.Text = "could not ask the monitors - $($_.Exception.Message)"
+        return
+    }
+
+    # DDC отдаёт имя выхода (\\.\DISPLAY1), человеку нужно название монитора.
+    $byOutput = @{}
+    foreach ($m in @($Ui.State)) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
+
+    $good = @()
+    $bad = @()
+    foreach ($a in $answers) {
+        $label = $(if ($byOutput.Contains([string]$a.Device)) { $byOutput[[string]$a.Device] } else { [string]$a.Device })
+        if ($a.CanBrightness) { $good += ('{0} ({1})' -f $label, $a.Brightness) } else { $bad += $label }
+    }
+
+    $parts = @()
+    if ($good.Count -gt 0) { $parts += 'answers: ' + ($good -join ', ') }
+    if ($bad.Count -gt 0)  { $parts += 'no answer: ' + ($bad -join ', ') }
+    if ($parts.Count -eq 0) { $parts += 'nobody answered - only displays that are ON can be asked' }
+    # Про спящие говорим всегда: их в ответе нет вовсе, и без этой строки
+    # выглядело бы, будто монитор не умеет.
+    $Ui.LevelNote.Text = ($parts -join '; ') + '. Sleeping displays cannot be asked.'
 }
 
 # --- комбинации -----------------------------------------------------------------
@@ -1570,13 +2238,14 @@ function Read-SettingsFromUi {
     $updated.notifications = [bool]$Ui.NotifyBox.IsChecked
     $updated.restoreWindows = [bool]$Ui.WindowsBox.IsChecked
     $updated.restoreLastMode = [bool]$Ui.LastModeBox.IsChecked
+    $updated.stats = [bool]$Ui.StatsBox.IsChecked
 
     # Окно правит только то, что в нём есть; остальные поля обязаны проехать
     # насквозь ДЕФОЛТНЫМИ они уезжать не должны — на этом уже терялись layout и
     # primary. Переносится всё, кроме полей с элементами формы, чтобы каждая
     # новая настройка без своего элемента не заводила этот баг заново.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
-                  'restoreLastMode', 'layout', 'primary', 'combos', 'audio')
+                  'restoreLastMode', 'stats', 'layout', 'primary', 'combos', 'audio')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
@@ -1601,31 +2270,39 @@ function Read-SettingsFromUi {
     # заводить второй вид набора заново. Save заодно и вычищает их с диска.
     $updated.combos = ConvertTo-ComboSettings -Combos $Ui.Combos
 
-    # Звук привязан к ключам режимов, и у комбинаций эти ключи меняются вместе с
-    # именем: запись переезжает за переименованием и умирает с удалением. Иначе
-    # осталась бы настройка-призрак, которую не видно ни в одном окне.
-    $audio = [ordered]@{}
-    if ($Settings.audio) {
-        foreach ($k in @($Settings.audio.Keys)) { $audio[$k] = [string]$Settings.audio[$k] }
-    }
-    foreach ($c in @($Ui.Combos)) {
-        if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
-        $old = 'combo:' + $c.OriginalName
-        $new = 'combo:' + $c.Name
-        if ($audio.Contains($old)) {
-            if (-not $audio.Contains($new)) { $audio[$new] = $audio[$old] }
-            $audio.Remove($old)
-        }
-    }
+    # Звук, команды, яркость и контраст привязаны к ключам режимов, а у
+    # комбинаций эти ключи меняются вместе с именем: запись переезжает за
+    # переименованием и умирает с удалением. Иначе осталась бы настройка-призрак,
+    # которую не видно ни в одном окне. Одним циклом на все четыре: следующая
+    # настройка, привязанная к режиму, не должна заводить этот баг заново.
     $currentComboKeys = @($Ui.Combos | ForEach-Object { 'combo:' + $_.Name })
-    foreach ($dead in @($Ui.DeletedComboKeys)) {
-        if ($currentComboKeys -contains $dead) { continue }
-        if ($audio.Contains($dead)) {
-            $audio.Remove($dead)
-            Write-DisplayLog "settings: dropped the audio entry for removed $dead"
+    foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
+        # Яркость приезжает из карточки с ползунками, остальное — из настроек как
+        # было: окно этого не правит. Дальше все четыре идут одной дорогой, ведь
+        # переименование и удаление комбинации касаются их одинаково.
+        $source = $(if ($field -eq 'brightness') { ConvertTo-BrightnessSettings -Levels $Ui.Levels } else { $Settings[$field] })
+        $moved = [ordered]@{}
+        if ($source) {
+            foreach ($k in @($source.Keys)) { $moved[$k] = $source[$k] }
         }
+        foreach ($c in @($Ui.Combos)) {
+            if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
+            $old = 'combo:' + $c.OriginalName
+            $new = 'combo:' + $c.Name
+            if ($moved.Contains($old)) {
+                if (-not $moved.Contains($new)) { $moved[$new] = $moved[$old] }
+                $moved.Remove($old)
+            }
+        }
+        foreach ($dead in @($Ui.DeletedComboKeys)) {
+            if ($currentComboKeys -contains $dead) { continue }
+            if ($moved.Contains($dead)) {
+                $moved.Remove($dead)
+                Write-DisplayLog "settings: dropped the $field entry for removed $dead"
+            }
+        }
+        $updated[$field] = $moved
     }
-    $updated.audio = $audio
 
     return [pscustomobject]@{ Ok = $true; Settings = $updated; Problem = '' }
 }

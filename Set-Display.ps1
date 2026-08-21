@@ -9,6 +9,8 @@
         .\Set-Display.ps1 ULTRAGEAR       только этот монитор (поиск по названию)
         .\Set-Display.ps1 GSM5CBB         только этот монитор (короткий Monitor ID)
         .\Set-Display.ps1 modes           показать ключи всех режимов
+        .\Set-Display.ps1 brightness      кто из мониторов слушается по DDC/CI
+        .\Set-Display.ps1 stats           дневник: что, где и сколько
 
     -PrimaryMatch  кого сделать основным, по куску названия
     -KeepMode      не поднимать разрешение и частоту до максимума
@@ -27,6 +29,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
 . (Join-Path $PSScriptRoot 'WindowLayout.ps1')
+. (Join-Path $PSScriptRoot 'Activity.ps1')
 
 function Resolve-ModeKey {
     param([string]$Text, $Modes, $State)
@@ -88,6 +91,41 @@ if ($Mode -eq 'audio') {
         Format-Table -AutoSize
     Write-Host 'Put a distinctive part of a name into settings.json, for example:' -ForegroundColor DarkGray
     Write-Host '    "audio": { "role:work": "ULTRAFINE", "solo:XG27AQDMGR": "ROG" }' -ForegroundColor DarkGray
+    return
+}
+
+if ($Mode -eq 'brightness') {
+    # Нужно, чтобы знать две вещи перед тем, как что-то писать в settings.json:
+    # слушается ли монитор по DDC/CI вообще и какая яркость стоит сейчас. Спящие
+    # мониторы в списке не появятся — они на запросы не отвечают.
+    Write-Host ''
+    Write-Host 'Monitors that answer over DDC/CI:' -ForegroundColor Cyan
+    $levels = @(Get-MonitorLevels)
+    if ($levels.Count -eq 0) {
+        Write-Host '  (none answered - only displays that are ON can be asked)'
+        return
+    }
+    # Название монитора берём из состояния: DDC отдаёт «Generic PnP Monitor» всем
+    # подряд, и по такому списку выбрать нужный невозможно.
+    $byOutput = @{}
+    foreach ($m in $state) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
+    $levels |
+        Select-Object @{n = 'Display';    e = { if ($byOutput.Contains([string]$_.Device)) { $byOutput[[string]$_.Device] } else { $_.Device } } },
+                      @{n = 'Brightness'; e = { if ($_.CanBrightness) { '{0} ({1}..{2})' -f $_.Brightness, $_.BrightnessMin, $_.BrightnessMax } else { 'not supported' } } },
+                      @{n = 'Contrast';   e = { if ($_.CanContrast) { [string]$_.Contrast } else { 'not supported' } } } |
+        Format-Table -AutoSize
+    Write-Host 'Put the levels you want into settings.json, for example:' -ForegroundColor DarkGray
+    Write-Host '    "brightness": { "combo:Work": 80, "combo:Movie night": { "ULTRAFINE": 25 } }' -ForegroundColor DarkGray
+    return
+}
+
+if ($Mode -eq 'stats') {
+    if (-not $settings.stats) {
+        Write-Host ''
+        Write-Host 'The diary is off. Turn on "Keep a diary" in Settings (or set "stats": true).' -ForegroundColor Yellow
+    }
+    Format-ActivityReport -Report (Get-ActivityReport -Store (Get-ActivityStore) -Days 30) |
+        ForEach-Object { Write-Host $_ }
     return
 }
 

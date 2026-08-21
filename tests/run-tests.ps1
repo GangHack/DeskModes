@@ -104,6 +104,7 @@ function Assert-Null {
 
 . (Join-Path $root 'DisplayCore.ps1')
 . (Join-Path $root 'WindowLayout.ps1')
+. (Join-Path $root 'Activity.ps1')
 . (Join-Path $root 'SettingsDialog.ps1')
 
 # Настоящий settings.json не трогаем НИ В ОДНОМ тесте.
@@ -112,6 +113,9 @@ $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
 $script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
+# Настоящий дневник тесты тоже не трогают: он про человека, и подмешивать в него
+# выдуманные дни нельзя.
+$script:ActivityFile = Join-Path $script:TestDir 'activity.json'
 
 # Фиктивные мониторы: тесты не должны зависеть от того, что сейчас на столе.
 # Поля ровно те, что отдаёт Get-DisplayState: роли из состояния ушли вместе с
@@ -1843,6 +1847,1010 @@ Test-Case 'session id: the same within one run, and not empty' {
     Assert-Equal $a $b 'stable inside one process'
     Assert-True ($a.Length -gt 0) 'not empty'
     Assert-True ($a -like '*/*') 'built from both sources'
+}
+
+# --- настройки: новые ключи ---------------------------------------------------
+# Разбор настроек — единственное место, куда попадает написанное рукой, и правил
+# сокращённой записи здесь больше, чем кажется: число вместо словаря, строка
+# вместо объекта, отсутствие ключа вместо значения по умолчанию.
+
+Write-Host ''
+Write-Host 'the new settings keys' -ForegroundColor White
+
+function Set-TestSettingsFile {
+    param([string]$Json)
+    $Json | Set-Content -Path $script:SettingsFile -Encoding UTF8
+}
+
+Test-Case 'settings: defaults for everything new' {
+    Remove-Item $script:SettingsFile -Force -ErrorAction SilentlyContinue
+    $s = Get-DisplaySettings
+    Assert-Equal $false $s.stats 'the diary stays off until asked'
+    Assert-Equal $true $s.reapply.onResume 'rebuild the desk after sleep'
+    Assert-Equal $true $s.reapply.onUnplug 'rebuild it when a display goes away'
+    Assert-Equal '' $s.reapply.onPlug 'nothing is guessed when a display appears'
+    Assert-Equal 0 @($s.rules).Count 'no rules invented'
+    Assert-Equal 0 $s.hooks.Count 'no commands invented'
+    Assert-Equal 0 $s.brightness.Count 'no levels invented'
+}
+
+Test-Case 'settings: rules read in file order, with their defaults' {
+    Set-TestSettingsFile '{ "rules": [
+        { "when": "process", "process": "cs2", "mode": "solo:XG27AQDMGR" },
+        { "when": "idle", "minutes": 20, "mode": "solo:LG ULTRAGEAR", "back": "combo:Work", "enabled": false } ] }'
+    $s = Get-DisplaySettings
+    Assert-Equal 2 @($s.rules).Count 'both rules'
+    Assert-Equal 'process' $s.rules[0].when 'first is the process rule'
+    Assert-Equal $true $s.rules[0].enabled 'a rule is on unless it says otherwise'
+    Assert-Equal 0 $s.rules[0].minutes 'no minutes means zero, not null'
+    Assert-Equal 20 $s.rules[1].minutes 'minutes come through as a number'
+    Assert-Equal $false $s.rules[1].enabled 'a rule can be switched off without deleting it'
+    Assert-Equal 'combo:Work' $s.rules[1].back 'where to go back to'
+}
+
+Test-Case 'settings: a rule without "when" is a process rule' {
+    Set-TestSettingsFile '{ "rules": [ { "process": "cs2", "mode": "all" } ] }'
+    $s = Get-DisplaySettings
+    Assert-Equal 'process' $s.rules[0].when 'the common case needs no ceremony'
+}
+
+Test-Case 'settings: a command can be a string instead of an object' {
+    Set-TestSettingsFile '{ "hooks": {
+        "all": "notepad.exe",
+        "combo:Work": { "before": "one.cmd", "after": "two.cmd" },
+        "solo:X": { } } }'
+    $s = Get-DisplaySettings
+    Assert-Equal 'notepad.exe' (Get-ModeHook -Settings $s -ModeKey 'all' -Phase 'after') 'a bare string means after'
+    Assert-Equal '' (Get-ModeHook -Settings $s -ModeKey 'all' -Phase 'before') 'and only after'
+    Assert-Equal 'one.cmd' (Get-ModeHook -Settings $s -ModeKey 'combo:Work' -Phase 'before') 'before'
+    Assert-Equal 'two.cmd' (Get-ModeHook -Settings $s -ModeKey 'combo:Work' -Phase 'after') 'after'
+    Assert-Equal $false ($s.hooks.Contains('solo:X')) 'an empty pair is not kept at all'
+    Assert-Equal '' (Get-ModeHook -Settings $s -ModeKey 'nobody' -Phase 'after') 'a mode with no command'
+}
+
+Test-Case 'settings: brightness is either one number or one per display' {
+    Set-TestSettingsFile '{ "brightness": { "combo:Work": 80, "all": { "ULTRAFINE": 25, "XG27": 40 } },
+                            "contrast": { "combo:Work": 70 } }'
+    $s = Get-DisplaySettings
+    Assert-Equal 80 $s.brightness['combo:Work'] 'a number for the whole set'
+    Assert-Equal 25 $s.brightness['all']['ULTRAFINE'] 'and a dictionary when each differs'
+    Assert-Equal 70 $s.contrast['combo:Work'] 'contrast reads the same way'
+}
+
+Test-Case 'settings: a damaged file still gives working defaults for the new keys' {
+    Set-TestSettingsFile '{ "rules": [ { "when": '
+    $s = Get-DisplaySettings
+    Assert-Equal 0 @($s.rules).Count 'no rules'
+    Assert-Equal $true $s.reapply.onResume 'and the rest of the defaults are intact'
+}
+
+# --- переезд авто-игрового режима в правила -----------------------------------
+
+Write-Host ''
+Write-Host 'the auto game mode moving into rules' -ForegroundColor White
+
+Test-Case 'autoGame: an old settings file turns into a rule' {
+    Set-TestSettingsFile '{ "autoGame": { "enabled": true, "process": "cs2", "gameMode": "solo:XG27AQDMGR", "backMode": "combo:Work" } }'
+    $s = Get-DisplaySettings
+    Assert-Equal 1 @($s.rules).Count 'one rule'
+    Assert-Equal 'process' $s.rules[0].when 'as a process rule'
+    Assert-Equal 'cs2' $s.rules[0].process 'the process'
+    Assert-Equal 'solo:XG27AQDMGR' $s.rules[0].mode 'where it goes'
+    Assert-Equal 'combo:Work' $s.rules[0].back 'and where it comes back'
+    Assert-Equal $true $s.rules[0].enabled 'it was on, it stays on'
+    Assert-Equal '' $s.autoGame.process 'the old key is emptied'
+    Assert-True $script:LegacyAutoGameOnDisk 'the tray is told to rewrite the file'
+}
+
+Test-Case 'autoGame: an empty one is not turned into a rule at all' {
+    Set-TestSettingsFile '{ "autoGame": { "enabled": false, "process": "", "gameMode": "" } }'
+    $s = Get-DisplaySettings
+    Assert-Equal 0 @($s.rules).Count 'nothing to move, nothing invented'
+    Assert-Equal $false $script:LegacyAutoGameOnDisk 'and no pointless rewrite of the file'
+}
+
+Test-Case 'autoGame: the move happens once, not on every read' {
+    $s = Get-DefaultSettings
+    $s.autoGame.enabled = $true
+    $s.autoGame.process = 'cs2'
+    $s.autoGame.gameMode = 'all'
+    Assert-True (Convert-AutoGameToRules $s) 'moved'
+    Assert-Equal 1 @($s.rules).Count 'one rule'
+    # Второй вызов на уже переехавших настройках не должен плодить копии.
+    [void](Convert-AutoGameToRules $s)
+    Assert-Equal 1 @($s.rules).Count 'still one'
+}
+
+Test-Case 'autoGame: it keeps its seniority over rules written later' {
+    $s = Get-DefaultSettings
+    $s.rules = @([ordered]@{ when = 'idle'; minutes = 20; mode = 'solo:A'; back = ''; enabled = $true; process = '' })
+    $s.autoGame.enabled = $true
+    $s.autoGame.process = 'cs2'
+    $s.autoGame.gameMode = 'solo:B'
+    [void](Convert-AutoGameToRules $s)
+    Assert-Equal 'process' $s.rules[0].when 'the game rule goes first'
+    Assert-Equal 'idle' $s.rules[1].when 'the idle rule follows'
+}
+
+Test-Case 'roles: the move carries commands, levels and rules along' {
+    $s = Get-DefaultSettings
+    $s.roles = [ordered]@{ 'ULTRAFINE' = 'work'; 'ULTRAGEAR' = 'work' }
+    $s.hooks = [ordered]@{ 'role:work' = [ordered]@{ before = ''; after = 'x.cmd' } }
+    $s.brightness = [ordered]@{ 'role:work' = 80 }
+    $s.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'role:work'; back = 'role:work'; enabled = $true })
+    $s.reapply.onPlug = 'role:work'
+    Assert-True (Convert-RoleSettingsToCombos $s) 'moved'
+    Assert-True ($s.hooks.Contains('combo:Work')) 'the command moved with the combination'
+    Assert-True ($s.brightness.Contains('combo:Work')) 'so did the brightness'
+    Assert-Equal 'combo:Work' $s.rules[0].mode 'and the rule points at the new key'
+    Assert-Equal 'combo:Work' $s.rules[0].back 'both of its ends'
+    Assert-Equal 'combo:Work' $s.reapply.onPlug 'and so does "when a display appears"'
+}
+
+Test-Case 'hotkeys: a display on a new input takes its levels and commands with it' {
+    # Тот же случай, что и с клавишей: монитор переехал на другой вход, ключ
+    # режима сменился. Яркость обязана переехать вместе с ним, иначе одна
+    # настройка разъедется на две половины.
+    $s = Get-DefaultSettings
+    $s.hotkeys = [ordered]@{ 'solo:GSM5BB3' = 'Ctrl+Alt+F1' }
+    $s.brightness = [ordered]@{ 'solo:GSM5BB3' = 55 }
+    $s.hooks = [ordered]@{ 'solo:GSM5BB3' = [ordered]@{ before = ''; after = 'x.cmd' } }
+    $s.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'solo:GSM5BB3'; back = ''; enabled = $true })
+    $state = @((New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ultragear'))
+    [void](Update-HotkeyKeys $s $state)
+    Assert-True ($s.hotkeys.Contains('solo:LG ULTRAGEAR')) 'the shortcut moved'
+    Assert-True ($s.brightness.Contains('solo:LG ULTRAGEAR')) 'the brightness moved with it'
+    Assert-True ($s.hooks.Contains('solo:LG ULTRAGEAR')) 'the command too'
+    Assert-Equal 'solo:LG ULTRAGEAR' $s.rules[0].mode 'and the rule points at the display, still'
+}
+
+# --- команды вокруг переключения ---------------------------------------------
+
+Write-Host ''
+Write-Host 'the commands around a switch' -ForegroundColor White
+
+Test-Case 'hook: a plain command goes through cmd' {
+    $launch = Get-HookLaunch -Command 'taskkill /im slack.exe'
+    Assert-True ($launch.File -like '*cmd.exe') 'cmd.exe'
+    Assert-Equal '/c taskkill /im slack.exe' $launch.Arguments 'the command as written'
+}
+
+Test-Case 'hook: a .ps1 goes through powershell, with the policy bypassed' {
+    $launch = Get-HookLaunch -Command 'C:\tools\lights.ps1'
+    Assert-True ($launch.File -like '*powershell.exe') 'powershell'
+    Assert-True ($launch.Arguments -like '*-ExecutionPolicy Bypass*') 'own scripts must run without ceremony'
+    Assert-True ($launch.Arguments -like '*-File "C:\tools\lights.ps1"*') 'the script path is quoted'
+}
+
+Test-Case 'hook: a quoted path with spaces survives, and so do its arguments' {
+    $launch = Get-HookLaunch -Command '"C:\my tools\lights.ps1" -Room bedroom'
+    Assert-True ($launch.Arguments -like '*-File "C:\my tools\lights.ps1" -Room bedroom*') 'path and arguments both'
+}
+
+Test-Case 'hook: nothing to run means nothing is returned' {
+    Assert-Null (Get-HookLaunch -Command '') 'empty'
+    Assert-Null (Get-HookLaunch -Command '   ') 'spaces only'
+}
+
+# --- яркость -----------------------------------------------------------------
+
+Write-Host ''
+Write-Host 'brightness and contrast as part of a mode' -ForegroundColor White
+
+$script:LevelWanted = @(
+    (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
+    (New-FakeMonitor 'XG27AQDMGR'   'AUSAA1D')
+)
+
+Test-Case 'levels: one number goes to every display of the mode' {
+    $plan = Get-LevelPlan -Setting 80 -Wanted $script:LevelWanted
+    Assert-Equal 2 $plan.Count 'both displays'
+    Assert-Equal 80 $plan['LG ULTRAFINE'] 'the 4K panel'
+    Assert-Equal 80 $plan['XG27AQDMGR'] 'and the ASUS'
+}
+
+Test-Case 'levels: a dictionary matches displays by part of the name' {
+    $plan = Get-LevelPlan -Setting ([ordered]@{ 'ULTRAFINE' = 25 }) -Wanted $script:LevelWanted
+    Assert-Equal 1 $plan.Count 'only the one named'
+    Assert-Equal 25 $plan['LG ULTRAFINE'] 'found by a piece of its name'
+}
+
+Test-Case 'levels: a display named by its short id is found too' {
+    $plan = Get-LevelPlan -Setting ([ordered]@{ 'AUSAA1D' = 40 }) -Wanted $script:LevelWanted
+    Assert-Equal 40 $plan['XG27AQDMGR'] 'the short monitor id works as a name'
+}
+
+Test-Case 'levels: numbers outside 0..100 are clamped, not obeyed' {
+    # Опечатка в настройках не должна уводить монитор в чёрный.
+    $plan = Get-LevelPlan -Setting 500 -Wanted $script:LevelWanted
+    Assert-Equal 100 $plan['XG27AQDMGR'] 'above the range'
+    $plan = Get-LevelPlan -Setting -20 -Wanted $script:LevelWanted
+    Assert-Equal 0 $plan['XG27AQDMGR'] 'below the range'
+}
+
+Test-Case 'levels: zero is a legal brightness and is kept' {
+    $plan = Get-LevelPlan -Setting 0 -Wanted $script:LevelWanted
+    Assert-Equal 2 $plan.Count 'zero is a value, not a missing one'
+    Assert-Equal 0 $plan['LG ULTRAFINE'] 'and it is zero'
+}
+
+Test-Case 'levels: junk in the settings is ignored, not guessed at' {
+    $plan = Get-LevelPlan -Setting 'bright' -Wanted $script:LevelWanted
+    Assert-Equal 0 $plan.Count 'nothing to do'
+    $plan = Get-LevelPlan -Setting $null -Wanted $script:LevelWanted
+    Assert-Equal 0 $plan.Count 'nothing set at all'
+}
+
+# --- правила -----------------------------------------------------------------
+# Живьём это проверяется запуском игры и двадцатиминутным ожиданием, поэтому
+# решение отделено от исполнения и проверяется здесь целиком.
+
+Write-Host ''
+Write-Host 'rules' -ForegroundColor White
+
+function New-TestRule {
+    param([string]$When = 'process', [string]$Process = '', [int]$Minutes = 0,
+          [string]$Mode = 'solo:A', [string]$Back = '', [bool]$Enabled = $true)
+    return [ordered]@{ when = $When; process = $Process; minutes = $Minutes
+                       mode = $Mode; back = $Back; enabled = $Enabled }
+}
+
+function New-TestFacts {
+    param($Processes = @(), [int]$IdleSeconds = 0)
+    return [pscustomobject]@{ Processes = @($Processes); IdleSeconds = $IdleSeconds }
+}
+
+Test-Case 'rule match: a running process' {
+    $rule = New-TestRule -Process 'cs2'
+    Assert-True (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('chrome', 'cs2'))) 'running'
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('chrome'))) 'not running'
+}
+
+Test-Case 'rule match: the .exe people write out of habit is forgiven' {
+    $rule = New-TestRule -Process 'CS2.exe'
+    Assert-True (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('cs2'))) 'suffix and case both'
+}
+
+Test-Case 'rule match: a rule that is switched off never matches' {
+    $rule = New-TestRule -Process 'cs2' -Enabled $false
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('cs2'))) 'off is off'
+}
+
+Test-Case 'rule match: a rule without a mode is not a rule' {
+    $rule = New-TestRule -Process 'cs2' -Mode ''
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('cs2'))) 'nowhere to go'
+}
+
+Test-Case 'rule match: idle counts in minutes' {
+    $rule = New-TestRule -When 'idle' -Minutes 20
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @() 1199)) 'a second short'
+    Assert-True (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @() 1200)) 'exactly twenty minutes'
+}
+
+Test-Case 'rule match: idle without minutes is not a rule' {
+    $rule = New-TestRule -When 'idle' -Minutes 0
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @() 99999)) 'zero minutes would fire forever'
+}
+
+Test-Case 'rule match: a condition we do not know is refused, not assumed' {
+    $rule = New-TestRule -When 'fullmoon'
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts)) 'unknown means no'
+}
+
+Test-Case 'rule: the first matching rule wins' {
+    $rules = @((New-TestRule -Process 'chrome' -Mode 'solo:A'), (New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('chrome', 'cs2')) -CurrentMode 'all'
+    Assert-Equal 'switch' $d.Action 'switching'
+    Assert-Equal 'solo:A' $d.Mode 'to the first one'
+    Assert-Equal 0 $d.RuleIndex 'and it is remembered by number'
+    Assert-Equal 'all' $d.Back 'coming back to where we were'
+}
+
+Test-Case 'rule: an explicit "back" beats where we happened to be' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B' -Back 'combo:Work'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'all'
+    Assert-Equal 'combo:Work' $d.Back 'as written in the rule'
+}
+
+Test-Case 'rule: already in that mode means there is nothing to take over' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'solo:B'
+    Assert-Equal 'none' $d.Action 'nothing to do, and nothing to give back later'
+}
+
+Test-Case 'rule: no way back means we do not go' {
+    # Текущий набор экранов не совпал ни с одним режимом: уйти можно, вернуться
+    # некуда. Это тот случай, ради которого решение отделено от действия.
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode ''
+    Assert-Equal 'blocked' $d.Action 'refused'
+    Assert-True ($d.Reason -like '*no way back*') 'and it says why'
+}
+
+Test-Case 'rule: while the condition holds, nothing happens again' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'all'
+    Assert-Equal 'none' $d.Action 'the fifteen-second timer does not re-switch anything'
+}
+
+Test-Case 'rule: the condition ends and we go back' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('chrome')) -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'combo:Work'
+    Assert-Equal 'return' $d.Action 'going back'
+    Assert-Equal 'combo:Work' $d.Mode 'to where we came from'
+}
+
+Test-Case 'rule: switched by hand during the game means we let go' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
+    $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'all' -OwnedIndex 0 -OwnedBack 'combo:Work'
+    Assert-Equal 'release' $d.Action 'no war with the human'
+}
+
+Test-Case 'rule: a rule deleted while it held the desk still gives the desk back' {
+    $d = Get-RuleDecision -Rules @() -Facts (New-TestFacts) -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'combo:Work'
+    Assert-Equal 'return' $d.Action 'back'
+    Assert-Equal 'combo:Work' $d.Mode 'to where we came from'
+}
+
+Test-Case 'rule: no rules at all is a quiet no' {
+    $d = Get-RuleDecision -Rules @() -Facts (New-TestFacts @('cs2')) -CurrentMode 'all'
+    Assert-Equal 'none' $d.Action 'nothing'
+}
+
+Test-Case 'rule reason: reads like a sentence in the log' {
+    Assert-Equal 'cs2 is running' (Format-RuleReason (New-TestRule -Process 'cs2'))
+    Assert-Equal 'idle for 20 min' (Format-RuleReason (New-TestRule -When 'idle' -Minutes 20))
+}
+
+# --- мир изменился сам -------------------------------------------------------
+
+Write-Host ''
+Write-Host 'rebuilding the desk when the world changed' -ForegroundColor White
+
+Test-Case 'reapply: a display went away and the last mode is rebuilt' {
+    $r = (Get-DefaultSettings).reapply
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a', 'b') -Now @('a') -LastMode 'combo:Work'
+    Assert-Equal 'mode' $d.Action 'rebuilding'
+    Assert-Equal 'combo:Work' $d.Mode 'the last chosen mode'
+    Assert-True ($d.Reason -like '*went away*') 'and it says why'
+}
+
+Test-Case 'reapply: a display appeared and nothing happens unless asked' {
+    $r = (Get-DefaultSettings).reapply
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a') -Now @('a', 'b') -LastMode 'combo:Work'
+    Assert-Equal 'none' $d.Action 'turning off what the human just turned on would be a war'
+}
+
+Test-Case 'reapply: a display appeared and the named mode is applied' {
+    $r = (Get-DefaultSettings).reapply
+    $r.onPlug = 'all'
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a') -Now @('a', 'b') -LastMode 'combo:Work'
+    Assert-Equal 'mode' $d.Action 'applying'
+    Assert-Equal 'all' $d.Mode 'the mode named in the settings'
+}
+
+Test-Case 'reapply: our own switching never triggers it' {
+    # Наши переключения меняют ВКЛЮЧЁННЫЕ мониторы, а сравниваются подключённые:
+    # набор тот же — реакции нет. Без этого получался бы бесконечный круг.
+    $r = (Get-DefaultSettings).reapply
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a', 'b') -Now @('b', 'a') -LastMode 'combo:Work'
+    Assert-Equal 'none' $d.Action 'same set, different order'
+}
+
+Test-Case 'reapply: turned off in the settings means nothing happens' {
+    $r = (Get-DefaultSettings).reapply
+    $r.onUnplug = $false
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a', 'b') -Now @('a') -LastMode 'combo:Work'
+    Assert-Equal 'none' $d.Action 'his choice'
+}
+
+Test-Case 'reapply: nothing remembered means nothing to rebuild' {
+    $r = (Get-DefaultSettings).reapply
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a', 'b') -Now @('a') -LastMode ''
+    Assert-Equal 'none' $d.Action 'no last mode'
+}
+
+Test-Case 'reapply: the first look at the desk is not a change' {
+    $r = (Get-DefaultSettings).reapply
+    $r.onPlug = 'all'
+    $d = Get-ReapplyDecision -Reapply $r -Before @() -Now @('a', 'b') -LastMode 'combo:Work'
+    Assert-Equal 'none' $d.Action 'the tray just started - there is nothing to compare with'
+}
+
+Test-Case 'reapply: a cable swapped for another display prefers the plug rule' {
+    $r = (Get-DefaultSettings).reapply
+    $r.onPlug = 'all'
+    $d = Get-ReapplyDecision -Reapply $r -Before @('a') -Now @('b') -LastMode 'combo:Work'
+    Assert-Equal 'all' $d.Mode 'the new display is the news here'
+}
+
+# --- таймер выключения -------------------------------------------------------
+
+Write-Host ''
+Write-Host 'the shutdown timer' -ForegroundColor White
+
+Test-Case 'duration: plain minutes' {
+    Assert-Equal 30 (ConvertFrom-DurationText '30')
+    Assert-Equal 45 (ConvertFrom-DurationText ' 45 ')
+    Assert-Equal 90 (ConvertFrom-DurationText '90m')
+    Assert-Equal 90 (ConvertFrom-DurationText '90 min')
+}
+
+Test-Case 'duration: hours, with and without minutes' {
+    Assert-Equal 60 (ConvertFrom-DurationText '1h')
+    Assert-Equal 120 (ConvertFrom-DurationText '2 hours')
+    Assert-Equal 90 (ConvertFrom-DurationText '1h30')
+    Assert-Equal 90 (ConvertFrom-DurationText '1h 30m')
+    Assert-Equal 90 (ConvertFrom-DurationText '1:30')
+}
+
+Test-Case 'duration: what we do not understand is zero, not a guess' {
+    Assert-Equal 0 (ConvertFrom-DurationText 'soon')
+    Assert-Equal 0 (ConvertFrom-DurationText '')
+    Assert-Equal 0 (ConvertFrom-DurationText 'tomorrow at five')
+}
+
+Test-Case 'duration: reads back as a human would say it' {
+    Assert-Equal '30 s' (Format-Duration 30)
+    Assert-Equal '45 min' (Format-Duration 2700)
+    Assert-Equal '1 h 00 min' (Format-Duration 3600)
+    Assert-Equal '1 h 30 min' (Format-Duration 5400)
+    Assert-Equal '0 s' (Format-Duration -5)
+}
+
+# --- дневник -----------------------------------------------------------------
+
+Write-Host ''
+Write-Host 'the diary' -ForegroundColor White
+
+function New-TestDiary {
+    # Четыре дня подряд, по три занятия в день. Числа круглые нарочно: в отчёте
+    # должны сойтись и проценты, и средние.
+    $store = [ordered]@{ days = [ordered]@{} }
+    foreach ($offset in 0..3) {
+        $date = ([datetime]'2026-08-21').AddDays(-$offset).ToString('yyyy-MM-dd')
+        $day = Get-ActivityDay -Store $store -Date $date
+        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'combo:Work' -Seconds 3600 -Time '09:00' -Hour 9
+        Add-ActivitySpan -Day $day -Process 'Code' -Display 'LG ULTRAFINE' -Mode 'combo:Work' -Seconds 5400 -Time '13:00' -Hour 13
+        Add-ActivitySpan -Day $day -Process 'cs2' -Display 'XG27AQDMGR' -Mode 'solo:XG27AQDMGR' -Seconds 1800 -Time '21:00' -Hour 21
+        $day.switches = 7
+        $day.longest = 4200
+    }
+    return $store
+}
+
+Test-Case 'diary: a span lands in every bucket at once' {
+    $day = New-ActivityDay
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'all' -Seconds 60 -Time '10:15' -Hour 10
+    Assert-Equal 60 $day.active 'time at the computer'
+    Assert-Equal 60 $day.apps['chrome'] 'the app'
+    Assert-Equal 60 $day.displays['LG ULTRAGEAR'] 'the display'
+    Assert-Equal 60 $day.modes['all'] 'the mode'
+    Assert-Equal 60 $day.pairs['chrome|LG ULTRAGEAR'] 'and the pair of app and display'
+    Assert-Equal 60 $day.hours['10'] 'the hour of the day'
+    Assert-Equal '10:15' $day.first 'when the day started'
+}
+
+Test-Case 'diary: spans add up, and the first time stays the first' {
+    $day = New-ActivityDay
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 60 -Time '09:00' -Hour 9
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 30 -Time '17:40' -Hour 17
+    Assert-Equal 90 $day.apps['chrome'] 'summed'
+    Assert-Equal '09:00' $day.first 'the morning'
+    Assert-Equal '17:40' $day.last 'and the evening'
+}
+
+Test-Case 'diary: an empty span changes nothing' {
+    $day = New-ActivityDay
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 0 -Time '09:00' -Hour 9
+    Assert-Equal 0 $day.active 'nothing counted'
+    Assert-Equal '' $day.first 'and the day has not started'
+}
+
+Test-Case 'diary: a window on no known display still counts as time' {
+    # Монитор мог быть выдернут между замером и обновлением кэша.
+    $day = New-ActivityDay
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display '' -Mode 'all' -Seconds 60 -Hour 9
+    Assert-Equal 60 $day.active 'the time is real'
+    Assert-Equal 60 $day.apps['chrome'] 'and so is the app'
+    Assert-Equal 0 $day.pairs.Count 'but there is no pair to record'
+}
+
+Test-Case 'diary: the report adds the days up' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal 4 $rep.DaysRecorded 'four days'
+    Assert-Equal 43200 $rep.Active 'twelve hours in total'
+    Assert-Equal 10800 $rep.AverageDay 'three hours a day'
+    Assert-Equal 28 $rep.Switches 'seven switches a day'
+    Assert-Equal 4200 $rep.Longest 'the longest session of any day'
+    Assert-Equal '2026-08-18' $rep.From 'from'
+    Assert-Equal '2026-08-21' $rep.To 'to'
+}
+
+Test-Case 'diary: shares are of the time at the computer' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal 'Code' $rep.Apps[0].Name 'the app with the most time first'
+    Assert-Equal 50 $rep.Apps[0].Share 'half the time'
+    Assert-Equal 'LG ULTRAFINE' $rep.Displays[0].Name 'and the display with the most time'
+}
+
+Test-Case 'diary: the busiest hour is the tallest bar, and all 24 are there' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal 24 @($rep.Hours).Count 'a bar for every hour, empty ones included'
+    Assert-Equal 13 $rep.BusiestHour 'the afternoon'
+    Assert-Equal 100 (@($rep.Hours | Where-Object { $_.Name -eq '13' })[0].Share) 'the tallest bar is full height'
+}
+
+Test-Case 'diary: the usual day is the average of its ends' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal '09:00' $rep.AverageStart 'sat down'
+    Assert-Equal '21:00' $rep.AverageEnd 'got up'
+}
+
+Test-Case 'diary: days in a row stop at the first gap' {
+    $today = [datetime]'2026-08-21'
+    Assert-Equal 4 (Get-ActivityStreak -Dates @('2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21') -Today $today) 'four in a row'
+    Assert-Equal 2 (Get-ActivityStreak -Dates @('2026-08-18', '2026-08-20', '2026-08-21') -Today $today) 'a missed day ends the streak'
+    Assert-Equal 0 (Get-ActivityStreak -Dates @('2026-08-19') -Today $today) 'nothing today means no streak at all'
+}
+
+Test-Case 'diary: only the asked-for days are counted' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 2 -Today ([datetime]'2026-08-21')
+    Assert-Equal 2 $rep.DaysRecorded 'two days'
+    Assert-Equal 21600 $rep.Active 'and their time only'
+}
+
+Test-Case 'diary: an empty diary reads as empty, not as a crash' {
+    $rep = Get-ActivityReport -Store ([ordered]@{ days = [ordered]@{} }) -Days 30
+    Assert-Equal 0 $rep.DaysRecorded 'nothing recorded'
+    Assert-Equal 0 $rep.Active 'no time'
+    $lines = @(Format-ActivityReport -Report $rep)
+    Assert-Equal 1 $lines.Count 'one line of explanation'
+    Assert-True ($lines[0] -like '*Nothing in the diary yet*') 'and it says why'
+    # Совета «включите дневник» здесь быть не должно: с включённым дневником он
+    # был бы неправдой, а знает об этом только вызывающий.
+    Assert-Equal $false ($lines[0] -like '*Turn stats on*') 'and does not advise what it cannot know'
+}
+
+Test-Case 'diary: the report reads like a report' {
+    $text = (Format-ActivityReport -Report (Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21'))) -join "`n"
+    Assert-True ($text -like '*at the computer*12 h 00 min*') 'the total'
+    Assert-True ($text -like '*Code*6 h 00 min*') 'the top app with its time'
+    Assert-True ($text -like '*chrome on LG ULTRAGEAR*') 'and which display it was on'
+}
+
+Test-Case 'diary: time reads as hours and minutes' {
+    Assert-Equal '-' (Format-ActivitySpan 0)
+    Assert-Equal '30 min' (Format-ActivitySpan 1800)
+    Assert-Equal '2 h 00 min' (Format-ActivitySpan 7200)
+    Assert-Equal '1 h 01 min' (Format-ActivitySpan 3660)
+}
+
+Test-Case 'diary: what is written is what comes back' {
+    $script:ActivityFile = Join-Path $script:TestDir 'activity.json'
+    $script:ActivityStore = New-TestDiary
+    $script:ActivityDirty = $true
+    Save-ActivityStore
+    $script:ActivityStore = $null
+    $back = Get-ActivityStore
+    Assert-Equal 4 @($back.days.Keys).Count 'four days came back'
+    $rep = Get-ActivityReport -Store $back -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal 43200 $rep.Active 'with their time'
+    Assert-Equal 28 $rep.Switches 'and their switches'
+    Assert-Equal 'Code' $rep.Apps[0].Name 'and their apps'
+}
+
+Test-Case 'diary: a damaged file is a new diary, not a crash' {
+    $script:ActivityFile = Join-Path $script:TestDir 'activity-bad.json'
+    'not json at all' | Set-Content -Path $script:ActivityFile -Encoding UTF8
+    $script:ActivityStore = $null
+    $store = Get-ActivityStore
+    Assert-Equal 0 @($store.days.Keys).Count 'empty and working'
+}
+
+Test-Case 'diary: a day written by an older version reads without its missing parts' {
+    $raw = '{"active":600,"apps":{"chrome":600}}' | ConvertFrom-Json
+    $day = ConvertTo-ActivityDay $raw
+    Assert-Equal 600 $day.active 'what was there'
+    Assert-Equal 600 $day.apps['chrome'] 'and what it held'
+    Assert-Equal 0 $day.pairs.Count 'what was not there is empty, not missing'
+    Assert-Equal 0 $day.switches 'and numbers are zero'
+}
+
+Test-Case 'diary: the page cannot be broken by a monitor name' {
+    # Название монитора приходит из EDID, а туда производитель пишет что угодно.
+    $store = [ordered]@{ days = [ordered]@{} }
+    $day = Get-ActivityDay -Store $store -Date '2026-08-21'
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display '<script>bad</script>' -Mode 'all' -Seconds 60 -Hour 9
+    $html = New-ActivityHtml -Report (Get-ActivityReport -Store $store -Days 30 -Today ([datetime]'2026-08-21'))
+    Assert-True ($html -like '*&lt;script&gt;bad&lt;/script&gt;*') 'escaped'
+    Assert-Equal $false ($html -like '*<script>bad*') 'and not left as markup'
+}
+
+Test-Case 'diary: the page holds the numbers and calls nobody' {
+    $html = New-ActivityHtml -Report (Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21'))
+    Assert-True ($html -like '*12 h 00 min*') 'the total is there'
+    Assert-True ($html -like '*LG ULTRAFINE*') 'and the displays'
+    # Обещание проекта: ничего не устанавливается и никто не зовётся в гости.
+    Assert-Equal $false ($html -like '*http://*') 'no outside links'
+    Assert-Equal $false ($html -like '*https://*') 'none at all'
+}
+
+# --- окно настроек: новое ------------------------------------------------------
+
+Write-Host ''
+Write-Host 'the settings window, the new parts' -ForegroundColor White
+
+Test-Case 'dialog: the diary toggle goes both ways' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal $false ([bool]$ui.StatsBox.IsChecked) 'off, as it is in the settings'
+        $ui.StatsBox.IsChecked = $true
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        Assert-True $got.Settings.stats 'turning it on is saved'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: commands and levels survive a save like everything else' {
+    $settings = Get-DefaultSettings
+    $settings.hooks['all'] = [ordered]@{ before = ''; after = 'notepad.exe' }
+    $settings.brightness['all'] = 80
+    $settings.contrast['all'] = 70
+    $settings.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'all'; back = ''; enabled = $true })
+    $settings.reapply.onPlug = 'all'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 'notepad.exe' $updated.hooks['all'].after 'the command'
+        Assert-Equal 80 $updated.brightness['all'] 'the brightness'
+        Assert-Equal 70 $updated.contrast['all'] 'the contrast'
+        Assert-Equal 'cs2' $updated.rules[0].process 'the rule'
+        Assert-Equal 'all' $updated.reapply.onPlug 'and what to do when a display appears'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: renaming a combination carries its command and brightness' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.hooks['combo:Work'] = [ordered]@{ before = ''; after = 'x.cmd' }
+    $settings.brightness['combo:Work'] = 55
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.Combos[0].Name = 'Office'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-True ($updated.hooks.Contains('combo:Office')) 'the command followed the new name'
+        Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'and left no ghost behind'
+        Assert-Equal 55 $updated.brightness['combo:Office'] 'so did the brightness'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: removing a combination takes its command and brightness along' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.hooks['combo:Work'] = [ordered]@{ before = ''; after = 'x.cmd' }
+    $settings.brightness['combo:Work'] = 55
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'no command left for a mode that is gone'
+        Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and no brightness either'
+    }
+    finally { $ui.Window.Close() }
+}
+
+# --- предпросмотр стола --------------------------------------------------------
+# Картинка считается той же функцией, которой считает переключатель
+# (Get-LayoutPositions), поэтому проверять надо ровно одно: что в неё попадает.
+
+Write-Host ''
+Write-Host 'the desk preview' -ForegroundColor White
+
+Test-Case 'preview: pixel sizes come from the cards' {
+    $cards = @(
+        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
+        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $true }
+    )
+    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
+    Assert-Equal 2 $screens.Count 'both'
+    Assert-Equal 3840 $screens[0].Width 'the 4K panel'
+    Assert-Equal 1440 $screens[1].Height 'and the 1440p one'
+    Assert-True $screens[1].Primary 'the taskbar star came through'
+}
+
+Test-Case 'preview: a display of unknown size still takes its place in the row' {
+    # Карточка-памятка от выдернутого монитора: размера у неё нет, но место в
+    # ряду она занимает — иначе предпросмотр показывал бы не тот стол.
+    $cards = @([pscustomobject]@{ Label = 'XG27AQDMGR'; Width = 0; Height = 0; Connected = $false; Primary = $false })
+    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
+    Assert-Equal 1 $screens.Count 'still there'
+    Assert-Equal 1920 $screens[0].Width 'a plain 16:9 stands in'
+    Assert-Equal 1080 $screens[0].Height 'both ways'
+}
+
+Test-Case 'preview: what it draws is what the switcher will do' {
+    # Экраны разной высоты выравниваются по центру, и именно это должно быть
+    # видно на картинке: 2160 и 1440 дают отступ (2160-1440)/2 = 360.
+    $cards = @(
+        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $true }
+        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $false }
+    )
+    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
+    Assert-Equal 0 $pos['preview-0'].X 'the first sits at zero'
+    Assert-Equal 3840 $pos['preview-1'].X 'the second right after it'
+    Assert-Equal 360 $pos['preview-1'].Y 'and lower by half the difference in height'
+}
+
+Test-Case 'preview: the cards decide the order, not the alphabet' {
+    # Регрессия: с пустым Order у всех экранов одинаковый ранг, и раскладка
+    # сортировалась по названию. Картинка показывала ULTRAFINE, ULTRAGEAR,
+    # XG27AQDMGR, а карточки стояли ULTRAFINE, XG27AQDMGR, ULTRAGEAR — то есть
+    # предпросмотр обещал не тот стол, который получится.
+    $cards = @(
+        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
+        [pscustomobject]@{ Label = 'XG27AQDMGR';   Width = 2560; Height = 1440; Connected = $true; Primary = $true }
+        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $false }
+    )
+    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
+    Assert-True ($pos['preview-0'].X -lt $pos['preview-1'].X) 'the first card is left of the second'
+    Assert-True ($pos['preview-1'].X -lt $pos['preview-2'].X) 'and the second is left of the third'
+}
+
+Test-Case 'preview: the taskbar display is where the coordinates start' {
+    # Основным Windows делает того, чей левый верхний угол лежит в (0,0) — и
+    # картинка обязана показывать это так же, иначе она рисует чужую раскладку.
+    $cards = @(
+        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
+        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $true }
+    )
+    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
+    Assert-Equal 0 $pos['preview-1'].X 'the taskbar display sits at zero'
+    Assert-Equal 0 $pos['preview-1'].Y 'both ways'
+    Assert-Equal -3840 $pos['preview-0'].X 'and the other one is to the left of it'
+}
+
+# --- карточка яркости ----------------------------------------------------------
+# Две формы записи (число и словарь) окно обязано уметь и НЕ превращать одну в
+# другую само: развернув число по мониторам, которые сейчас на столе, оно
+# потеряло бы яркость выдернутого и изменило бы смысл «all» для монитора,
+# который появится завтра.
+
+Write-Host ''
+Write-Host 'the brightness card' -ForegroundColor White
+
+Test-Case 'level model: nothing set reads as "leave it alone"' {
+    $m = ConvertTo-LevelModel $null
+    Assert-Equal 'none' $m.Kind 'nothing to do'
+    Assert-Null (ConvertFrom-LevelModel $m) 'and nothing is written back'
+}
+
+Test-Case 'level model: a number is one level for the whole mode' {
+    $m = ConvertTo-LevelModel 80
+    Assert-Equal 'one' $m.Kind 'one level'
+    Assert-Equal 80 $m.Value 'as written'
+    Assert-Equal 80 (ConvertFrom-LevelModel $m) 'and it goes back as a number, not as a dictionary'
+}
+
+Test-Case 'level model: a dictionary is a level for each display' {
+    $m = ConvertTo-LevelModel ([ordered]@{ 'ULTRAFINE' = 25; 'XG27' = 40 })
+    Assert-Equal 'each' $m.Kind 'each display'
+    Assert-Equal 25 $m.Map['ULTRAFINE'] 'the first'
+    Assert-Equal 40 $m.Map['XG27'] 'the second'
+    $back = ConvertFrom-LevelModel $m
+    Assert-Equal 25 $back['ULTRAFINE'] 'and it comes back the same way'
+    Assert-Equal @('ULTRAFINE', 'XG27') @($back.Keys) 'in the same order'
+}
+
+Test-Case 'level model: numbers outside 0..100 are clamped on the way in' {
+    Assert-Equal 100 (ConvertTo-LevelModel 500).Value 'above'
+    Assert-Equal 0 (ConvertTo-LevelModel -7).Value 'below'
+    Assert-Equal 100 (ConvertTo-LevelModel ([ordered]@{ 'A' = 900 })).Map['A'] 'in a dictionary too'
+}
+
+Test-Case 'level model: junk is not a setting' {
+    $m = ConvertTo-LevelModel 'bright'
+    Assert-Equal 'none' $m.Kind 'unreadable means nothing set'
+    Assert-Equal 'none' (ConvertTo-LevelModel ([ordered]@{})).Kind 'an empty dictionary is nothing set'
+}
+
+Test-Case 'level model: an empty per-display map writes no key at all' {
+    $m = ConvertTo-LevelModel ([ordered]@{ 'A' = 50 })
+    $m.Map.Remove('A')
+    Assert-Null (ConvertFrom-LevelModel $m) 'unticking the last display removes the setting'
+}
+
+Test-Case 'level settings: modes without brightness stay out of the file' {
+    $levels = [ordered]@{
+        'all'        = (ConvertTo-LevelModel 80)
+        'combo:Work' = (ConvertTo-LevelModel $null)
+    }
+    $out = ConvertTo-BrightnessSettings -Levels $levels
+    Assert-Equal 1 $out.Count 'only the one that has a level'
+    Assert-Equal 80 $out['all'] 'and it is the number as written'
+}
+
+Test-Case 'level rows: "all displays" lists what is connected' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map ([ordered]@{}))
+        Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') $names 'both connected displays'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'level rows: a combination lists its displays by their real names' {
+    $settings = Get-DefaultSettings
+    # В файле шаблон, а в строке должно стоять полное название монитора: обе
+    # записи совпадают, но точнее — то, что видит человек.
+    $settings.combos['Work'] = [ordered]@{ displays = @('ULTRAFINE'); primary = '' }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'combo:Work' -Map ([ordered]@{}))
+        Assert-Equal @('LG ULTRAFINE') $names 'resolved to the display name'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'level rows: a level for a display that is gone is still shown' {
+    # Иначе такую настройку нельзя ни увидеть, ни снять — тем же правилом живут
+    # привязки клавиш к отсутствующим мониторам.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map ([ordered]@{ 'XG27AQDMGR' = 40 }))
+        Assert-True ($names -contains 'XG27AQDMGR') 'the orphan row is there'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the brightness card offers every mode' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $keys = @($ui.LevelModeBox.Items | ForEach-Object { [string]$_.Tag })
+        Assert-True ($keys -contains 'all') 'all displays'
+        Assert-True ($keys -contains 'combo:Work') 'the combination'
+        Assert-True ($keys -contains 'solo:LG ULTRAGEAR') 'and each display on its own'
+        Assert-Equal 3 $ui.LevelKindBox.Items.Count 'leave alone / one level / each display'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a brightness set for a mode that no longer exists is still listed' {
+    $settings = Get-DefaultSettings
+    $settings.brightness['solo:GONE MONITOR'] = 55
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $keys = @($ui.LevelModeBox.Items | ForEach-Object { [string]$_.Tag })
+        Assert-True ($keys -contains 'solo:GONE MONITOR') 'visible, so it can be cleared'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 55 $updated.brightness['solo:GONE MONITOR'] 'and untouched by a plain Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a hand-written number survives a Save untouched' {
+    # Регрессия, которую здесь и стерегут: разворачивать число в словарь по
+    # текущим мониторам нельзя — «all: 80» относится и к тому монитору, который
+    # воткнут не сейчас.
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = 80
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 80 $updated.brightness['all'] 'still a number'
+        Assert-Equal $false ($updated.brightness['all'] -is [System.Collections.IDictionary]) 'and not a dictionary'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: moving the one-level slider is what gets saved' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        # Как это делает человек: выбрать режим, выбрать форму, подвинуть ползунок.
+        $ui.LevelModeBox.SelectedIndex = 0
+        $key = [string]$ui.LevelModeBox.SelectedItem.Tag
+        $model = Get-SelectedLevelModel -Ui $ui
+        $model.Kind = 'one'
+        $model.Value = 35
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 35 $updated.brightness[$key] 'the level landed in the settings'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: unticking every display removes the setting instead of writing zeros' {
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60 }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.Levels['all'].Map.Remove('LG ULTRAGEAR')
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal $false ($updated.brightness.Contains('all')) 'the key is gone, not zeroed'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: switching a mode to per-display seeds it from the level it had' {
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = 70
+    $ui = New-DialogUi -Settings $settings
+    try {
+        # То, что делает выпадающий список «Then...»: человек видел 70 и должен
+        # править от семидесяти, а не от пустого списка.
+        $model = $ui.Levels['all']
+        Assert-Equal 'one' $model.Kind 'started as one level'
+        foreach ($name in @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map $model.Map)) {
+            $model.Map[$name] = [int]$model.Value
+        }
+        $model.Kind = 'each'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 70 $updated.brightness['all']['LG ULTRAGEAR'] 'seeded with what was shown'
+        Assert-Equal 70 $updated.brightness['all']['LG ULTRAFINE'] 'for every display of the mode'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the per-display rows are really built' {
+    # Тест на построение, а не на модель: первая версия строк звала
+    # [GridLength]::Parse, которого не существует, и переход на «каждому своё»
+    # падал в живом окне. Модель при этом была в полном порядке — поймал снимок
+    # окна, а не тест, поэтому теперь строки строятся здесь.
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        foreach ($item in @($ui.LevelModeBox.Items)) {
+            if ([string]$item.Tag -eq 'all') { $ui.LevelModeBox.SelectedItem = $item; break }
+        }
+        Update-LevelCard -Ui $ui
+        Assert-Equal 'Collapsed' ([string]$ui.LevelOnePanel.Visibility) 'the single slider is out of the way'
+        Assert-Equal 2 $ui.LevelRowsPanel.Children.Count 'a row per display'
+        # Первый столбец строки — галочка «задано», она же подписана названием.
+        $first = $ui.LevelRowsPanel.Children[0]
+        Assert-Equal 'LG ULTRAGEAR' ([string]$first.Children[0].Content) 'named after the display'
+        Assert-True ([bool]$first.Children[0].IsChecked) 'ticked, because a level is set'
+        Assert-Equal 60 ([int]$first.Children[1].Value) 'and the slider stands where the setting says'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a display with no level gets an unticked, disabled row' {
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60 }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        foreach ($item in @($ui.LevelModeBox.Items)) {
+            if ([string]$item.Tag -eq 'all') { $ui.LevelModeBox.SelectedItem = $item; break }
+        }
+        Update-LevelCard -Ui $ui
+        $rows = @($ui.LevelRowsPanel.Children)
+        $off = @($rows | Where-Object { [string]$_.Children[0].Content -eq 'LG ULTRAFINE' })
+        Assert-Equal 1 $off.Count 'the display without a level still has a row'
+        Assert-Equal $false ([bool]$off[0].Children[0].IsChecked) 'unticked'
+        Assert-Equal $false ([bool]$off[0].Children[1].IsEnabled) 'and its slider is out of action'
+        Assert-Equal 'off' ([string]$off[0].Children[2].Text) 'and it says off, not zero'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: renaming a combination carries the sliders too' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.brightness['combo:Work'] = 45
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.Combos[0].Name = 'Office'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 45 $updated.brightness['combo:Office'] 'followed the new name'
+        Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and left no ghost'
+    }
+    finally { $ui.Window.Close() }
 }
 
 # --- итог --------------------------------------------------------------------

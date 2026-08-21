@@ -128,8 +128,10 @@ function Get-DefaultSettings {
         # Windows поднимает свой набор экранов, а не тот, что был выбран перед
         # выключением (см. Save-LastMode и Invoke-StartupRestore).
         restoreLastMode = $true
-        # Автоматический игровой режим. Своего элемента в окне настроек нет
-        # намеренно: настройка редкая и правится руками в settings.json.
+        # УСТАРЕЛО, читается только ради переезда: автоматический игровой режим
+        # умел ровно одно правило — «запустился процесс, уйди в режим, закрылся,
+        # вернись». Теперь это первый элемент rules (Convert-AutoGameToRules),
+        # ключ остаётся, чтобы старый settings.json продолжал работать.
         #   enabled   включить слежение;
         #   process   имя процесса БЕЗ .exe, как его показывает Get-Process (cs2);
         #   gameMode  ключ режима, в который уходить (см. Set-Display.ps1 modes);
@@ -140,6 +142,55 @@ function Get-DefaultSettings {
             gameMode = ''
             backMode = ''
         }
+        # Правила: «случилось это — стань таким». То же, что делал autoGame, но
+        # условий больше одного и правил может быть сколько угодно. Проверяются
+        # по порядку, первое подходящее выигрывает; пока правило «владеет»
+        # столом, остальные молчат (см. Get-RuleDecision).
+        #   "rules": [
+        #       { "when": "process", "process": "cs2", "mode": "solo:XG27AQDMGR" },
+        #       { "when": "idle", "minutes": 20, "mode": "solo:LG ULTRAGEAR" }
+        #   ]
+        # when     process — процесс запущен; idle — за компьютером не работают
+        #          minutes минут;
+        # mode     ключ режима, в который уходить;
+        # back     куда возвращаться, когда условие кончилось; пусто — туда, где
+        #          стол был до срабатывания;
+        # enabled  false выключает правило, не удаляя его.
+        rules           = @()
+        # Мир изменился сам — собрать стол заново. Windows после выхода из сна и
+        # после переподключения монитора расставляет экраны по своему усмотрению:
+        # раскладка разъезжается, панель задач уезжает, частота падает.
+        #   onResume  выход из сна: вернуть последний выбранный режим;
+        #   onUnplug  монитор пропал: перестроить то, что осталось;
+        #   onPlug    монитор появился: ключ режима, в который уйти. Пусто —
+        #             ничего не делать. Пустое по умолчанию намеренно: гасить
+        #             монитор, который человек только что включил кнопкой, —
+        #             это война с человеком, и решение тут за ним.
+        reapply         = [ordered]@{
+            onResume = $true
+            onUnplug = $true
+            onPlug   = ''
+        }
+        # Команда, которую надо выполнить вокруг переключения: ключ режима ->
+        # { before, after }. Строка вместо объекта означает after — так короче, а
+        # нужен чаще именно он.
+        #   "hooks": { "combo:Movie night": { "after": "taskkill /im slack.exe" } }
+        # Команду запускают и НЕ ждут: переключение стола не должно зависеть от
+        # чужой программы. Путь на .ps1 запускается через powershell, всё
+        # остальное — через cmd /c (см. Get-HookLaunch).
+        hooks           = [ordered]@{}
+        # Яркость и контраст как часть режима: ключ режима -> число 0..100 для
+        # всех мониторов набора, либо { кусок названия -> число } для каждого
+        # своё. Идёт по DDC/CI — тому же каналу в кабеле, по которому работают
+        # кнопки на корпусе монитора (см. Set-MonitorLevels).
+        #   "brightness": { "combo:Work": 80, "all": { "ULTRAFINE": 25 } }
+        brightness      = [ordered]@{}
+        contrast        = [ordered]@{}
+        # Дневник: какое приложение, на каком мониторе и в каком режиме сколько
+        # времени. Хранится рядом со скриптами в activity.json, никуда не
+        # уходит, названия окон НЕ пишутся — только имя процесса. Выключено по
+        # умолчанию: это данные о человеке, и включать их за него нельзя.
+        stats           = $false
         # Звук следом за режимом: ключ режима -> кусок названия устройства вывода.
         # Пустой словарь = выключено. Тоже правится руками:
         #   "audio": { "solo:XG27AQDMGR": "ROG", "role:work": "ULTRAFINE" }
@@ -199,6 +250,61 @@ function Get-DisplaySettings {
                 if ($null -ne $raw.autoGame.gameMode) { $s.autoGame.gameMode = [string]$raw.autoGame.gameMode }
                 if ($null -ne $raw.autoGame.backMode) { $s.autoGame.backMode = [string]$raw.autoGame.backMode }
             }
+            if ($null -ne $raw.stats) { $s.stats = [bool]$raw.stats }
+            if ($raw.reapply) {
+                if ($null -ne $raw.reapply.onResume) { $s.reapply.onResume = [bool]$raw.reapply.onResume }
+                if ($null -ne $raw.reapply.onUnplug) { $s.reapply.onUnplug = [bool]$raw.reapply.onUnplug }
+                if ($null -ne $raw.reapply.onPlug)   { $s.reapply.onPlug   = [string]$raw.reapply.onPlug }
+            }
+            if ($raw.rules) {
+                # Приводим к одной форме здесь, на чтении: дальше правила читает
+                # таймер трея каждые 15 секунд, и разбираться с полем, которого
+                # в файле может не быть, там уже нельзя.
+                $s.rules = @(foreach ($r in @($raw.rules)) {
+                    if (-not $r) { continue }
+                    $when = [string]$r.when
+                    if (-not $when) { $when = 'process' }
+                    [ordered]@{
+                        when    = $when.ToLowerInvariant()
+                        process = [string]$r.process
+                        minutes = $(if ($null -ne $r.minutes) { [int]$r.minutes } else { 0 })
+                        mode    = [string]$r.mode
+                        back    = [string]$r.back
+                        enabled = $(if ($null -ne $r.enabled) { [bool]$r.enabled } else { $true })
+                    }
+                })
+            }
+            if ($raw.hooks) {
+                foreach ($p in $raw.hooks.PSObject.Properties) {
+                    if (-not $p.Name) { continue }
+                    $before = ''; $after = ''
+                    # Строкой пишут то, что нужно чаще: команду ПОСЛЕ переключения.
+                    if ($p.Value -is [string]) { $after = [string]$p.Value }
+                    elseif ($p.Value) {
+                        if ($null -ne $p.Value.before) { $before = [string]$p.Value.before }
+                        if ($null -ne $p.Value.after)  { $after  = [string]$p.Value.after }
+                    }
+                    if (-not $before -and -not $after) { continue }
+                    $s.hooks[$p.Name] = [ordered]@{ before = $before; after = $after }
+                }
+            }
+            foreach ($key in @('brightness', 'contrast')) {
+                if (-not $raw.$key) { continue }
+                foreach ($p in $raw.$key.PSObject.Properties) {
+                    if (-not $p.Name) { continue }
+                    # Число — всем мониторам режима поровну; объект — каждому своё.
+                    if ($p.Value -is [string] -or $p.Value -is [int] -or $p.Value -is [double] -or $p.Value -is [long]) {
+                        $s.$key[$p.Name] = [int]$p.Value
+                    }
+                    elseif ($p.Value) {
+                        $per = [ordered]@{}
+                        foreach ($d in $p.Value.PSObject.Properties) {
+                            if ($d.Name) { $per[$d.Name] = [int]$d.Value }
+                        }
+                        if ($per.Count -gt 0) { $s.$key[$p.Name] = $per }
+                    }
+                }
+            }
         }
         catch {
             Write-DisplayLog "settings: file is damaged, falling back to defaults - $($_.Exception.Message)"
@@ -220,12 +326,20 @@ function Get-DisplaySettings {
     # одновременно. Файл приберёт трей при следующем запуске, по этому флагу.
     $script:LegacyRolesOnDisk = Convert-RoleSettingsToCombos $s
 
+    # Ровно так же, как роли, переезжает и автоматический игровой режим: одно
+    # правило «процесс -> режим» — это первый элемент rules, и весь остальной код
+    # знает только правила.
+    $script:LegacyAutoGameOnDisk = Convert-AutoGameToRules $s
+
     return $s
 }
 
 # Признак того, что в settings.json ещё лежат роли. Ставится на каждом чтении;
 # читает его трей, чтобы один раз перезаписать файл (см. Displays.ps1).
 $script:LegacyRolesOnDisk = $false
+
+# То же для автоматического игрового режима, переехавшего в rules.
+$script:LegacyAutoGameOnDisk = $false
 
 function Save-DisplaySettings {
     param($Settings)
@@ -798,6 +912,307 @@ public class NativeForeground {
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+}
+
+// Яркость и контраст — по DDC/CI, служебному каналу внутри кабеля. Это тот же
+// путь, по которому работают кнопки на корпусе монитора, и другого способа нет:
+// у внешнего монитора яркость живёт в его прошивке, а не в Windows (WMI-класс
+// WmiMonitorBrightnessMethods отвечает только на встроенных экранах ноутбуков).
+//
+// Дескриптор физического монитора берётся от HMONITOR, а тот приходит из обхода
+// EnumDisplayMonitors. Связываем с нашим состоянием по имени выхода (\\.\DISPLAY1)
+// из MONITORINFOEX: описание («Generic PnP Monitor») не годится — оно одинаковое
+// у всех трёх мониторов на этой машине.
+//
+// ВАЖНО про скорость: один запрос по DDC стоит десятки миллисекунд, а иногда и
+// больше сотни — шина медленная. Поэтому читаем всё разом одним обходом, а пишем
+// только то, что просили, и только тем мониторам, которые сейчас включены:
+// спящий монитор на запрос не отвечает вообще, и ждать его нечего.
+public class MonitorLevels {
+    public string Device;
+    public string Description;
+    public bool CanBrightness;
+    public bool CanContrast;
+    public int Brightness, BrightnessMin, BrightnessMax;
+    public int Contrast, ContrastMin, ContrastMax;
+}
+
+public class NativeDdc {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX {
+        public int cbSize;
+        public int mLeft, mTop, mRight, mBottom;
+        public int wLeft, wTop, wRight, wBottom;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct PHYSICAL_MONITOR {
+        public IntPtr handle;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string description;
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, IntPtr rect, IntPtr data);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr rect, MonitorEnumProc proc, IntPtr data);
+
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfoEx(IntPtr hMonitor, ref MONITORINFOEX info);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint count);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint count, [Out] PHYSICAL_MONITOR[] monitors);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool GetMonitorBrightness(IntPtr h, out uint min, out uint current, out uint max);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool SetMonitorBrightness(IntPtr h, uint value);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool GetMonitorContrast(IntPtr h, out uint min, out uint current, out uint max);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool SetMonitorContrast(IntPtr h, uint value);
+
+    [DllImport("dxva2.dll")]
+    private static extern bool DestroyPhysicalMonitor(IntPtr h);
+
+    // Имя выхода -> дескрипторы его физических мониторов. Их может быть больше
+    // одного: HMONITOR — это область рабочего стола, и в режиме дублирования за
+    // ней стоят два настоящих монитора.
+    private static List<KeyValuePair<string, PHYSICAL_MONITOR>> Open() {
+        var found = new List<KeyValuePair<string, PHYSICAL_MONITOR>>();
+        var screens = new List<IntPtr>();
+        MonitorEnumProc collect = delegate(IntPtr h, IntPtr hdc, IntPtr rect, IntPtr data) {
+            screens.Add(h); return true;
+        };
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, collect, IntPtr.Zero);
+
+        foreach (IntPtr screen in screens) {
+            var info = new MONITORINFOEX();
+            info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+            if (!GetMonitorInfoEx(screen, ref info)) { continue; }
+
+            uint count;
+            if (!GetNumberOfPhysicalMonitorsFromHMONITOR(screen, out count) || count == 0) { continue; }
+            var physical = new PHYSICAL_MONITOR[count];
+            if (!GetPhysicalMonitorsFromHMONITOR(screen, count, physical)) { continue; }
+            foreach (PHYSICAL_MONITOR p in physical) {
+                found.Add(new KeyValuePair<string, PHYSICAL_MONITOR>(info.szDevice, p));
+            }
+        }
+        return found;
+    }
+
+    // Одна неудача на этой шине — норма, а не ответ. I2C внутри кабеля не
+    // рассчитан на надёжность: монитор отвечает с задержкой, путает контрольную
+    // сумму (0xC0262589 — «неверная команда в сообщении»), молчит, если занят
+    // своим меню. Проверено на этой машине: тот же вызов к тому же монитору то
+    // проходит, то нет. Поэтому три попытки с паузой — часть работы, а не
+    // перестраховка; последняя ошибка остаётся в GetLastWin32Error для журнала.
+    private const int Tries = 3;
+    private const int PauseMs = 60;
+
+    public static int LastError;
+
+    private static bool WithRetry(Func<bool> call) {
+        for (int i = 0; i < Tries; i++) {
+            if (call()) { return true; }
+            LastError = Marshal.GetLastWin32Error();
+            if (i + 1 < Tries) { System.Threading.Thread.Sleep(PauseMs); }
+        }
+        return false;
+    }
+
+    public static List<MonitorLevels> Read() {
+        var result = new List<MonitorLevels>();
+        foreach (var pair in Open()) {
+            var level = new MonitorLevels();
+            level.Device = pair.Key;
+            level.Description = pair.Value.description;
+            IntPtr handle = pair.Value.handle;
+
+            uint bMin = 0, bCur = 0, bMax = 0;
+            if (WithRetry(delegate { return GetMonitorBrightness(handle, out bMin, out bCur, out bMax); })) {
+                level.CanBrightness = true;
+                level.BrightnessMin = (int)bMin; level.Brightness = (int)bCur; level.BrightnessMax = (int)bMax;
+            }
+            uint cMin = 0, cCur = 0, cMax = 0;
+            if (WithRetry(delegate { return GetMonitorContrast(handle, out cMin, out cCur, out cMax); })) {
+                level.CanContrast = true;
+                level.ContrastMin = (int)cMin; level.Contrast = (int)cCur; level.ContrastMax = (int)cMax;
+            }
+            DestroyPhysicalMonitor(handle);
+            result.Add(level);
+        }
+        return result;
+    }
+
+    // Результат установки. Три состояния, а не два, потому что их действительно
+    // три: получилось, отказано и «сказали, но подтверждения нет».
+    public class Applied {
+        public bool Found;
+        public bool BrightnessAsked, BrightnessConfirmed;
+        public bool ContrastAsked, ContrastConfirmed;
+    }
+
+    // Записи по DDC/CI ОТВЕТА НЕ ТРЕБУЮТ: SetMonitorBrightness вернул true для
+    // монитора, который на чтение той же яркости отвечает отказом (проверено
+    // 21 августа на LG UltraGear с зависшей шиной). То есть код возврата здесь
+    // означает «сообщение ушло», а не «монитор послушался», и верить ему нельзя:
+    // журнал этого проекта существует именно потому, что чужие переключалки врали
+    // об успехе. Поэтому каждое значение читается обратно и сравнивается.
+    public static Applied Set(string device, int brightness, int contrast) {
+        var result = new Applied();
+        foreach (var pair in Open()) {
+            IntPtr handle = pair.Value.handle;
+            if (pair.Key == device && !result.Found) {
+                result.Found = true;
+                if (brightness >= 0) {
+                    int want = brightness;
+                    result.BrightnessAsked = WithRetry(delegate { return SetMonitorBrightness(handle, (uint)want); });
+                }
+                if (contrast >= 0) {
+                    int want = contrast;
+                    result.ContrastAsked = WithRetry(delegate { return SetMonitorContrast(handle, (uint)want); });
+                }
+                // Монитору нужно время, чтобы применить и начать отвечать новым
+                // значением: сразу после записи он ещё отдаёт старое.
+                if (result.BrightnessAsked || result.ContrastAsked) { System.Threading.Thread.Sleep(120); }
+
+                if (result.BrightnessAsked) {
+                    uint min = 0, cur = 0, max = 0;
+                    if (WithRetry(delegate { return GetMonitorBrightness(handle, out min, out cur, out max); })) {
+                        result.BrightnessConfirmed = ((int)cur == brightness);
+                    }
+                }
+                if (result.ContrastAsked) {
+                    uint min = 0, cur = 0, max = 0;
+                    if (WithRetry(delegate { return GetMonitorContrast(handle, out min, out cur, out max); })) {
+                        result.ContrastConfirmed = ((int)cur == contrast);
+                    }
+                }
+            }
+            DestroyPhysicalMonitor(handle);
+        }
+        return result;
+    }
+}
+
+// Сон — единственное состояние, для которого нет консольной команды: shutdown.exe
+// умеет выключение, перезагрузку и гибернацию, а «спать» в нём нет вообще.
+public class NativePower {
+    [DllImport("powrprof.dll", SetLastError = true)]
+    public static extern bool SetSuspendState(bool hibernate, bool force, bool wakeupEventsDisabled);
+}
+
+// Кто сейчас на переднем плане, на каком мониторе, и давно ли трогали
+// клавиатуру. Нужно правилам (условие «за компьютером не работают») и дневнику.
+//
+// Названия окон НЕ читаются намеренно: в заголовке окна лежит имя документа,
+// адрес страницы и текст письма, а для «сколько времени в чём» достаточно имени
+// процесса. Того, чего нет, не утечёт.
+public class ActivitySample {
+    public string Process;
+    public string Device;
+    public int IdleSeconds;
+}
+
+public class NativeActivity {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX {
+        public int cbSize;
+        public int mLeft, mTop, mRight, mBottom;
+        public int wLeft, wTop, wRight, wBottom;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+    }
+
+    [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfoEx(IntPtr hMonitor, ref MONITORINFOEX info);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(int access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr h, int flags, StringBuilder name, ref int size);
+
+    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const uint MONITOR_DEFAULTTONULL = 0;
+
+    public static int IdleSeconds() {
+        var info = new LASTINPUTINFO();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+        if (!GetLastInputInfo(ref info)) { return 0; }
+        // Оба счётчика 32-битные и переполняются через 49 дней. Вычитание в
+        // беззнаковой арифметике переживает переполнение правильно, приведение
+        // к int после — нет, поэтому сначала вычитаем, потом приводим.
+        uint now = (uint)Environment.TickCount;
+        return (int)((now - info.dwTime) / 1000);
+    }
+
+    public static ActivitySample Sample() {
+        var sample = new ActivitySample();
+        sample.Process = "";
+        sample.Device = "";
+        sample.IdleSeconds = IdleSeconds();
+
+        IntPtr hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) { return sample; }
+
+        IntPtr screen = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+        if (screen != IntPtr.Zero) {
+            var info = new MONITORINFOEX();
+            info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+            if (GetMonitorInfoEx(screen, ref info)) { sample.Device = info.szDevice; }
+        }
+
+        uint pid;
+        GetWindowThreadProcessId(hwnd, out pid);
+        if (pid == 0) { return sample; }
+        IntPtr proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (proc == IntPtr.Zero) { return sample; }
+        try {
+            var name = new StringBuilder(1024);
+            int size = name.Capacity;
+            if (QueryFullProcessImageNameW(proc, 0, name, ref size)) {
+                string full = name.ToString();
+                int slash = full.LastIndexOf('\\');
+                string file = slash >= 0 ? full.Substring(slash + 1) : full;
+                if (file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) {
+                    file = file.Substring(0, file.Length - 4);
+                }
+                sample.Process = file;
+            }
+        }
+        finally { CloseHandle(proc); }
+        return sample;
+    }
+}
+
+// Вернуть системе память, которая была нужна один раз. PowerShell-процесс после
+// старта держит ~75 МБ рабочего набора, но живого в нём — около десяти: остальное
+// осталось от компиляции, чтения настроек и первого построения меню. Обрезка не
+// врёт диспетчеру задач: страницы уходят в standby-список, система раздаёт их
+// тем, кому они нужны, а к нам возвращаются по требованию — ценой миллисекунд
+// на первом открытии меню после обрезки.
+public class NativeMemory {
+    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll")] private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr min, IntPtr max);
+
+    public static void Trim() {
+        SetProcessWorkingSetSize(GetCurrentProcess(), (IntPtr)(-1), (IntPtr)(-1));
+    }
 }
 
 // Звук: список устройств вывода и назначение устройства по умолчанию.
@@ -2541,6 +2956,50 @@ function Get-RoleTitle {
     return $Role.Substring(0, 1).ToUpperInvariant() + $Role.Substring(1) + ' displays'
 }
 
+# --- переезд авто-игрового режима в правила -------------------------------------
+# autoGame был правилом, которого хватало на один случай: один процесс, один
+# режим, один возврат. Второго условия («за компьютером не работают двадцать
+# минут») он выразить не мог, а второго процесса — тем более. Правила говорят то
+# же самое и больше, поэтому старая настройка при чтении превращается в первый
+# элемент rules, а её ключ остаётся пустым — ради файлов, написанных рукой.
+#
+# Чистая функция над словарём настроек, как и переезд ролей: меняет $Settings на
+# месте, возвращает $true, если что-то поменяла, и идемпотентна.
+function Convert-AutoGameToRules {
+    param($Settings)
+
+    if (-not $Settings -or -not $Settings.autoGame) { return $false }
+    $cfg = $Settings.autoGame
+    # Пустую настройку не переносим: правило без процесса и режима бессмысленно, а
+    # заводить его значило бы дописывать мусор в каждый settings.json на свете.
+    if (-not $cfg.process -or -not $cfg.gameMode) { return $false }
+
+    if ($null -eq $Settings.rules) { $Settings.rules = @() }
+
+    # Такое правило уже есть — значит переезд уже был, а старый ключ остался
+    # лежать в файле, написанном прошлой версией. Второй раз не добавляем.
+    foreach ($r in @($Settings.rules)) {
+        if ([string]$r.process -eq [string]$cfg.process -and [string]$r.mode -eq [string]$cfg.gameMode) {
+            $Settings.autoGame = [ordered]@{ enabled = $false; process = ''; gameMode = ''; backMode = '' }
+            return $true
+        }
+    }
+
+    # Впереди остальных: правило было единственным, и его старшинство надо
+    # сохранить — иначе после переезда игру мог бы перебить, например, простой.
+    $Settings.rules = @(, ([ordered]@{
+        when    = 'process'
+        process = [string]$cfg.process
+        minutes = 0
+        mode    = [string]$cfg.gameMode
+        back    = [string]$cfg.backMode
+        enabled = [bool]$cfg.enabled
+    }) + @($Settings.rules))
+
+    $Settings.autoGame = [ordered]@{ enabled = $false; process = ''; gameMode = ''; backMode = '' }
+    return $true
+}
+
 # --- переезд ролей в комбинации ------------------------------------------------
 # Роли и комбинации описывали одно и то же — именованный набор мониторов, — но
 # роль была слабее (одна на монитор, без своей панели задач) и удалялась иначе.
@@ -2601,7 +3060,7 @@ function Convert-RoleSettingsToCombos {
     # Переименование ключей с сохранением порядка: словари [ordered] уезжают в
     # settings.json как есть, и перетасовка выглядела бы в diff'е правкой,
     # которой никто не делал.
-    foreach ($field in 'hotkeys', 'audio') {
+    foreach ($field in 'hotkeys', 'audio', 'hooks', 'brightness', 'contrast') {
         if (-not $Settings[$field]) { continue }
         $moved = [ordered]@{}
         foreach ($key in @($Settings[$field].Keys)) {
@@ -2618,6 +3077,20 @@ function Convert-RoleSettingsToCombos {
             $v = [string]$Settings.autoGame[$field]
             if ($v -and $renames.Contains($v)) { $Settings.autoGame[$field] = [string]$renames[$v] }
         }
+    }
+
+    # Правила и «монитор появился» ссылаются на режимы теми же ключами, значит и
+    # переезжать должны вместе с ними. Пропустить это значило бы оставить правило,
+    # которое каждые пятнадцать секунд пытается уйти в режим, которого больше нет.
+    foreach ($r in @($Settings.rules)) {
+        foreach ($field in 'mode', 'back') {
+            $v = [string]$r[$field]
+            if ($v -and $renames.Contains($v)) { $r[$field] = [string]$renames[$v] }
+        }
+    }
+    if ($Settings.reapply) {
+        $v = [string]$Settings.reapply.onPlug
+        if ($v -and $renames.Contains($v)) { $Settings.reapply.onPlug = [string]$renames[$v] }
     }
 
     $Settings.roles = [ordered]@{}
@@ -2860,6 +3333,26 @@ function Update-HotkeyKeys {
         $Settings.hotkeys[$hit.Key] = $combo
         Write-DisplayLog "settings: moved $combo from '$old' to '$($hit.Key)'"
         $changed = $true
+
+        # За клавишей переезжает всё, что привязано к тому же режиму: звук,
+        # команды, яркость, контраст. Иначе после перекладки кабеля клавиша
+        # работала бы, а яркость к ней больше не относилась — и разошлись бы две
+        # части одной настройки.
+        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
+            $dict = $Settings[$field]
+            if (-not $dict -or -not $dict.Contains($old)) { continue }
+            if ($dict.Contains($hit.Key)) { continue }
+            $dict[$hit.Key] = $dict[$old]
+            $dict.Remove($old)
+        }
+        foreach ($r in @($Settings.rules)) {
+            foreach ($field in 'mode', 'back') {
+                if ([string]$r[$field] -eq $old) { $r[$field] = [string]$hit.Key }
+            }
+        }
+        if ($Settings.reapply -and [string]$Settings.reapply.onPlug -eq $old) {
+            $Settings.reapply.onPlug = [string]$hit.Key
+        }
     }
     return $changed
 }
@@ -3099,6 +3592,12 @@ function Switch-DisplayMode {
         else {
             Write-DisplayLog ("switch: on = " + (($wanted | ForEach-Object { $_.Label }) -join ', '))
 
+            # Команда «до» — здесь, а не в самом начале: до этой строки
+            # переключение ещё может отказаться (нет такого режима, ни один
+            # монитор не подключён), и запускать чужую программу под режим,
+            # которого не будет, нельзя.
+            [void](Invoke-ModeHook -Settings $settings -ModeKey $ModeKey -Phase 'before')
+
             # Набор уже такой, как просят — перестраивать топологию нечего.
             # Состояние у нас на руках, в $monitors: лишнего опроса не надо.
             #
@@ -3228,11 +3727,17 @@ function Switch-DisplayMode {
         # дожидаясь, пока спящий монитор проснётся и расскажет о себе.
         $applied = @{}
 
+        # Кому потом ставить яркость: имя выхода нужно то же, что вернуло
+        # перечисление ниже, а не своё повторное — обход CCD стоит десятки
+        # миллисекунд, и второй раз за одно переключение он не нужен.
+        $levelTargets = @()
+
         if ($alreadyBest) {
             $summary = @()
             foreach ($m in $wanted) {
                 $summary += '{0} {1}x{2} @ {3} Hz' -f $m.Label, $m.Width, $m.Height, $m.Hz
                 $applied[[string]$m.Id] = [pscustomobject]@{ Width = $m.Width; Height = $m.Height; Hz = $m.Hz }
+                $levelTargets += [pscustomobject]@{ Device = [string]$m.Output; Label = [string]$m.Label; ShortId = [string]$m.ShortId }
             }
             $failed = @()
             Write-DisplayLog 'switch: modes already correct'
@@ -3278,6 +3783,7 @@ function Switch-DisplayMode {
                     # посчитает сам.
                     [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode)
                 }
+                $levelTargets += [pscustomobject]@{ Device = [string]$output; Label = [string]$m.Label; ShortId = [string]$m.ShortId }
                 $cur = Get-CurrentMode $output
                 $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
                 if ($cur -and $cur.Width -gt 0) {
@@ -3331,6 +3837,22 @@ function Switch-DisplayMode {
                 catch { Write-DisplayLog "warn: audio - failed: $($_.Exception.Message)" }
             }
         }
+
+        # Яркость и контраст — последними и только тем мониторам, что включены:
+        # спящий на DDC не отвечает. Словари пусты (по умолчанию) — не выполняется
+        # ни одна строка, ни один запрос по медленной шине не уходит.
+        $hasLevels = (($settings.brightness -and $settings.brightness.Contains($ModeKey)) -or
+                      ($settings.contrast -and $settings.contrast.Contains($ModeKey)))
+        if ($hasLevels -and $levelTargets.Count -gt 0) {
+            $b = $(if ($settings.brightness -and $settings.brightness.Contains($ModeKey)) { $settings.brightness[$ModeKey] } else { $null })
+            $c = $(if ($settings.contrast   -and $settings.contrast.Contains($ModeKey))   { $settings.contrast[$ModeKey] }   else { $null })
+            try { [void](Set-MonitorLevels -Targets $levelTargets -BrightnessSetting $b -ContrastSetting $c) }
+            catch { Write-DisplayLog "warn: levels - failed: $($_.Exception.Message)" }
+        }
+
+        # Команда «после» — в самом конце, когда стол уже собран: она затем и
+        # нужна, чтобы застать готовое состояние.
+        [void](Invoke-ModeHook -Settings $settings -ModeKey $ModeKey -Phase 'after')
         return [pscustomobject]@{
             Mode = $ModeKey; Skipped = $false; Message = $text
             Refused = $refused; Failed = $failed
@@ -3548,6 +4070,375 @@ function Set-DefaultAudioDevice {
     catch {
         Write-DisplayLog "warn: audio - could not switch: $($_.Exception.Message)"
         return $false
+    }
+}
+
+# --- яркость и контраст следом за режимом -----------------------------------
+# Яркость внешнего монитора живёт в его прошивке, а не в Windows, и меняется по
+# DDC/CI — тому же каналу, что кнопки на корпусе (см. NativeDdc). Значит режим
+# может нести её с собой: «Work» — 80, вечерний — 25, и колёсико под столом
+# больше не нужно.
+#
+# Спящему монитору задавать нечего: он на запросы не отвечает. Поэтому уровни
+# ставятся только включённым, в самом конце переключения.
+
+function Get-MonitorLevels {
+    try { return @([NativeDdc]::Read()) }
+    catch {
+        Write-DisplayLog "levels: could not ask the monitors - $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Чистая функция: настройка одного режима + мониторы этого режима -> кому какое
+# число. Две формы записи, потому что нужны обе: число — «всем поровну» (так
+# пишут в девяти случаях из десяти), словарь — «каждому своё».
+#
+# Возвращает [ordered] по порядку мониторов: журнал должен читаться в том же
+# порядке, в котором мониторы стоят на столе.
+function Get-LevelPlan {
+    param($Setting, $Wanted)
+
+    $plan = [ordered]@{}
+    if ($null -eq $Setting) { return $plan }
+
+    foreach ($m in @($Wanted)) {
+        $value = $null
+        if ($Setting -is [int] -or $Setting -is [long] -or $Setting -is [double] -or $Setting -is [string]) {
+            $parsed = 0
+            if ([int]::TryParse([string]$Setting, [ref]$parsed)) { $value = $parsed }
+        }
+        elseif ($Setting -is [System.Collections.IDictionary]) {
+            foreach ($key in @($Setting.Keys)) {
+                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId) {
+                    $parsed = 0
+                    if ([int]::TryParse([string]$Setting[$key], [ref]$parsed)) { $value = $parsed }
+                    break
+                }
+            }
+        }
+        if ($null -eq $value) { continue }
+        # Ноль — законная яркость (монитор гаснет в чёрный, но остаётся включён),
+        # поэтому обрезаем, а не отбрасываем. Числа вне 0..100 — почти всегда
+        # опечатка, и уводить монитор в чёрный по опечатке нельзя.
+        if ($value -lt 0) { $value = 0 }
+        if ($value -gt 100) { $value = 100 }
+        $plan[[string]$m.Label] = $value
+    }
+    return $plan
+}
+
+# $Targets — массив объектов с полями Device (\\.\DISPLAY1), Label и ShortId.
+# Device приходит из уже сделанного перечисления выходов: своего обхода CCD здесь
+# нет специально, переключение и без того не бесплатное.
+function Set-MonitorLevels {
+    param($Targets, $BrightnessSetting, $ContrastSetting)
+
+    $bright = Get-LevelPlan -Setting $BrightnessSetting -Wanted $Targets
+    $contra = Get-LevelPlan -Setting $ContrastSetting -Wanted $Targets
+    if ($bright.Count -eq 0 -and $contra.Count -eq 0) { return @() }
+
+    $done = @()
+    foreach ($t in @($Targets)) {
+        $label = [string]$t.Label
+        $b = $(if ($bright.Contains($label)) { [int]$bright[$label] } else { -1 })
+        $c = $(if ($contra.Contains($label)) { [int]$contra[$label] } else { -1 })
+        if ($b -lt 0 -and $c -lt 0) { continue }
+        if (-not $t.Device) { continue }
+
+        $applied = $null
+        try { $applied = [NativeDdc]::Set([string]$t.Device, $b, $c) }
+        catch { Write-DisplayLog "levels: $label - $($_.Exception.Message)"; continue }
+
+        # Разбираем по значениям, а не «получилось / не получилось»: яркость
+        # монитор мог применить, а контраст нет, и в журнале это должно быть видно
+        # раздельно. Подтверждение — прочитанное обратно значение, а не код
+        # возврата записи (см. NativeDdc.Set).
+        $good = @()
+        $bad = @()
+        if ($b -ge 0) { if ($applied.BrightnessConfirmed) { $good += "brightness $b" } else { $bad += "brightness $b" } }
+        if ($c -ge 0) { if ($applied.ContrastConfirmed)   { $good += "contrast $c" }   else { $bad += "contrast $c" } }
+
+        if ($good.Count -gt 0) {
+            Write-DisplayLog ("levels: {0} - {1}" -f $label, ($good -join ', '))
+            $done += $label
+        }
+        if ($bad.Count -gt 0) {
+            # Монитор не подтвердил. Причины бывают безобидные (DDC/CI выключен в
+            # его меню, монитор ещё просыпается, шина зависла до следующего цикла
+            # линка), но врать об успехе нельзя.
+            Write-DisplayLog ("levels: {0} did not take {1} - DDC/CI may be off in its own menu" -f $label, ($bad -join ', '))
+        }
+    }
+    return $done
+}
+
+# --- команды вокруг переключения --------------------------------------------
+# «Сделай ещё вот это, когда включаешь такой набор экранов». Одна строка в
+# настройках вместо десяти новых полей: закрыть приложение, сменить схему
+# питания, погасить свет в комнате — всё это чужие программы, и знать о них
+# незачем. Наше дело — запустить и записать в журнал, что запустили.
+
+# Чистая функция: настройки + ключ режима + фаза -> команда или пустая строка.
+function Get-ModeHook {
+    param($Settings, [string]$ModeKey, [string]$Phase)
+
+    if (-not $Settings -or -not $Settings.hooks -or -not $ModeKey) { return '' }
+    if (-not $Settings.hooks.Contains($ModeKey)) { return '' }
+    $entry = $Settings.hooks[$ModeKey]
+    if ($null -eq $entry) { return '' }
+    # Строка вместо объекта — это «после»: короткая запись для частого случая.
+    if ($entry -is [string]) { return $(if ($Phase -eq 'after') { [string]$entry } else { '' }) }
+    return [string]$entry[$Phase]
+}
+
+# Чистая функция: команда -> чем и с чем её запускать. .ps1 приходится звать
+# через powershell с обходом политики (свои же скрипты иначе не запустятся), всё
+# остальное уходит в cmd /c — там работают и .exe, и .bat, и встроенные команды
+# вроде start.
+function Get-HookLaunch {
+    param([string]$Command)
+
+    $cmd = [string]$Command
+    if (-not $cmd -or -not $cmd.Trim()) { return $null }
+    $cmd = $cmd.Trim()
+
+    # Первое слово — с учётом кавычек: в пути к скрипту бывают пробелы.
+    $first = ''
+    if ($cmd -match '^"([^"]+)"') { $first = $Matches[1] }
+    elseif ($cmd -match '^(\S+)') { $first = $Matches[1] }
+
+    if ($first -like '*.ps1') {
+        $rest = $cmd.Substring($(if ($cmd.StartsWith('"')) { $first.Length + 2 } else { $first.Length })).Trim()
+        $argLine = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $first
+        if ($rest) { $argLine += ' ' + $rest }
+        return [pscustomobject]@{
+            File      = (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')
+            Arguments = $argLine
+        }
+    }
+    return [pscustomobject]@{
+        File      = (Join-Path $env:SystemRoot 'System32\cmd.exe')
+        Arguments = '/c ' + $cmd
+    }
+}
+
+function Invoke-ModeHook {
+    param($Settings, [string]$ModeKey, [string]$Phase)
+
+    $cmd = Get-ModeHook -Settings $Settings -ModeKey $ModeKey -Phase $Phase
+    if (-not $cmd) { return $false }
+    $launch = Get-HookLaunch -Command $cmd
+    if (-not $launch) { return $false }
+
+    try {
+        # Запускаем и НЕ ждём. Переключение стола — вещь, которую человек делает
+        # хоткеем и мерит десятыми долями секунды; чужая программа не имеет права
+        # держать её у себя, а «зависший before» означал бы чёрный экран.
+        Start-Process -FilePath $launch.File -ArgumentList $launch.Arguments -WindowStyle Hidden | Out-Null
+        Write-DisplayLog ("hook: {0} - {1}" -f $Phase, $cmd)
+        return $true
+    }
+    catch {
+        Write-DisplayLog ("hook: {0} failed - {1}" -f $Phase, $_.Exception.Message)
+        return $false
+    }
+}
+
+# --- правила ----------------------------------------------------------------
+# «Случилось это — стань таким». Выросло из авто-игрового режима, который умел
+# ровно одно правило (см. Convert-AutoGameToRules).
+#
+# Вся логика — здесь, чистой функцией над фактами, и она же под тестами. В трее
+# остаётся только собрать факты и исполнить решение: слежение живёт в таймере,
+# который тикает раз в пятнадцать секунд неделями, и отлаживать его по журналу
+# вместо тестов — это и есть тот способ, которым в этом проекте уже ломали стол.
+#
+# Владение: пока правило держит стол, остальные молчат. Иначе два подходящих
+# правила перебивали бы друг друга каждые пятнадцать секунд.
+
+function Test-RuleMatch {
+    param($Rule, $Facts)
+
+    if (-not $Rule) { return $false }
+    if ($null -ne $Rule.enabled -and -not $Rule.enabled) { return $false }
+    if (-not $Rule.mode) { return $false }
+
+    switch ([string]$Rule.when) {
+        'process' {
+            if (-not $Rule.process) { return $false }
+            $want = ([string]$Rule.process) -replace '\.exe$', ''
+            foreach ($p in @($Facts.Processes)) {
+                if ([string]$p -and ([string]$p).ToLowerInvariant() -eq $want.ToLowerInvariant()) { return $true }
+            }
+            return $false
+        }
+        'idle' {
+            $minutes = [int]$Rule.minutes
+            if ($minutes -le 0) { return $false }
+            return ([int]$Facts.IdleSeconds -ge $minutes * 60)
+        }
+        default { return $false }
+    }
+}
+
+# Решение по всем правилам разом. $OwnedIndex — номер правила, которое сейчас
+# держит стол, или -1.
+#
+# Action:
+#   switch   уйти в Mode, запомнив Back и RuleIndex;
+#   return   условие кончилось, вернуться в Mode;
+#   release  стол переключили руками — отпустить, ничего не делая;
+#   blocked  правило сработало, но возвращаться потом будет некуда;
+#   none     ничего не делать.
+function Get-RuleDecision {
+    param($Rules, $Facts, [string]$CurrentMode, [int]$OwnedIndex = -1, [string]$OwnedBack = '')
+
+    $list = @($Rules)
+    $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Back = ''; RuleIndex = -1; Reason = '' }
+
+    if ($OwnedIndex -ge 0) {
+        $owned = $(if ($OwnedIndex -lt $list.Count) { $list[$OwnedIndex] } else { $null })
+        # Правило исчезло из настроек, пока оно держало стол (файл правят руками и
+        # из окна настроек) — возвращаемся туда, откуда пришли, и отпускаем.
+        if (-not $owned) {
+            return [pscustomobject]@{ Action = 'return'; Mode = [string]$OwnedBack; Back = ''; RuleIndex = -1
+                                      Reason = 'the rule is gone from the settings' }
+        }
+        if (Test-RuleMatch -Rule $owned -Facts $Facts) {
+            # С людьми не воюем: набор экранов сменили мимо нас — значит это
+            # осознанное решение, и возвращать его назад мы не в праве.
+            if ($CurrentMode -and $CurrentMode -ne [string]$owned.mode) {
+                return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
+                                          Reason = 'the displays were changed by hand' }
+            }
+            return $none
+        }
+        return [pscustomobject]@{ Action = 'return'; Mode = [string]$OwnedBack; Back = ''; RuleIndex = -1
+                                  Reason = 'the condition ended' }
+    }
+
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $rule = $list[$i]
+        if (-not (Test-RuleMatch -Rule $rule -Facts $Facts)) { continue }
+
+        # Уже в этом режиме — брать стол незачем: возвращать потом будет нечего, и
+        # это правильно (то же решение принимал авто-игровой режим).
+        if ($CurrentMode -eq [string]$rule.mode) { return $none }
+
+        $back = $(if ($rule.back) { [string]$rule.back } else { [string]$CurrentMode })
+        if (-not $back) {
+            return [pscustomobject]@{ Action = 'blocked'; Mode = [string]$rule.mode; Back = ''; RuleIndex = $i
+                                      Reason = 'the current displays match no known mode, so there would be no way back' }
+        }
+        return [pscustomobject]@{ Action = 'switch'; Mode = [string]$rule.mode; Back = $back; RuleIndex = $i
+                                  Reason = (Format-RuleReason -Rule $rule) }
+    }
+    return $none
+}
+
+# Строка для журнала и всплывашки: «cs2 is running», «idle for 20 min».
+function Format-RuleReason {
+    param($Rule)
+
+    switch ([string]$Rule.when) {
+        'process' { return ('{0} is running' -f [string]$Rule.process) }
+        'idle'    { return ('idle for {0} min' -f [int]$Rule.minutes) }
+        default   { return [string]$Rule.when }
+    }
+}
+
+# --- мир изменился сам ------------------------------------------------------
+# Windows после выхода из сна и после переподключения монитора расставляет
+# экраны как считает нужным: раскладка разъезжается, панель задач уезжает на
+# другой монитор, частота падает. Стол надо собрать заново.
+#
+# Чистая функция: два набора подключённых мониторов (до и после) + настройка ->
+# что делать. Само событие приходит в трее, там же и исполняется решение.
+#
+# Важно, что сравниваются ПОДКЛЮЧЁННЫЕ мониторы, а не включённые: включённые
+# меняем мы сами на каждом переключении, и реагировать на собственную работу
+# значило бы уйти в бесконечный круг.
+function Get-ReapplyDecision {
+    param($Reapply, $Before, $Now, [string]$LastMode)
+
+    $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = '' }
+    if (-not $Reapply) { return $none }
+
+    $before = @($Before | Where-Object { $_ })
+    $now = @($Now | Where-Object { $_ })
+    # Пустой «до» — это первый опрос за запуск, сравнивать не с чем.
+    if ($before.Count -eq 0) { return $none }
+
+    $appeared = @($now | Where-Object { $before -notcontains $_ })
+    $vanished = @($before | Where-Object { $now -notcontains $_ })
+
+    # Монитор появился. По умолчанию не делаем ничего: человек только что включил
+    # его кнопкой, и погасить его в ответ — это война с человеком. Режим для этого
+    # случая называют явно (reapply.onPlug).
+    if ($appeared.Count -gt 0 -and [string]$Reapply.onPlug) {
+        return [pscustomobject]@{ Action = 'mode'; Mode = [string]$Reapply.onPlug
+                                  Reason = 'a display was plugged in' }
+    }
+
+    # Монитор пропал. Возвращаем последний выбранный режим: Switch-DisplayMode
+    # соберёт из него то, что осталось на столе, — раскладку и панель задач в том
+    # числе. Ничего нового при этом не включается.
+    if ($vanished.Count -gt 0 -and $Reapply.onUnplug -and $LastMode) {
+        return [pscustomobject]@{ Action = 'mode'; Mode = [string]$LastMode
+                                  Reason = 'a display went away' }
+    }
+    return $none
+}
+
+# --- таймер выключения ------------------------------------------------------
+# «Выключи компьютер через час». Отсчёт живёт в трее и умирает вместе с ним: на
+# диск его писать нельзя — компьютер, который выключается сам через сутки после
+# того, как об этом попросили, страшнее любой пользы.
+
+# Чистая функция: то, что человек написал -> минуты. Понимает «30», «90m»,
+# «1h», «1h30», «1:30», «2 hours». Ноль означает «не разобрал».
+function ConvertFrom-DurationText {
+    param([string]$Text)
+
+    $t = ([string]$Text).Trim().ToLowerInvariant()
+    if (-not $t) { return 0 }
+
+    # Часы с минутами: «1h30», «1h 30m», «1:30».
+    if ($t -match '^(\d+)\s*(?:h|hr|hrs|hour|hours|ч|час|часа|часов|:)\s*(\d+)\s*(?:m|min|mins|minute|minutes|м|мин)?$') {
+        return [int]$Matches[1] * 60 + [int]$Matches[2]
+    }
+    if ($t -match '^(\d+)\s*(?:h|hr|hrs|hour|hours|ч|час|часа|часов)$') { return [int]$Matches[1] * 60 }
+    if ($t -match '^(\d+)\s*(?:m|min|mins|minute|minutes|м|мин)?$')     { return [int]$Matches[1] }
+    return 0
+}
+
+# «1 h 05 min», «45 min», «30 s» — для подсказки значка и всплывашки.
+function Format-Duration {
+    param([int]$Seconds)
+
+    if ($Seconds -lt 0) { $Seconds = 0 }
+    if ($Seconds -lt 60) { return ('{0} s' -f $Seconds) }
+    $minutes = [int][math]::Floor($Seconds / 60)
+    if ($minutes -lt 60) { return ('{0} min' -f $minutes) }
+    return ('{0} h {1:00} min' -f [int][math]::Floor($minutes / 60), ($minutes % 60))
+}
+
+# Само выключение. shutdown.exe, а не API: он один умеет и попросить программы
+# закрыться, и показать причину в журнале событий Windows.
+function Invoke-PowerAction {
+    param([ValidateSet('shutdown', 'restart', 'sleep')][string]$Action)
+
+    Write-DisplayLog "power: $Action now"
+    switch ($Action) {
+        'shutdown' { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\shutdown.exe') -ArgumentList '/s', '/t', '0' -WindowStyle Hidden | Out-Null }
+        'restart'  { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\shutdown.exe') -ArgumentList '/r', '/t', '0' -WindowStyle Hidden | Out-Null }
+        'sleep'    {
+            # Спать — только через SetSuspendState: shutdown.exe /h — это
+            # гибернация, а /s /hybrid — выключение. Первый параметр false и
+            # означает «сон, а не гибернация».
+            [void][NativePower]::SetSuspendState($false, $true, $false)
+        }
     }
 }
 
