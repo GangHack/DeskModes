@@ -25,6 +25,18 @@ $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
 
+# Дата и время для журнала и для файлов — одни и те же на любой локали. И
+# `-Format`, и ToString без указания культуры берут у текущей не только
+# разделитель времени, но и КАЛЕНДАРЬ: на тайской локали 'yyyy' — это 2569-й год
+# по буддийскому, на арабской бывает Хиджра. Журнал перестаёт читаться как
+# ISO-дата, а ключи дневника — сравниваться строкой с прошлогодними. Журнал в
+# этом проекте английский, и дата в нём — тоже (тот же случай, что и длительность
+# в done:, см. Switch-DisplayMode).
+function Format-DisplayStamp {
+    param([datetime]$When = (Get-Date), [string]$Pattern = 'yyyy-MM-dd HH:mm:ss')
+    return $When.ToString($Pattern, [cultureinfo]::InvariantCulture)
+}
+
 function Write-DisplayLog {
     param([string]$Message)
     try {
@@ -35,7 +47,7 @@ function Write-DisplayLog {
         # DisplayCore, подключённый в обычную консоль, сыпал красным текстом на
         # каждую строку журнала. Теперь молчание не зависит от вызывающего.
         Add-Content -Path $script:LogFile -Encoding UTF8 -ErrorAction Stop `
-                    -Value ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+                    -Value ('{0}  {1}' -f (Format-DisplayStamp), $Message)
     }
     catch { }   # лог не должен ронять переключение мониторов
 }
@@ -392,7 +404,7 @@ function Get-SystemSessionId {
     # Минуты, а не секунды: два процесса считают это в разные моменты, и точность
     # до секунды здесь только создавала бы расхождения на ровном месте.
     $up = [System.Diagnostics.Stopwatch]::GetTimestamp() / [System.Diagnostics.Stopwatch]::Frequency
-    $parts += (Get-Date).AddSeconds(-$up).ToString('yyyy-MM-dd HH:mm')
+    $parts += Format-DisplayStamp ((Get-Date).AddSeconds(-$up)) 'yyyy-MM-dd HH:mm'
 
     $script:SessionIdCache = ($parts -join '/')
     return $script:SessionIdCache
@@ -1053,9 +1065,11 @@ public class NativeDdc {
         return result;
     }
 
-    // Результат установки. Три состояния, а не два, потому что их действительно
-    // три: получилось, отказано и «сказали, но подтверждения нет».
+    // Результат установки, по строке на каждый запрошенный монитор. Три
+    // состояния, а не два, потому что их действительно три: получилось, отказано
+    // и «сказали, но подтверждения нет».
     public class Applied {
+        public string Device;
         public bool Found;
         public bool BrightnessAsked, BrightnessConfirmed;
         public bool ContrastAsked, ContrastConfirmed;
@@ -1067,38 +1081,84 @@ public class NativeDdc {
     // означает «сообщение ушло», а не «монитор послушался», и верить ему нельзя:
     // журнал этого проекта существует именно потому, что чужие переключалки врали
     // об успехе. Поэтому каждое значение читается обратно и сравнивается.
-    public static Applied Set(string device, int brightness, int contrast) {
-        var result = new Applied();
-        foreach (var pair in Open()) {
-            IntPtr handle = pair.Value.handle;
-            if (pair.Key == device && !result.Found) {
-                result.Found = true;
-                if (brightness >= 0) {
-                    int want = brightness;
-                    result.BrightnessAsked = WithRetry(delegate { return SetMonitorBrightness(handle, (uint)want); });
-                }
-                if (contrast >= 0) {
-                    int want = contrast;
-                    result.ContrastAsked = WithRetry(delegate { return SetMonitorContrast(handle, (uint)want); });
-                }
-                // Монитору нужно время, чтобы применить и начать отвечать новым
-                // значением: сразу после записи он ещё отдаёт старое.
-                if (result.BrightnessAsked || result.ContrastAsked) { System.Threading.Thread.Sleep(120); }
+    //
+    // ВСЕ мониторы разом, одним обходом — как и Read(), и по той же причине. Раньше
+    // Set принимал один монитор, и на трёх мониторах перечисление с открытием и
+    // закрытием ВСЕХ дескрипторов шло трижды: девять пар open/destroy вместо трёх
+    // на медленной шине, где один запрос стоит десятки миллисекунд. Заодно пауза
+    // «дай применить» теперь одна на всех: мониторы ждут параллельно, а не по
+    // очереди, и с неё уходит по 120 мс на каждый монитор сверх первого.
+    //
+    // Строки brightness и contrast идут по номерам devices; -1 означает «этого не
+    // просили».
+    public static List<Applied> Set(string[] devices, int[] brightness, int[] contrast) {
+        var result = new List<Applied>();
+        for (int i = 0; i < devices.Length; i++) {
+            var a = new Applied();
+            a.Device = devices[i];
+            result.Add(a);
+        }
 
-                if (result.BrightnessAsked) {
-                    uint min = 0, cur = 0, max = 0;
-                    if (WithRetry(delegate { return GetMonitorBrightness(handle, out min, out cur, out max); })) {
-                        result.BrightnessConfirmed = ((int)cur == brightness);
-                    }
-                }
-                if (result.ContrastAsked) {
-                    uint min = 0, cur = 0, max = 0;
-                    if (WithRetry(delegate { return GetMonitorContrast(handle, out min, out cur, out max); })) {
-                        result.ContrastConfirmed = ((int)cur == contrast);
+        var open = Open();
+        try {
+            // Кому из открытых мониторов какая строка запроса; -1 — этого не
+            // просили. Считаем заранее, чтобы обход был один и в нём не было
+            // поиска: в режиме дублирования за одним выходом стоят два монитора,
+            // и второму та же строка достаться не должна.
+            var slot = new int[open.Count];
+            for (int j = 0; j < open.Count; j++) {
+                slot[j] = -1;
+                for (int i = 0; i < devices.Length; i++) {
+                    if (devices[i] == open[j].Key && !result[i].Found) {
+                        slot[j] = i;
+                        result[i].Found = true;
+                        break;
                     }
                 }
             }
-            DestroyPhysicalMonitor(handle);
+
+            bool asked = false;
+            for (int j = 0; j < open.Count; j++) {
+                if (slot[j] < 0) { continue; }
+                Applied a = result[slot[j]];
+                IntPtr handle = open[j].Value.handle;
+                int wantB = brightness[slot[j]];
+                int wantC = contrast[slot[j]];
+                if (wantB >= 0) {
+                    a.BrightnessAsked = WithRetry(delegate { return SetMonitorBrightness(handle, (uint)wantB); });
+                }
+                if (wantC >= 0) {
+                    a.ContrastAsked = WithRetry(delegate { return SetMonitorContrast(handle, (uint)wantC); });
+                }
+                if (a.BrightnessAsked || a.ContrastAsked) { asked = true; }
+            }
+
+            // Монитору нужно время, чтобы применить и начать отвечать новым
+            // значением: сразу после записи он ещё отдаёт старое.
+            if (asked) { System.Threading.Thread.Sleep(120); }
+
+            for (int j = 0; j < open.Count; j++) {
+                if (slot[j] < 0) { continue; }
+                Applied a = result[slot[j]];
+                IntPtr handle = open[j].Value.handle;
+                if (a.BrightnessAsked) {
+                    uint min = 0, cur = 0, max = 0;
+                    if (WithRetry(delegate { return GetMonitorBrightness(handle, out min, out cur, out max); })) {
+                        a.BrightnessConfirmed = ((int)cur == brightness[slot[j]]);
+                    }
+                }
+                if (a.ContrastAsked) {
+                    uint min = 0, cur = 0, max = 0;
+                    if (WithRetry(delegate { return GetMonitorContrast(handle, out min, out cur, out max); })) {
+                        a.ContrastConfirmed = ((int)cur == contrast[slot[j]]);
+                    }
+                }
+            }
+        }
+        finally {
+            // Дескрипторы закрываем в любом случае: процесс трея живёт неделями, и
+            // утечка по одному на монитор за переключение его бы и съела.
+            foreach (var pair in open) { DestroyPhysicalMonitor(pair.Value.handle); }
         }
         return result;
     }
@@ -4138,7 +4198,9 @@ function Set-MonitorLevels {
     $contra = Get-LevelPlan -Setting $ContrastSetting -Wanted $Targets
     if ($bright.Count -eq 0 -and $contra.Count -eq 0) { return @() }
 
-    $done = @()
+    # Сначала собираем запрос целиком и только потом идём на шину: один обход на
+    # все мониторы вместо обхода на каждый (см. NativeDdc.Set).
+    $devices = @(); $wantB = @(); $wantC = @(); $labels = @()
     foreach ($t in @($Targets)) {
         $label = [string]$t.Label
         $b = $(if ($bright.Contains($label)) { [int]$bright[$label] } else { -1 })
@@ -4146,9 +4208,27 @@ function Set-MonitorLevels {
         if ($b -lt 0 -and $c -lt 0) { continue }
         if (-not $t.Device) { continue }
 
-        $applied = $null
-        try { $applied = [NativeDdc]::Set([string]$t.Device, $b, $c) }
-        catch { Write-DisplayLog "levels: $label - $($_.Exception.Message)"; continue }
+        $devices += [string]$t.Device
+        $wantB += $b
+        $wantC += $c
+        $labels += $label
+    }
+    if ($devices.Count -eq 0) { return @() }
+
+    $applied = @()
+    try { $applied = @([NativeDdc]::Set([string[]]$devices, [int[]]$wantB, [int[]]$wantC)) }
+    catch { Write-DisplayLog "levels: could not set - $($_.Exception.Message)"; return @() }
+
+    $done = @()
+    for ($i = 0; $i -lt $labels.Count; $i++) {
+        $label = $labels[$i]
+        $b = [int]$wantB[$i]
+        $c = [int]$wantC[$i]
+        $one = $(if ($i -lt $applied.Count) { $applied[$i] } else { $null })
+        if (-not $one) {
+            Write-DisplayLog ("levels: {0} - no answer from the bus at all" -f $label)
+            continue
+        }
 
         # Разбираем по значениям, а не «получилось / не получилось»: яркость
         # монитор мог применить, а контраст нет, и в журнале это должно быть видно
@@ -4156,8 +4236,8 @@ function Set-MonitorLevels {
         # возврата записи (см. NativeDdc.Set).
         $good = @()
         $bad = @()
-        if ($b -ge 0) { if ($applied.BrightnessConfirmed) { $good += "brightness $b" } else { $bad += "brightness $b" } }
-        if ($c -ge 0) { if ($applied.ContrastConfirmed)   { $good += "contrast $c" }   else { $bad += "contrast $c" } }
+        if ($b -ge 0) { if ($one.BrightnessConfirmed) { $good += "brightness $b" } else { $bad += "brightness $b" } }
+        if ($c -ge 0) { if ($one.ContrastConfirmed)   { $good += "contrast $c" }   else { $bad += "contrast $c" } }
 
         if ($good.Count -gt 0) {
             Write-DisplayLog ("levels: {0} - {1}" -f $label, ($good -join ', '))

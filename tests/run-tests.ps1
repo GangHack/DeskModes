@@ -2308,7 +2308,10 @@ function New-TestDiary {
     # должны сойтись и проценты, и средние.
     $store = [ordered]@{ days = [ordered]@{} }
     foreach ($offset in 0..3) {
-        $date = ([datetime]'2026-08-21').AddDays(-$offset).ToString('yyyy-MM-dd')
+        # Ключ дня собираем той же функцией, что и код: на локали с другим
+        # календарём ToString без культуры дал бы 2569 год, и отчёт искал бы дни,
+        # которых в копилке нет (см. Format-DisplayStamp).
+        $date = Format-DisplayStamp ([datetime]'2026-08-21').AddDays(-$offset) 'yyyy-MM-dd'
         $day = Get-ActivityDay -Store $store -Date $date
         Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'combo:Work' -Seconds 3600 -Time '09:00' -Hour 9
         Add-ActivitySpan -Day $day -Process 'Code' -Display 'LG ULTRAFINE' -Mode 'combo:Work' -Seconds 5400 -Time '13:00' -Hour 13
@@ -2474,6 +2477,12 @@ Test-Case 'diary: the page holds the numbers and calls nobody' {
     # Обещание проекта: ничего не устанавливается и никто не зовётся в гости.
     Assert-Equal $false ($html -like '*http://*') 'no outside links'
     Assert-Equal $false ($html -like '*https://*') 'none at all'
+    # Проценты в CSS — только с точкой. «width:12,5%» браузер выбрасывает целиком,
+    # и полоски становятся нулевыми, а гистограмма плоской: на русской локали
+    # отчёт был бы пустой картинкой (см. Format-ActivityPercent). Дробные доли в
+    # копилке заведены нарочно — иначе проверять было бы нечего.
+    Assert-True ($html -like '*width:33.3%*') 'a fractional share keeps its decimal point'
+    Assert-Equal $false ($html -match '(width|height):[0-9]+,') 'and no locale comma anywhere in the CSS'
 }
 
 # --- окно настроек: новое ------------------------------------------------------
@@ -2539,6 +2548,70 @@ Test-Case 'dialog: removing a combination takes its command and brightness along
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
         Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'no command left for a mode that is gone'
         Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and no brightness either'
+    }
+    finally { $ui.Window.Close() }
+}
+
+# Правила и «монитор появился» держат те же ключи режимов, и переименование в
+# окне обязано доехать и до них. Иначе правило каждые пятнадцать секунд уходило
+# бы в режим, которого больше нет, а переключение отвечало бы «combination no
+# longer exists» — то же место, из-за которого этот переезд делают ещё в двух
+# функциях (Convert-RoleSettingsToCombos и Update-HotkeyKeys).
+
+Test-Case 'dialog: renaming a combination carries its rules along' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.rules = @(
+        [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true }
+        [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = 'combo:Work'; enabled = $true }
+    )
+    $settings.reapply.onPlug = 'combo:Work'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.Combos[0].Name = 'Office'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 2 @($updated.rules).Count 'both rules are still there'
+        Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the rule follows the new name'
+        Assert-Equal 'combo:Office' ([string]$updated.rules[1].back) 'and so does the way back'
+        Assert-Equal 'combo:Office' ([string]$updated.reapply.onPlug) 'and "when a display appears"'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: removing a combination takes its rules along' {
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.rules = @(
+        [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true }
+        [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = 'combo:Work'; enabled = $true }
+    )
+    $settings.reapply.onPlug = 'combo:Work'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        # Первое правило уходить некуда — оно больше не правило. Второму пропал
+        # только возврат, и пустой возврат законен: «туда, где стол был до».
+        Assert-Equal 1 @($updated.rules).Count 'the rule with nowhere to go is gone'
+        Assert-Equal 'all' ([string]$updated.rules[0].mode) 'the other one stayed'
+        Assert-Equal '' ([string]$updated.rules[0].back) 'without its way back'
+        Assert-Equal '' ([string]$updated.reapply.onPlug) 'and nothing to do when a display appears'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a save leaves the rules the tray is living with alone' {
+    # $updated — копия: неудачная запись на диск не должна оставлять три разные
+    # версии настроек (в памяти, на диске и в зарегистрированных клавишах).
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true })
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.Combos[0].Name = 'Office'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the copy moved'
+        Assert-Equal 'combo:Work' ([string]$settings.rules[0].mode) 'the original did not'
     }
     finally { $ui.Window.Close() }
 }

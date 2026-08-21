@@ -336,9 +336,14 @@ function Invoke-Mode {
     if (-not $Auto) { Reset-RuleOwnership }
 
     $tray.Text = "$script:AppName - switching..."
+    # Переключение состоялось. Не «нас попросили»: провал уходит исключением, а
+    # занятый мьютекс — Skipped, и считать их за переключение нельзя (см. дневник
+    # ниже). Зажатый хоткей давал очередь пропусков, и каждый попадал в отчёт.
+    $switched = $false
     try {
         $keep = -not $script:Settings.maximizeRefresh
         $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet
+        $switched = -not $result.Skipped
         if ($result.Skipped) {
             Show-Balloon 'Skipped' $result.Message 'Warning'
         }
@@ -366,8 +371,9 @@ function Invoke-Mode {
         Update-StateCache
         # Дневник считает переключения — по ним видно, сколько раз в день человек
         # вообще трогает стол. Отдельным событием, потому что всё остальное в
-        # дневнике — это суммы секунд.
-        if ((Get-ActiveSettings).stats) {
+        # дневнике — это суммы секунд. Только состоявшиеся: отчёт, в котором
+        # переключений больше, чем их было, не отчёт.
+        if ($switched -and (Get-ActiveSettings).stats) {
             try { Add-ActivitySwitch -Mode $Key } catch { }
         }
     }
@@ -514,10 +520,11 @@ function Get-PowerRemaining {
 }
 
 # Подсказка значка: обратный отсчёт, когда он есть, и просто имя, когда нет.
+# Спрашиваем САМ срок, а не остаток: срок в прошлом — это всё ещё заведённый
+# таймер, и подсказка обязана его показывать (Format-Duration покажет «0 s»).
 function Update-TrayText {
-    $left = Get-PowerRemaining
-    if ($left -ge 0) {
-        $tray.Text = '{0} - {1} in {2}' -f $script:AppName, $script:PowerAction, (Format-Duration $left)
+    if ($script:PowerDeadline) {
+        $tray.Text = '{0} - {1} in {2}' -f $script:AppName, $script:PowerAction, (Format-Duration (Get-PowerRemaining))
     }
     else { $tray.Text = $script:AppName }
 }
@@ -550,8 +557,14 @@ $script:PowerTicker = New-Object System.Windows.Forms.Timer
 # Раз в пять секунд: обратный отсчёт показывается в минутах, и чаще незачем.
 $script:PowerTicker.Interval = 5000
 $script:PowerTicker.add_Tick({
+    # Условие выхода — ОТСУТСТВИЕ срока, а не отрицательный остаток. Таймер
+    # WinForms всегда опаздывает и никогда не спешит, за сотню тиков опоздание
+    # накапливается, и тик, который должен был поймать срок, приходит уже за ним.
+    # Проверка «остаток меньше нуля» принимала это за «таймера нет», останавливала
+    # отсчёт и уходила — компьютер не выключался, а подсказка значка продолжала
+    # обещать выключение. Срок в прошлом означает «пора», и ниже это и делается.
+    if (-not $script:PowerDeadline) { $script:PowerTicker.Stop(); return }
     $left = Get-PowerRemaining
-    if ($left -lt 0) { $script:PowerTicker.Stop(); return }
     Update-TrayText
 
     if (-not $script:PowerWarned -and $left -le 60) {
@@ -973,6 +986,15 @@ $needSave = Update-HotkeyKeys $script:Settings (Get-CachedState)
 if ($script:LegacyRolesOnDisk) {
     Write-DisplayLog ('settings: display groups moved into combinations - ' +
                       (@($script:Settings.combos.Keys) -join ', '))
+    $needSave = $true
+}
+
+# То же для автоматического игрового режима, переехавшего в rules. Без этой
+# записи переезд оставался только в памяти: в файле продолжал лежать autoGame, и
+# правило собиралось из него заново на каждом чтении — удалить его из rules
+# рукой было невозможно, оно возвращалось.
+if ($script:LegacyAutoGameOnDisk) {
+    Write-DisplayLog 'settings: the automatic game mode moved into rules'
     $needSave = $true
 }
 

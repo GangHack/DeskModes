@@ -139,7 +139,7 @@ function Save-ActivityStore {
     try {
         # Дни старше года выбрасываем: годовой отчёт — это уже всё, что кто-то
         # станет читать, а файл должен оставаться маленьким без чужого участия.
-        $limit = (Get-Date).AddDays(-400).ToString('yyyy-MM-dd')
+        $limit = Format-DisplayStamp ((Get-Date).AddDays(-400)) 'yyyy-MM-dd'
         foreach ($key in @($script:ActivityStore.days.Keys)) {
             if ($key -lt $limit) { $script:ActivityStore.days.Remove($key) }
         }
@@ -198,9 +198,9 @@ function Add-ActivitySample {
         $display = [string]$DisplayMap[[string]$sample.Device]
     }
 
-    $day = Get-ActivityDay -Store (Get-ActivityStore) -Date $now.ToString('yyyy-MM-dd')
+    $day = Get-ActivityDay -Store (Get-ActivityStore) -Date (Format-DisplayStamp $now 'yyyy-MM-dd')
     Add-ActivitySpan -Day $day -Process ([string]$sample.Process) -Display $display -Mode $Mode `
-                     -Seconds $seconds -Time $now.ToString('HH:mm') -Hour $now.Hour
+                     -Seconds $seconds -Time (Format-DisplayStamp $now 'HH:mm') -Hour $now.Hour
 
     # Самый долгий непрерывный отрезок. Считаем на ходу, чтобы не хранить в файле
     # поток событий: длина текущего отрезка — это «сейчас минус его начало».
@@ -218,7 +218,7 @@ function Add-ActivitySwitch {
     param([string]$Mode)
 
     if (-not $Mode) { return }
-    $day = Get-ActivityDay -Store (Get-ActivityStore) -Date (Get-Date).ToString('yyyy-MM-dd')
+    $day = Get-ActivityDay -Store (Get-ActivityStore) -Date (Format-DisplayStamp (Get-Date) 'yyyy-MM-dd')
     $day.switches = [int]$day.switches + 1
     $script:ActivityDirty = $true
 }
@@ -239,7 +239,7 @@ function Get-ActivityReport {
     }
     if (-not $Store -or -not $Store.days) { return $report }
 
-    $since = $Today.AddDays(-1 * [math]::Max(0, $Days - 1)).ToString('yyyy-MM-dd')
+    $since = Format-DisplayStamp ($Today.AddDays(-1 * [math]::Max(0, $Days - 1))) 'yyyy-MM-dd'
     $dates = @($Store.days.Keys | Where-Object { [string]$_ -ge $since } | Sort-Object)
     if ($dates.Count -eq 0) { return $report }
 
@@ -338,7 +338,7 @@ function Get-ActivityStreak {
     foreach ($d in @($Dates)) { $set[[string]$d] = $true }
     $streak = 0
     $cursor = $Today.Date
-    while ($set.Contains($cursor.ToString('yyyy-MM-dd'))) {
+    while ($set.Contains((Format-DisplayStamp $cursor 'yyyy-MM-dd'))) {
         $streak++
         $cursor = $cursor.AddDays(-1)
     }
@@ -398,7 +398,7 @@ function Format-ActivityReport {
             $bar = '#' * [int][math]::Round($r.Share / 5)
             # Ширина колонки времени — под «12 h 00 min» целиком: на десяти
             # знаках трёхчасовые строки съезжали относительно двузначных.
-            $out += ('  {0,-28} {1,11}  {2,5}%  {3}' -f $name, (Format-ActivitySpan $r.Seconds), $r.Share, $bar)
+            $out += ('  {0,-28} {1,11}  {2,5}%  {3}' -f $name, (Format-ActivitySpan $r.Seconds), (Format-ActivityPercent $r.Share), $bar)
         }
     }
 
@@ -427,7 +427,7 @@ function Format-ActivityHtmlRows {
         $html += ('<tr><td class="name">{0}</td><td class="time">{1}</td>' -f
                   $name, (Format-ActivitySpan $r.Seconds))
         $html += ('<td class="bar"><span style="width:{0}%"></span></td><td class="share">{1}%</td></tr>' -f
-                  [math]::Min(100, [double]$r.Share), $r.Share)
+                  (Format-ActivityPercent ([math]::Min(100, [double]$r.Share))), (Format-ActivityPercent $r.Share))
     }
     if (-not $html) { $html = '<tr><td colspan="4" class="dim">nothing yet</td></tr>' }
     return $html
@@ -442,6 +442,18 @@ function Format-HtmlText {
     return ([string]$Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
 }
 
+# Число в разметку — ВСЕГДА с точкой. `-f` берёт разделитель у текущей локали, и
+# на русской «width:12,5%» — это не двенадцать с половиной процентов, а
+# выброшенное правило CSS: полоска рисуется нулевой ширины, гистограмма часов
+# становится плоской, и виноватым выглядит дневник, а не запятая. Проценты здесь
+# считаются с одним знаком после точки (см. ConvertTo-ActivityRows), поэтому
+# формат ровно на него.
+function Format-ActivityPercent {
+    param([double]$Value)
+
+    return $Value.ToString('0.#', [cultureinfo]::InvariantCulture)
+}
+
 function New-ActivityHtml {
     param($Report, [string]$Accent = '#4CC2FF', [switch]$Dark)
 
@@ -449,7 +461,7 @@ function New-ActivityHtml {
     foreach ($h in @($Report.Hours)) {
         $cls = $(if ([int]$h.Name -eq [int]$Report.BusiestHour) { ' peak' } else { '' })
         $hours += ('<div class="hour{0}"><span style="height:{1}%"></span><em>{2}</em></div>' -f
-                   $cls, [math]::Max(2, [double]$h.Share), $h.Name)
+                   $cls, (Format-ActivityPercent ([math]::Max(2, [double]$h.Share))), $h.Name)
     }
 
     $facts = @(

@@ -2304,6 +2304,68 @@ function Read-SettingsFromUi {
         $updated[$field] = $moved
     }
 
+    # Правила и «монитор появился» ссылаются на режимы ТЕМИ ЖЕ ключами, значит и
+    # переезжать должны вместе с ними: комбинацию переименовали — правило обязано
+    # смотреть на новое имя, удалили — правило про неё больше не правило. Иначе
+    # осталось бы правило, которое каждые пятнадцать секунд уходит в режим,
+    # которого нет, и переключение отвечало бы «combination no longer exists».
+    # Ключи режимов меняются в трёх местах, и это третье: то же делают
+    # Convert-RoleSettingsToCombos (переезд ролей) и Update-HotkeyKeys (монитор
+    # переехал на другой вход).
+    $renames = @{}
+    foreach ($c in @($Ui.Combos)) {
+        if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
+        $renames['combo:' + $c.OriginalName] = 'combo:' + $c.Name
+    }
+    $gone = @(@($Ui.DeletedComboKeys) | Where-Object { $_ -and $currentComboKeys -notcontains $_ })
+
+    # Правила ПЕРЕСОБИРАЕМ, а не правим на месте: $updated — копия, и неудачная
+    # запись на диск не должна оставлять правку в настройках, с которыми живёт
+    # трей (см. комментарий у $updated выше).
+    $rules = @()
+    foreach ($r in @($Settings.rules)) {
+        if (-not $r) { continue }
+        $copy = [ordered]@{}
+        if ($r -is [System.Collections.IDictionary]) {
+            foreach ($k in @($r.Keys)) { $copy[$k] = $r[$k] }
+        }
+        else {
+            foreach ($p in $r.PSObject.Properties) { $copy[$p.Name] = $p.Value }
+        }
+        foreach ($field in 'mode', 'back') {
+            $v = [string]$copy[$field]
+            if (-not $v) { continue }
+            if ($renames.ContainsKey($v)) { $copy[$field] = [string]$renames[$v] }
+            elseif ($gone -contains $v) {
+                # Пустое «куда возвращаться» — это «туда, где стол был до
+                # срабатывания», законное значение (см. Get-RuleDecision).
+                $copy[$field] = ''
+                Write-DisplayLog "settings: dropped the $field of a rule for removed $v"
+            }
+        }
+        # А вот правило без режима — уже не правило: уходить некуда.
+        if (-not [string]$copy['mode']) {
+            Write-DisplayLog 'settings: dropped a rule whose mode was removed'
+            continue
+        }
+        $rules += $copy
+    }
+    $updated.rules = @($rules)
+
+    if ($Settings.reapply -is [System.Collections.IDictionary]) {
+        $reapply = [ordered]@{}
+        foreach ($k in @($Settings.reapply.Keys)) { $reapply[$k] = $Settings.reapply[$k] }
+        $plug = [string]$reapply['onPlug']
+        if ($plug) {
+            if ($renames.ContainsKey($plug)) { $reapply['onPlug'] = [string]$renames[$plug] }
+            elseif ($gone -contains $plug) {
+                $reapply['onPlug'] = ''
+                Write-DisplayLog "settings: dropped 'on plug' for removed $plug"
+            }
+        }
+        $updated.reapply = $reapply
+    }
+
     return [pscustomobject]@{ Ok = $true; Settings = $updated; Problem = '' }
 }
 
