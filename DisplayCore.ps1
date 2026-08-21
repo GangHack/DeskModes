@@ -1030,6 +1030,14 @@ public class NativeDdc {
     private const int Tries = 3;
     private const int PauseMs = 60;
 
+    // Сколько ждать подтверждения от монитора, который только что включили.
+    // Полторы секунды в худшем случае и ни одной лишней паузы в обычном (см.
+    // цикл подтверждения в Set). Пробуждение по DDC мерится сотнями
+    // миллисекунд: 120 мс хватает тому, кто уже работал, и не хватает тому, кто
+    // проснулся в этом же переключении.
+    private const int ConfirmPasses = 6;
+    private const int ConfirmPauseMs = 250;
+
     public static int LastError;
 
     private static bool WithRetry(Func<bool> call) {
@@ -1073,6 +1081,12 @@ public class NativeDdc {
         public bool Found;
         public bool BrightnessAsked, BrightnessConfirmed;
         public bool ContrastAsked, ContrastConfirmed;
+        // Ответил ли монитор на перечитку вообще, и что именно ответил. Без этого
+        // «не подтвердил» сливает два разных случая в один: монитор молчит (ещё
+        // просыпается) и монитор отвечает чужим числом (отказ, DDC/CI выключен в
+        // его меню). Советовать в первом случае «проверьте меню» — вранье.
+        public bool BrightnessRead, ContrastRead;
+        public int BrightnessActual = -1, ContrastActual = -1;
     }
 
     // Записи по DDC/CI ОТВЕТА НЕ ТРЕБУЮТ: SetMonitorBrightness вернул true для
@@ -1137,22 +1151,48 @@ public class NativeDdc {
             // значением: сразу после записи он ещё отдаёт старое.
             if (asked) { System.Threading.Thread.Sleep(120); }
 
-            for (int j = 0; j < open.Count; j++) {
-                if (slot[j] < 0) { continue; }
-                Applied a = result[slot[j]];
-                IntPtr handle = open[j].Value.handle;
-                if (a.BrightnessAsked) {
-                    uint min = 0, cur = 0, max = 0;
-                    if (WithRetry(delegate { return GetMonitorBrightness(handle, out min, out cur, out max); })) {
-                        a.BrightnessConfirmed = ((int)cur == brightness[slot[j]]);
+            // Подтверждение — НЕСКОЛЬКО подходов с паузой, а не один вопрос.
+            // Монитор, который только что включили переключением набора, на
+            // первый вопрос молчит: 21 августа ULTRAFINE взял яркость 60
+            // (перечитка через секунду это показала), но подтвердить сразу после
+            // пробуждения не успел — и журнал написал «did not take» про
+            // значение, которое монитор принял. Обвинить монитор зря дороже, чем
+            // подождать. Платят за это только те, кто ещё не ответил: подходы
+            // прекращаются, как только подтвердились все (обычный случай — с
+            // первого раза, без единой лишней паузы).
+            for (int pass = 0; pass < ConfirmPasses; pass++) {
+                bool waiting = false;
+                for (int j = 0; j < open.Count; j++) {
+                    if (slot[j] < 0) { continue; }
+                    Applied a = result[slot[j]];
+                    IntPtr handle = open[j].Value.handle;
+
+                    if (a.BrightnessAsked && !a.BrightnessConfirmed) {
+                        uint min = 0, cur = 0, max = 0;
+                        // Один вопрос, без WithRetry: повтор здесь и есть внешний
+                        // цикл, и его пауза длиннее — молчание после пробуждения
+                        // мерится сотнями миллисекунд, а не десятками.
+                        if (GetMonitorBrightness(handle, out min, out cur, out max)) {
+                            a.BrightnessRead = true;
+                            a.BrightnessActual = (int)cur;
+                            a.BrightnessConfirmed = ((int)cur == brightness[slot[j]]);
+                        }
+                        else { LastError = Marshal.GetLastWin32Error(); }
+                        if (!a.BrightnessConfirmed) { waiting = true; }
+                    }
+                    if (a.ContrastAsked && !a.ContrastConfirmed) {
+                        uint min = 0, cur = 0, max = 0;
+                        if (GetMonitorContrast(handle, out min, out cur, out max)) {
+                            a.ContrastRead = true;
+                            a.ContrastActual = (int)cur;
+                            a.ContrastConfirmed = ((int)cur == contrast[slot[j]]);
+                        }
+                        else { LastError = Marshal.GetLastWin32Error(); }
+                        if (!a.ContrastConfirmed) { waiting = true; }
                     }
                 }
-                if (a.ContrastAsked) {
-                    uint min = 0, cur = 0, max = 0;
-                    if (WithRetry(delegate { return GetMonitorContrast(handle, out min, out cur, out max); })) {
-                        a.ContrastConfirmed = ((int)cur == contrast[slot[j]]);
-                    }
-                }
+                if (!waiting) { break; }
+                if (pass + 1 < ConfirmPasses) { System.Threading.Thread.Sleep(ConfirmPauseMs); }
             }
         }
         finally {
@@ -4234,20 +4274,38 @@ function Set-MonitorLevels {
         # монитор мог применить, а контраст нет, и в журнале это должно быть видно
         # раздельно. Подтверждение — прочитанное обратно значение, а не код
         # возврата записи (см. NativeDdc.Set).
+        #
+        # И три исхода, а не два. «Ответил чужим числом» — это отказ, и совет про
+        # меню монитора здесь к месту. «Не ответил вовсе» — это чаще всего шина,
+        # которая ещё не проснулась, и значение при этом скорее всего ЛЕГЛО:
+        # 21 августа журнал написал «did not take brightness 60» монитору, который
+        # ровно на 60 и стоял. Одно сообщение на оба случая врало в половине.
         $good = @()
-        $bad = @()
-        if ($b -ge 0) { if ($one.BrightnessConfirmed) { $good += "brightness $b" } else { $bad += "brightness $b" } }
-        if ($c -ge 0) { if ($one.ContrastConfirmed)   { $good += "contrast $c" }   else { $bad += "contrast $c" } }
+        $refused = @()
+        $silent = @()
+        if ($b -ge 0) {
+            if ($one.BrightnessConfirmed) { $good += "brightness $b" }
+            elseif ($one.BrightnessRead)  { $refused += "brightness $b (it reports $($one.BrightnessActual))" }
+            else                          { $silent += "brightness $b" }
+        }
+        if ($c -ge 0) {
+            if ($one.ContrastConfirmed) { $good += "contrast $c" }
+            elseif ($one.ContrastRead)  { $refused += "contrast $c (it reports $($one.ContrastActual))" }
+            else                        { $silent += "contrast $c" }
+        }
 
         if ($good.Count -gt 0) {
             Write-DisplayLog ("levels: {0} - {1}" -f $label, ($good -join ', '))
             $done += $label
         }
-        if ($bad.Count -gt 0) {
-            # Монитор не подтвердил. Причины бывают безобидные (DDC/CI выключен в
-            # его меню, монитор ещё просыпается, шина зависла до следующего цикла
-            # линка), но врать об успехе нельзя.
-            Write-DisplayLog ("levels: {0} did not take {1} - DDC/CI may be off in its own menu" -f $label, ($bad -join ', '))
+        if ($refused.Count -gt 0) {
+            Write-DisplayLog ("levels: {0} refused {1} - DDC/CI may be off in its own menu" -f $label, ($refused -join ', '))
+        }
+        if ($silent.Count -gt 0) {
+            # Не «не принял», а «не ответил»: врать об успехе нельзя, но и вешать
+            # на монитор отказ, которого не было, тоже.
+            Write-DisplayLog ("levels: {0} never answered about {1} - it may still be waking up, and the value may well have landed" -f `
+                              $label, ($silent -join ', '))
         }
     }
     return $done
