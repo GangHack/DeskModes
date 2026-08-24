@@ -2493,10 +2493,19 @@ function Read-SettingsFromUi {
 
     foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
         # Яркость приезжает из карточки с ползунками, остальное — из настроек как
-        # было: окно этого не правит. Дальше все четыре идут одной дорогой, ведь
-        # переименование и удаление комбинации касаются их одинаково.
-        $source = $(if ($field -eq 'brightness') { ConvertTo-BrightnessSettings -Levels $Ui.Levels } else { $Settings[$field] })
-        $updated[$field] = Move-ModeKeyedEntries -Source $source -Renames $renames -Gone $gone -What $field
+        # было: окно этого не правит. Отсюда и разные карты переезда. Звук,
+        # команды и контраст лежат под ТЕМИ ключами, что в файле, — их надо
+        # переименовать. А яркость Set-UiMode перекладывает на новый ключ сразу
+        # при правке, и второе применение карты не просто лишнее: комбинация,
+        # занявшая освободившееся имя, совпала бы с ИСТОЧНИКОМ переименования и
+        # молча потеряла бы свою яркость.
+        $source = $Settings[$field]
+        $map = $renames
+        if ($field -eq 'brightness') {
+            $source = ConvertTo-BrightnessSettings -Levels $Ui.Levels
+            $map = [ordered]@{}
+        }
+        $updated[$field] = Move-ModeKeyedEntries -Source $source -Renames $map -Gone $gone -What $field
     }
 
     # Правила и «монитор появился» ссылаются на режимы ТЕМИ ЖЕ ключами, значит и

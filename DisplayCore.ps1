@@ -246,24 +246,29 @@ function ConvertTo-RuleSettings {
     })
 }
 
-# Содержимое settings.json, разобранное из JSON, или $null — файла нет либо он
-# испорчен.
-#
 # Копию испорченного файла надо сохранить: дальше приложение видит пустой список
 # клавиш, считает это первым запуском и записывает поверх значения по умолчанию.
 # Без копии привязки исчезали бы совсем.
+function Save-DamagedSettingsCopy {
+    param([string]$Reason)
+
+    Write-DisplayLog "settings: file is damaged, falling back to defaults - $Reason"
+    try {
+        Copy-Item $script:SettingsFile ($script:SettingsFile + '.bad') -Force
+        Write-DisplayLog 'settings: kept a copy of the damaged file as settings.json.bad'
+    }
+    catch { }   # не смогли сохранить копию — настройки всё равно поднимаем
+}
+
+# Содержимое settings.json, разобранное из JSON, или $null — файла нет либо он
+# испорчен.
 function Read-SettingsFile {
     if (-not (Test-Path $script:SettingsFile)) { return $null }
     try {
         return (Get-Content $script:SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json)
     }
     catch {
-        Write-DisplayLog "settings: file is damaged, falling back to defaults - $($_.Exception.Message)"
-        try {
-            Copy-Item $script:SettingsFile ($script:SettingsFile + '.bad') -Force
-            Write-DisplayLog 'settings: kept a copy of the damaged file as settings.json.bad'
-        }
-        catch { }   # не смогли сохранить копию — настройки всё равно поднимаем
+        Save-DamagedSettingsCopy -Reason $_.Exception.Message
         return $null
     }
 }
@@ -278,50 +283,63 @@ function Get-DisplaySettings {
     $raw = Read-SettingsFile
     if (-not $raw) { return $s }
 
-    if ($null -ne $raw.maximizeRefresh) { $s.maximizeRefresh = [bool]$raw.maximizeRefresh }
-    if ($null -ne $raw.notifications)   { $s.notifications   = [bool]$raw.notifications }
-    if ($null -ne $raw.restoreWindows)  { $s.restoreWindows  = [bool]$raw.restoreWindows }
-    if ($null -ne $raw.restoreLastMode) { $s.restoreLastMode = [bool]$raw.restoreLastMode }
-    if ($null -ne $raw.stats)           { $s.stats           = [bool]$raw.stats }
-    if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
-    if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
+    # Разбор целиком под try, а не только чтение JSON: файл правят руками, и
+    # правильный JSON легко несёт бессмысленное значение («brightness»: «high»,
+    # «minutes»: «twenty»). Приведение типа на таком — ошибка ТЕРМИНИРУЮЩАЯ, и
+    # без этого catch она уходит наружу: обе точки входа стоят с
+    # $ErrorActionPreference = 'Stop' и зовут Get-DisplaySettings на старте, то
+    # есть трей не поднимался бы вовсе. Испорченное значение — тот же «файл
+    # испорчен», что и испорченный JSON, и ответ на него тот же. Уже разобранное
+    # остаётся: половина настроек лучше, чем ни одной.
+    try {
+        if ($null -ne $raw.maximizeRefresh) { $s.maximizeRefresh = [bool]$raw.maximizeRefresh }
+        if ($null -ne $raw.notifications)   { $s.notifications   = [bool]$raw.notifications }
+        if ($null -ne $raw.restoreWindows)  { $s.restoreWindows  = [bool]$raw.restoreWindows }
+        if ($null -ne $raw.restoreLastMode) { $s.restoreLastMode = [bool]$raw.restoreLastMode }
+        if ($null -ne $raw.stats)           { $s.stats           = [bool]$raw.stats }
+        if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
+        if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
 
-    foreach ($field in 'hotkeys', 'audio') {
-        if (-not $raw.$field) { continue }
-        foreach ($p in $raw.$field.PSObject.Properties) { $s.$field[$p.Name] = [string]$p.Value }
-    }
+        foreach ($field in 'hotkeys', 'audio') {
+            if (-not $raw.$field) { continue }
+            foreach ($p in $raw.$field.PSObject.Properties) { $s.$field[$p.Name] = [string]$p.Value }
+        }
 
-    if ($raw.combos) {
-        foreach ($p in $raw.combos.PSObject.Properties) {
-            if ($p.Name) { $s.combos[$p.Name] = ConvertTo-ComboSetting $p.Value }
+        if ($raw.combos) {
+            foreach ($p in $raw.combos.PSObject.Properties) {
+                if ($p.Name) { $s.combos[$p.Name] = ConvertTo-ComboSetting $p.Value }
+            }
+        }
+
+        if ($raw.hooks) {
+            foreach ($p in $raw.hooks.PSObject.Properties) {
+                if (-not $p.Name) { continue }
+                $hook = ConvertTo-HookSetting $p.Value
+                if ($hook) { $s.hooks[$p.Name] = $hook }
+            }
+        }
+
+        foreach ($field in 'brightness', 'contrast') {
+            if (-not $raw.$field) { continue }
+            foreach ($p in $raw.$field.PSObject.Properties) {
+                if (-not $p.Name) { continue }
+                $level = ConvertTo-LevelSetting $p.Value
+                if ($null -ne $level) { $s.$field[$p.Name] = $level }
+            }
+        }
+
+        # @() на месте вызова обязательна: функция, вернувшая массив из одного элемента,
+        # отдаёт его скаляром, и $s.rules[0] перестал бы существовать.
+        if ($raw.rules) { $s.rules = @(ConvertTo-RuleSettings $raw.rules) }
+
+        if ($raw.reapply) {
+            if ($null -ne $raw.reapply.onResume) { $s.reapply.onResume = [bool]$raw.reapply.onResume }
+            if ($null -ne $raw.reapply.onUnplug) { $s.reapply.onUnplug = [bool]$raw.reapply.onUnplug }
+            if ($null -ne $raw.reapply.onPlug)   { $s.reapply.onPlug   = [string]$raw.reapply.onPlug }
         }
     }
-
-    if ($raw.hooks) {
-        foreach ($p in $raw.hooks.PSObject.Properties) {
-            if (-not $p.Name) { continue }
-            $hook = ConvertTo-HookSetting $p.Value
-            if ($hook) { $s.hooks[$p.Name] = $hook }
-        }
-    }
-
-    foreach ($field in 'brightness', 'contrast') {
-        if (-not $raw.$field) { continue }
-        foreach ($p in $raw.$field.PSObject.Properties) {
-            if (-not $p.Name) { continue }
-            $level = ConvertTo-LevelSetting $p.Value
-            if ($null -ne $level) { $s.$field[$p.Name] = $level }
-        }
-    }
-
-    # @() на месте вызова обязательна: функция, вернувшая массив из одного элемента,
-    # отдаёт его скаляром, и $s.rules[0] перестал бы существовать.
-    if ($raw.rules) { $s.rules = @(ConvertTo-RuleSettings $raw.rules) }
-
-    if ($raw.reapply) {
-        if ($null -ne $raw.reapply.onResume) { $s.reapply.onResume = [bool]$raw.reapply.onResume }
-        if ($null -ne $raw.reapply.onUnplug) { $s.reapply.onUnplug = [bool]$raw.reapply.onUnplug }
-        if ($null -ne $raw.reapply.onPlug)   { $s.reapply.onPlug   = [string]$raw.reapply.onPlug }
+    catch {
+        Save-DamagedSettingsCopy -Reason $_.Exception.Message
     }
 
     return $s

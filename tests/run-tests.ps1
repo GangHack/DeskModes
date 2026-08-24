@@ -2519,7 +2519,12 @@ Test-Case 'dialog: renaming a combination carries its command and brightness' {
     $settings.brightness['combo:Work'] = 55
     $ui = New-DialogUi -Settings $settings
     try {
-        $ui.Combos[0].Name = 'Office'
+        # Через редактор режима, как в живом окне: команда переезжает на Save по
+        # карте переименований, а яркость — сразу, вместе с правкой.
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = ''
+            Level = $ui.Levels['combo:Work'] })
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-True ($updated.hooks.Contains('combo:Office')) 'the command followed the new name'
         Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'and left no ghost behind'
@@ -3039,10 +3044,40 @@ Test-Case 'dialog: renaming a combination carries the sliders too' {
     $settings.brightness['combo:Work'] = 45
     $ui = New-DialogUi -Settings $settings
     try {
-        $ui.Combos[0].Name = 'Office'
+        # Через ту же дверь, что и живое окно: имя меняет редактор режима, а не
+        # рука в списке комбинаций.
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = ''
+            Level = $ui.Levels['combo:Work'] })
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 45 $updated.brightness['combo:Office'] 'followed the new name'
         Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and left no ghost'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a new combination taking a freed name keeps its own brightness' {
+    # Яркость Set-UiMode перекладывает на новый ключ сразу, поэтому на Save её
+    # переименовывать НЕ надо: иначе новая комбинация, занявшая освободившееся
+    # имя, совпадает с источником переименования и молча теряет свою яркость.
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.brightness['combo:Work'] = 30
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Play'; Patterns = @('LG ULTRAGEAR'); Primary = ''
+            Level = $ui.Levels['combo:Work'] })
+        # И тут же заводим новую «Work» — имя освободилось.
+        Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited ([pscustomobject]@{
+            Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = ''
+            Level = [pscustomobject]@{ Kind = 'one'; Value = 70; Map = [ordered]@{} } })
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 30 $updated.brightness['combo:Play'] 'the renamed one kept its level'
+        Assert-Equal 70 $updated.brightness['combo:Work'] 'and the new one kept its own'
     }
     finally { $ui.Window.Close() }
 }

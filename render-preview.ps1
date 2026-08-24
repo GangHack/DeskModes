@@ -180,7 +180,13 @@ try {
             # Рядом с первым снимком, с суффиксом. ChangeExtension($Out, $null) здесь
             # не годится: PowerShell отдаёт вместо $null пустую строку, и точка от
             # расширения остаётся в имени.
-            $editorOut = Join-Path (Split-Path -Parent $Out) `
+            #
+            # Папку берём с запасным '.': у голого имени файла (-Out ui.png)
+            # Split-Path -Parent отдаёт пустую строку, а Join-Path её не принимает —
+            # и второй снимок падал, когда первый уже записан.
+            $editorDir = Split-Path -Parent $Out
+            if (-not $editorDir) { $editorDir = '.' }
+            $editorOut = Join-Path $editorDir `
                                    ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-mode.png')
             Save-WindowSnapshot -Window $ed.Window -Path $editorOut
         }
