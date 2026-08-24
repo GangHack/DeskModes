@@ -80,9 +80,10 @@ Then:
 1. Run `Displays.cmd`. An icon appears in the notification area.
 2. Click the icon → **Settings…**
 3. Arrange the display cards as they stand on your desk and star the one that keeps the
-   taskbar. Add a **combination** for every set of displays you switch between, and bind
-   hotkeys to the modes you want (click a box, press the keys; the cross next to it removes
-   a binding).
+   taskbar. Add a **combination** for every set of displays you switch between. Every mode
+   is a row under **Modes** with an **Edit** button: that one window holds its displays, its
+   taskbar, its shortcut (click the box, press the keys; the cross removes a binding) and
+   the brightness of its monitors.
 4. Turn on **Start with Windows** if you want it back after a reboot.
 
 The Settings window follows the system theme — dark, light and your accent color — and
@@ -118,14 +119,20 @@ Every mode is one of three things: **one display** (there is a mode per display,
 **all of them**, or **a combination** — the sets you name yourself. That is the only concept
 you configure, and it is the only one you can delete.
 
-Create one in the Settings window: pick a name, tick the displays, optionally choose which
-of them keeps the taskbar while the combination is on, and press a shortcut right there in
-the editor. One display can be in as many combinations as you like — "Movie night" and
-"Work" can both include the 4K panel, each with the taskbar somewhere different.
+Create one in the Settings window with **Add a combination**: pick a name, tick the
+displays, optionally choose which of them keeps the taskbar while the combination is on,
+press a shortcut, and set the brightness of its monitors — all in the same window, which is
+also what **Edit** opens later. One display can be in as many combinations as you like —
+"Movie night" and "Work" can both include the 4K panel, each with the taskbar somewhere
+different.
+
+The same **Edit** sits on every other mode too. A display's mode and "all displays" have no
+name or membership to argue about — the desk decides those — so their editor holds the
+shortcut and the brightness, and nothing else. Only combinations have **Remove**.
 
 Each combination shows up in the tray menu under its own name, takes a hotkey like any other
 mode, resolves from the command line (`.\Set-Display.ps1 "Movie night"`), and is a valid
-target for `autoGame` and `audio`. The mode key is `combo:<name>`.
+target for `rules`, `hooks`, `brightness` and `audio`. The mode key is `combo:<name>`.
 
 Renaming a combination moves its hotkey and audio binding along; removing it removes them.
 A combination whose displays are all unplugged stays in the menu, greyed out — you made it,
@@ -136,19 +143,6 @@ modes plus "all"; no set is invented for you. An early version decided ASUS mean
 LG meant work, which was true of exactly one desk: LG makes gaming panels, ASUS makes office
 ones, and Dell fell through the cracks entirely. Which displays belong together is a
 decision, not a property of the hardware.
-
-### Coming from display groups
-
-Earlier versions had a second concept: a **group**, a name written on each display, which
-produced a mode once two displays shared it. It said less than a combination (one group per
-display, no taskbar choice of its own) and it was removed in favour of the one that says
-more.
-
-Nothing to do about it — `roles` in an existing `settings.json` is turned into combinations
-the first time the new version reads it: `work` on two displays becomes a combination named
-`Work` with those two, and its hotkey, audio entry and `autoGame` target follow it from
-`role:work` to `combo:Work`. The tray rewrites the file once and logs what moved. `work.cmd`
-and `game.cmd` keep working, because a combination also resolves by name.
 
 ## settings.json
 
@@ -161,7 +155,6 @@ Written by the Settings window, and safe to edit by hand. See
 | `layout` | display names left to right, as they physically stand on your desk |
 | `primary` | which display gets the taskbar, when it is among those switched on |
 | `combos` | combination name → `{ "displays": [...], "primary": "..." }`; a bare array works too |
-| `roles` | legacy display groups; turned into combinations on first read, then left empty |
 | `maximizeRefresh` | restore each display to its highest refresh rate |
 | `notifications` | show a balloon after switching |
 | `restoreWindows` | remember and restore window positions per display set |
@@ -171,7 +164,6 @@ Written by the Settings window, and safe to edit by hand. See
 | `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after* |
 | `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }` |
 | `stats` | keep the diary. Off by default |
-| `autoGame` | legacy single rule; turned into the first entry of `rules` on first read |
 | `audio` | mode key → part of a playback device name |
 
 Names are matched by substring, in either direction: `UltraGear` finds `LG ULTRAGEAR`, and
@@ -215,8 +207,8 @@ displays on and off constantly; reacting to its own work would be an endless loo
 
 ## Rules
 
-`autoGame` could express one thing: this process started, go to that mode, come back when
-it exits. Rules say the same and more.
+"This happened - become that." A rule watches for a condition and puts the desk into a
+mode while it holds.
 
 ```json
 "rules": [
@@ -243,17 +235,15 @@ a rule holds the desk, the others stay quiet. Three things it will not do:
 - **Argue with you.** Switch the desk by hand while a rule holds it and the rule lets go —
   by hotkey, from the menu or from the command line, it makes no difference.
 
-Your old `autoGame` keeps working: it becomes the first rule the first time the new version
-reads the file, and it keeps its seniority over rules you write later.
-
 ## Brightness
 
 A monitor's brightness lives in its own firmware, not in Windows, and is reached over
 DDC/CI — the service channel inside the HDMI/DisplayPort cable that the buttons on the
 bezel use. So a mode can carry it.
 
-**In the Settings window**, the **Brightness** card does it with sliders: pick a mode, then
-say what should happen to it —
+**In the Settings window** it lives inside the mode itself: press **Edit** on any mode and
+scroll to **Brightness**. There is no brightness card of its own — a mode is set up in one
+place. Say what should happen to it —
 
 - **leave the brightness alone** — the mode does not touch it (the default for everything);
 - **one level for every display of this mode** — a single slider;
@@ -279,7 +269,7 @@ The window never turns one shape into the other behind your back. A hand-written
 `"all": 80` is still `80` after a Save: expanding it into a per-display object would use the
 displays that happen to be plugged in *now*, quietly dropping the one that is unplugged and
 changing what the setting means for a monitor you buy tomorrow. Switching shapes is the
-"Then…" list, which is your decision — and switching to per-display seeds every slider with
+the list at the top of Brightness, which is your decision — and switching to per-display seeds every slider with
 the number you were looking at.
 
 Contrast has no sliders: it is the same idea and stays in `settings.json`.
@@ -386,11 +376,15 @@ display ended at, and how long the whole thing took.
 22:35:11  switch: on = LG ULTRAFINE, LG ULTRAGEAR
 22:35:12  ccd: full config applied - 2 display(s) on (with refresh rates)
 22:35:12  layout: already correct
-22:35:14  done: LG ULTRAFINE 3840x2160 @ 60 Hz, LG ULTRAGEAR 2560x1440 @ 144 Hz (2.5 s)
+22:35:14  done: LG ULTRAFINE 3840x2160 @ 60 Hz, LG ULTRAGEAR 2560x1440 @ 144 Hz (2.5 s: state 0.2, apply 0.9, settle 0.3, modes 1.1)
 ```
 
 That is a healthy switch: the desk was rebuilt once (`full config applied`), and the checks
-after it found nothing left to fix. Lines to notice if it feels rough: `rates left to
+after it found nothing left to fix. The `done:` line breaks the total down by phase, so a
+slow switch tells you whose second it was: `state` and `layout` are the tool's own work,
+while `apply`, `settle` and `modes` are mostly waiting for Windows and the displays
+themselves. Whatever runs after the desk is up — window positions, audio, DDC brightness —
+is timed on a separate `after:` line. Lines to notice if it feels rough: `rates left to
 Windows` means the exact refresh rate was not known yet and will be learned by the next
 switch; `topology set` instead of `full config applied` means the single call was refused
 and the old three-step path ran; a `mode:` line means one display needed its rate corrected
@@ -412,7 +406,7 @@ Two things worth knowing:
 | **Windows Settings** | Several clicks per display, and it forgets the arrangement. |
 | **DisplayFusion** | Excellent and paid, a whole window-management suite. This is one job. |
 | **MonitorSwitcher** | Saves profiles keyed to the monitor's EDID, which changes when the monitor moves to another input. |
-| **NirSoft MultiMonitorTool** | Where this project started. It writes the layout through the legacy display API, which on some machines reports success and does nothing; and a disabled monitor has no name in its dump, so it cannot be switched back on by name. |
+| **Command-line tools that wrap the legacy display API** | On some machines that API reports success and does nothing; and a display it has switched off loses its name, so it cannot be switched back on by name. |
 
 ## How it works
 
@@ -425,9 +419,9 @@ enable correctly.
 A switch is **one** call: which displays are on, where they sit, which one is primary, and
 at what resolution and refresh rate — all in a single `SetDisplayConfig`. That matters for
 how a switch feels rather than for how long it takes. Every rebuild of the desktop freezes
-the compositor and the mouse for a moment, and this used to do three of them in a row (set
-the displays, then move them, then fix the refresh rate) — the cursor would stall and jump
-forward, screens blinked twice over, and every open window got told the display changed
+the compositor and the mouse for a moment, and doing three of them in a row (set the
+displays, then move them, then fix the refresh rate) means the cursor stalls and jumps
+forward, screens blink twice over, and every open window gets told the display changed
 three times.
 
 Two details make the single call possible. The refresh rate has to be passed as the exact
@@ -441,8 +435,8 @@ runs, which moves only the primary and leaves the rest where they are.
 The three steps are still there as repair: after the single call the tool checks the set,
 the arrangement and each mode, and fixes whatever did not take (a display that refuses a
 rate, for instance). When everything landed, those checks find nothing to do and cost
-nothing. It used to be that order mattered a lot, because the primary display cannot be
-turned off; a stuck primary made every mode fail while every command reported success.
+nothing. Doing it in one call also removes the ordering problem the three steps had: the
+primary display cannot be turned off, so a stuck primary made every mode fail.
 
 P/Invoke types are compiled once and cached next to the scripts, which is why a switch
 costs tenths of a second rather than seconds.
@@ -455,14 +449,16 @@ costs tenths of a second rather than seconds.
 ```
 
 Pure functions only: hotkey parsing, mode keys, display-name matching, combinations, the
-legacy-group migration, the primary-display ladder, settings round-trips, command-line name
-resolution, layout retry and the switch verdict, the Settings window's save path (the window
-is built but never shown), window-layout keys, the remembered mode, the startup-restore
-decision, rule decisions, the rebuild-the-desk decision, brightness plans and the sliders
-that write them (rows really built, not just the model), hook launching,
-duration parsing, the desk preview, and the whole diary — sums, report, streaks and the page
-it produces. **No test touches your displays, your `settings.json`, your log or your diary**
-— those are redirected to temporary files. Non-zero exit on failure.
+hotkey-key migration, the primary-display ladder, every spelling `settings.json` accepts and
+its round-trip through disk, command-line name resolution, layout retry and the switch
+verdict, "are all the displays already in their best mode", the Settings window's save path
+including how mode keys follow a rename or a removal (the window is built but never shown),
+window-layout keys, the remembered mode, the startup-restore decision, rule decisions, the
+rebuild-the-desk decision, brightness plans and the sliders that write them (rows really
+built, not just the model), hook launching, duration parsing, the desk preview, and the whole
+diary — sums, report, streaks and the page it produces. **No test touches your displays, your
+`settings.json`, your log or your diary** — those are redirected to temporary files. Non-zero
+exit on failure.
 
 No Pester on purpose: PowerShell 5.1 ships an ancient 3.4, and installing a newer one would
 break the "nothing is installed on your system" promise.
@@ -479,9 +475,11 @@ break the "nothing is installed on your system" promise.
 | `Set-Display.ps1` | the command line |
 | `tests\run-tests.ps1` | the test runner |
 | `Make-Icon.ps1` | regenerates `app.ico` |
-| `render-preview.ps1` | renders the Settings window to a PNG without showing it, for checking the UI (`-Fake` invents a desk) |
+| `render-preview.ps1` | renders the Settings window and a mode editor to PNGs without showing them, for checking the UI (`-Fake` invents a desk, `-EditorMode` picks whose editor) |
+| `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
+| `settings.example.json` | a `settings.json` with every key filled in, to copy from |
 | `last-run.log` | the log; rotates past 1 MB |
-| `settings.json`, `window-state.json`, `last-mode.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
+| `settings.json`, `window-state.json`, `last-mode.json`, `display-modes.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
 
 Code comments and the engineering notes are in Russian; the interface, the log and this
 README are in English. The notes are worth a look if you are here for the display API

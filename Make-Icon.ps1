@@ -1,9 +1,30 @@
-﻿# Генератор иконки ScreenDeck: белые мониторы на синей плитке.
-# Пишем настоящий многоразмерный .ico (PNG внутри, формат Vista+): System.Drawing
-# сам такое сохранять не умеет, поэтому заголовок и каталог собираем руками.
+﻿<#
+.SYNOPSIS
+    Draws the ScreenDeck icon: white monitors on a blue tile.
+
+.DESCRIPTION
+    Writes a real multi-size .ico (PNG inside, the Vista+ format) plus a preview
+    sheet showing every size on a light and a dark background.
+
+    Each size is drawn separately rather than scaled from one: at 16-20 px the
+    second monitor turns to mush, so there it is left out and the silhouette stays
+    readable. System.Drawing cannot save a multi-size .ico, so the header and the
+    directory are assembled by hand.
+
+.PARAMETER IcoPath
+    Where to write the icon. Defaults to app.ico beside the scripts - the file the
+    tray, the Start menu shortcut and the startup shortcut all use.
+
+.PARAMETER PreviewPath
+    Where to write the preview sheet. Defaults to preview.png beside the scripts.
+
+.EXAMPLE
+    .\Make-Icon.ps1
+    Redraws app.ico and preview.png in place.
+#>
 param(
-    [string]$IcoPath,
-    [string]$PreviewPath
+    [string]$IcoPath = (Join-Path $PSScriptRoot 'app.ico'),
+    [string]$PreviewPath = (Join-Path $PSScriptRoot 'preview.png')
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -80,7 +101,7 @@ foreach ($sz in $sizes) {
     $ms.Dispose()
 }
 
-# --- сборка .ico ---
+# --- сборка .ico ------------------------------------------------------------
 $fs = New-Object System.IO.FileStream $IcoPath, ([System.IO.FileMode]::Create)
 $bw = New-Object System.IO.BinaryWriter $fs
 $bw.Write([uint16]0)               # reserved
@@ -103,7 +124,7 @@ foreach ($im in $images) { $bw.Write($im.Bytes) }
 $bw.Flush(); $bw.Dispose(); $fs.Dispose()
 "ico written: $IcoPath  ($((Get-Item $IcoPath).Length) bytes, $($images.Count) sizes)"
 
-# --- превью: те же размеры на светлом и тёмном фоне ---
+# --- превью: те же размеры на светлом и тёмном фоне -------------------------
 $show = 16, 24, 32, 48, 128
 $pad = 16
 $w = [int]($pad + ($show | ForEach-Object { $_ + $pad } | Measure-Object -Sum).Sum)

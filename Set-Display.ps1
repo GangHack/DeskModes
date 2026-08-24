@@ -1,20 +1,57 @@
 ﻿<#
-    Set-Display.ps1 — переключение мониторов из командной строки.
-    Вся логика в DisplayCore.ps1, здесь только разбор аргументов и вывод.
+.SYNOPSIS
+    Switches the displays on your desk from the command line.
 
-        .\Set-Display.ps1 status          что видит система прямо сейчас
-        .\Set-Display.ps1 all             включить все подключённые
-        .\Set-Display.ps1 "Movie night"   комбинация из настроек, по имени
-        .\Set-Display.ps1 work            она же, если названа одним словом
-        .\Set-Display.ps1 ULTRAGEAR       только этот монитор (поиск по названию)
-        .\Set-Display.ps1 GSM5CBB         только этот монитор (короткий Monitor ID)
-        .\Set-Display.ps1 modes           показать ключи всех режимов
-        .\Set-Display.ps1 brightness      кто из мониторов слушается по DDC/CI
-        .\Set-Display.ps1 stats           дневник: что, где и сколько
+.DESCRIPTION
+    Turns on the displays a mode names and puts the rest into standby, arranged in
+    the order you gave them, with the taskbar where you asked for it. Also reports
+    what Windows sees right now, without changing anything.
 
-    -PrimaryMatch  кого сделать основным, по куску названия
-    -KeepMode      не поднимать разрешение и частоту до максимума
-    -DryRun        показать команды, ничего не применяя
+    All the logic lives in DisplayCore.ps1; this script only parses arguments and
+    prints. Exit code 0 on success, 2 when another switch is already running, 1 on
+    failure - so .cmd wrappers can tell the difference.
+
+.PARAMETER Mode
+    What to switch to, or what to report. Resolved in this order: an exact mode key
+    ("solo:LG ULTRAGEAR", "combo:Work", "all"), a combination name from the
+    settings, a display's short Monitor ID, then part of a display's name.
+
+    These names report instead of switching:
+      status      what the system shows right now (read-only, the default)
+      modes       every mode key with its shortcut
+      brightness  which displays answer over DDC/CI, and at what level
+      audio       playback device names, for the "audio" setting
+      stats       the diary: what, where and for how long
+
+.PARAMETER PrimaryMatch
+    Which display keeps the taskbar, by part of its name. Unlike the "primary"
+    setting this one is strict: matching nothing is an error, not a silent fallback.
+
+.PARAMETER KeepMode
+    Leave resolution and refresh rate alone instead of raising them to the maximum.
+
+.PARAMETER DryRun
+    Print what would be done and change nothing.
+
+.EXAMPLE
+    .\Set-Display.ps1
+    Reports the displays, their current and best modes, and which one is primary.
+
+.EXAMPLE
+    .\Set-Display.ps1 "Movie night"
+    Switches to the combination named "Movie night" in the settings.
+
+.EXAMPLE
+    .\Set-Display.ps1 ULTRAGEAR -PrimaryMatch ULTRAGEAR
+    Leaves only the display whose name contains "ULTRAGEAR" on, with the taskbar
+    on it.
+
+.EXAMPLE
+    .\Set-Display.ps1 all -DryRun
+    Shows what switching to every connected display would do.
+
+.LINK
+    README.md
 #>
 [CmdletBinding()]
 param(
@@ -32,16 +69,14 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 
 function Resolve-ModeKey {
-    param([string]$Text, $Modes, $State)
+    param([string]$Text, $Modes)
 
     # точный ключ
     $hit = $Modes | Where-Object { $_.Key -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
-    # имя комбинации, как оно записано в настройках (без учёта регистра). Сюда же
-    # приходят work.cmd и game.cmd: их 'work' и 'game' были именами ролей, а после
-    # переезда ролей стали именами комбинаций («Work», «Game») — сравнение имени
-    # регистр не различает, поэтому обёртки продолжают работать без правок.
+    # имя комбинации, как оно записано в настройках; регистр не важен, поэтому
+    # обёртки вида work.cmd находят комбинацию «Work».
     $hit = $Modes | Where-Object { $_.Kind -eq 'combo' -and $_.Title -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
@@ -58,8 +93,8 @@ function Resolve-ModeKey {
     throw "Unknown mode '$Text'. Run: .\Set-Display.ps1 modes"
 }
 
-# Настройки читаются один раз и раздаются дальше: состоянию — ради ролей,
-# режимам — ради комбинаций. Иначе каждый потребитель шёл бы на диск сам.
+# Настройки читаются один раз и раздаются дальше: и состоянию, и режимам нужен
+# состав комбинаций. Иначе каждый потребитель шёл бы на диск сам.
 $settings = Get-DisplaySettings
 $state = @(Get-DisplayState -Settings $settings)
 
@@ -90,7 +125,7 @@ if ($Mode -eq 'audio') {
                       @{n = 'Name';    e = { $_.Name } } |
         Format-Table -AutoSize
     Write-Host 'Put a distinctive part of a name into settings.json, for example:' -ForegroundColor DarkGray
-    Write-Host '    "audio": { "role:work": "ULTRAFINE", "solo:XG27AQDMGR": "ROG" }' -ForegroundColor DarkGray
+    Write-Host '    "audio": { "combo:Work": "ULTRAFINE", "solo:XG27AQDMGR": "ROG" }' -ForegroundColor DarkGray
     return
 }
 
@@ -129,7 +164,7 @@ if ($Mode -eq 'stats') {
     return
 }
 
-$modes = @(Get-DisplayModes $state $settings)
+$modes = @(Get-DisplayModes -State $state -Settings $settings)
 
 if ($Mode -eq 'modes') {
     Write-Host ''
@@ -142,11 +177,11 @@ if ($Mode -eq 'modes') {
     return
 }
 
-$resolved = Resolve-ModeKey $Mode $modes $state
+$resolved = Resolve-ModeKey -Text $Mode -Modes $modes
 $result = Switch-DisplayMode -ModeKey $resolved.Key -PrimaryMatch $PrimaryMatch -KeepMode:$KeepMode -DryRun:$DryRun
 
-# Раньше здесь было только «если есть сообщение — напечатать». При полном
-# провале сообщение пустое, и .cmd-файлы рапортовали успех молча и с кодом 0.
+# Код возврата важнее текста: при полном провале сообщение пустое, и .cmd-файлы
+# рапортовали бы успех молча и с кодом 0.
 if (-not $result) { exit 1 }
 if ($result.Skipped) {
     Write-Host ''

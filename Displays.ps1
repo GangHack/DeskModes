@@ -1,14 +1,37 @@
 ﻿<#
-    Displays.ps1 — ScreenDeck, значок в области уведомлений.
+.SYNOPSIS
+    ScreenDeck: the tray icon that switches the displays on your desk.
 
-    Интерфейс на английском (просьба пользователя), комментарии на русском.
+.DESCRIPTION
+    Runs until you pick Exit. Right-click the icon for a menu with the current
+    state of every display and the modes you can switch to; the shortcuts are
+    registered by this process itself (RegisterHotKey), so they work whether or not
+    Explorer picked up any Start-menu shortcuts, and they are edited in the
+    Settings window rather than in the code.
 
-    Что даёт по сравнению с ярлыками:
-      * клик по значку — меню с текущим состоянием и режимами;
-      * горячие клавиши регистрирует сам процесс (RegisterHotKey), поэтому они
-        не зависят от того, подхватил ли Explorer ярлыки из Пуска;
-      * клавиши настраиваются из окна Settings и живут в settings.json.
+    Also watches the desk while it runs: it puts back a refresh rate Windows
+    silently dropped, rebuilds the desk after sleep or a hotplug, applies your
+    rules, keeps the diary, and runs the shutdown timer.
+
+    Start it with Displays.cmd to leave no console window behind. Only one instance
+    runs at a time - a second one would find every shortcut already taken.
+
+.PARAMETER NoHotkeys
+    Do not register global shortcuts. For running a second copy alongside the real
+    one while poking at the menu or the Settings window.
+
+.EXAMPLE
+    .\Displays.cmd
+    The normal way in: starts the tray icon with no console window.
+
+.EXAMPLE
+    powershell -File .\Displays.ps1 -NoHotkeys
+    Starts a copy that claims no shortcuts, so it can coexist with a running one.
+
+.LINK
+    README.md
 #>
+# Интерфейс и журнал английские, комментарии русские — см. docs/notes.ru.md.
 [CmdletBinding()]
 param([switch]$NoHotkeys)
 
@@ -63,19 +86,18 @@ function Set-ActiveSettings {
 }
 
 # --- кэш состояния ----------------------------------------------------------
-# Меню обязано открываться мгновенно. Опрос состояния когда-то запускал сторонний
-# .exe (~1.5 с), и в обработчике Opening штатный правый клик по значку не успевал:
-# Windows решала, что меню не показалось, и закрывала его — открывался только
-# левый, который мы вызываем принудительно. Сейчас опрос идёт через CCD и стоит
-# десятки миллисекунд, но кэш остаётся: меню открывается без единого запроса к
-# системе, а обновляется он по событию о смене конфигурации.
+# Меню обязано открываться мгновенно. Медленный опрос прямо в обработчике Opening
+# ломает штатный правый клик по значку: Windows решает, что меню не показалось, и
+# закрывает его. Опрос через CCD стоит десятки миллисекунд, но кэш всё равно нужен
+# — меню открывается без единого запроса к системе, а обновляется он по событию о
+# смене конфигурации.
 
 $script:StateCache = $null
 
 function Update-StateCache {
     try {
-        # Настройки у трея уже в руках — отдаём их ради ролей, иначе состояние
-        # перечитывало бы файл с диска на каждое обновление кэша.
+        # Настройки у трея уже в руках — отдаём их, иначе состояние перечитывало бы
+        # файл с диска на каждое обновление кэша.
         $script:StateCache = @(Get-DisplayState -Settings (Get-ActiveSettings))
         # Кто ПОДКЛЮЧЁН (а не включён): по изменению этого набора видно, что
         # монитор воткнули или выдернули, и только на это стоит реагировать —
@@ -103,7 +125,7 @@ function Get-DisplayNameMap {
 function Get-CurrentModeKey {
     $state = Get-CachedState
     if (-not $state) { return '' }
-    $key = Get-ActiveModeKey $state @(Get-DisplayModes $state (Get-ActiveSettings))
+    $key = Get-ActiveModeKey -State $state -Modes @(Get-DisplayModes -State $state -Settings (Get-ActiveSettings))
     return [string]$key
 }
 
@@ -129,15 +151,9 @@ function Invoke-ModeWatch {
     }
 }
 
-# Приёмник горячих клавиш (класс HotkeyWindow) переехал в общий исходник в
-# DisplayCore.ps1: там все нативные типы компилируются одним вызовом и кладутся в
-# кэш-сборку. Здесь он был четвёртой отдельной компиляцией на каждый старт трея.
-
 # --- правила ----------------------------------------------------------------
-# «Запустилась игра — уходим в её режим, закрылась — возвращаемся» было
-# единственным правилом и звалось autoGame; теперь правил столько, сколько
-# нужно, и условие бывает не только «процесс запущен» (см. Get-RuleDecision в
-# DisplayCore.ps1 — вся логика там, чистой функцией, под тестами).
+# «Случилось это — стань таким»: вся логика в Get-RuleDecision (DisplayCore.ps1),
+# чистой функцией и под тестами. Здесь только сбор фактов и исполнение решения.
 #
 # Опрос живёт в уже существующем 15-секундном таймере трея: своего не надо, а
 # Get-Process стоит единицы миллисекунд.
@@ -208,8 +224,8 @@ function Invoke-RulesCheck {
 }
 
 # --- значок -----------------------------------------------------------------
-# Один файл app.ico на всё: трей, ярлыки в Пуске и в автозагрузке. Иконка
-# DisplaySwitch.exe, которая стояла раньше, в Пуске сливалась с системными.
+# Один файл app.ico на всё: трей, ярлыки в Пуске и в автозагрузке. Своя иконка, а
+# не системная: в Пуске она не должна сливаться со значками Windows.
 # Размер берём тот, который система просит для мелких значков (при масштабе
 # 150% это уже не 16 px), и .ico отдаёт подходящую из девяти заготовленных —
 # растянутая из одной выглядела бы мылом. Перерисовать: .\Make-Icon.ps1
@@ -236,10 +252,10 @@ $tray.Icon = New-TrayIcon
 $tray.Text = $script:AppName
 $tray.Visible = $true
 
-# --- оформление меню ---------------------------------------------------------
+# --- оформление меню --------------------------------------------------------
 # Рисует ModernMenuRenderer (DisplayCore.ps1): плоский фон под системную тему,
-# скруглённая подсветка, галочка в цвет акцента. Штатный System-отрисовщик
-# застрял в Windows 7 и был главной причиной «выглядит как из XP».
+# скруглённая подсветка, галочка в цвет акцента. Штатный System-отрисовщик застрял
+# в Windows 7, и меню с ним выглядит как из XP.
 
 # Шрифты меню, с кэшем. Segoe UI Variable появился в Windows 11; на Windows 10
 # его нет, а GDI+ при неизвестном имени молча подставляет Microsoft Sans Serif —
@@ -308,7 +324,7 @@ $tray.ContextMenuStrip = $menu
 # вызов молча не сработает). Хэндл существует лишь у открытого меню — поэтому
 # здесь, а не при создании.
 $menu.add_Opened({
-    try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }
+    try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }   # не Windows 11 — углы останутся прямыми
 })
 
 function Show-Balloon {
@@ -321,8 +337,8 @@ function Show-Balloon {
 }
 
 # Было ли в этом запуске трея хоть одно переключение. Нужно возврату режима при
-# старте: человек успевает нажать хоткей раньше, чем срабатывает наш таймер (по
-# журналу — через 3 секунды после запуска трея), и его выбор новее нашего.
+# старте: человек успевает нажать хоткей раньше, чем срабатывает наш таймер, и его
+# выбор новее нашего.
 $script:SwitchedOnce = $false
 
 function Invoke-Mode {
@@ -354,8 +370,8 @@ function Invoke-Mode {
             if (-not $Silent) { Show-Balloon 'Displays switched' $result.Message }
         }
         elseif ($result.Message) {
-            # Частичный провал — тоже провал. Раньше он показывался зелёной
-            # сводкой, потому что монитор, который не поднялся, из неё выпадал.
+            # Частичный провал — тоже провал: монитор, который не поднялся, из
+            # зелёной сводки выпадал бы молча.
             Show-Balloon 'Switched with problems' $result.Message 'Warning'
         }
         else {
@@ -374,7 +390,7 @@ function Invoke-Mode {
         # дневнике — это суммы секунд. Только состоявшиеся: отчёт, в котором
         # переключений больше, чем их было, не отчёт.
         if ($switched -and (Get-ActiveSettings).stats) {
-            try { Add-ActivitySwitch -Mode $Key } catch { }
+            try { Add-ActivitySwitch -Mode $Key } catch { }   # дневник не смеет мешать переключению
         }
     }
 }
@@ -392,6 +408,31 @@ function Invoke-Mode {
 # приезжала на другой монитор при том же наборе.
 #
 # Отдельной функцией, а не кодом в обработчике таймера: см. Get-ActiveSettings.
+
+# Режим по ключу, если он сейчас достижим. $null означает, что ни одного его
+# монитора на столе нет: гасить ради него остальные нельзя — останется чёрный
+# экран, а это ровно та цена ошибки, из-за которой здесь проверка.
+function Get-AvailableMode {
+    param([string]$Key, $State)
+
+    $mode = @(Get-DisplayModes -State $State -Settings (Get-ActiveSettings)) |
+                Where-Object { $_.Key -eq $Key } | Select-Object -First 1
+    if ($mode -and $mode.Available) { return $mode }
+    return $null
+}
+
+# Стоит ли на столе уже ровно этот набор экранов. Сравниваем НАБОРЫ, а не ключи
+# режимов: пока один монитор не воткнут, «все» и «рабочие» — это один и тот же
+# стол, и сравнение ключей объявило бы переключением то, чего не происходит.
+# «Да» означает, что чинить будем разве что раскладку, и всплывашка не нужна.
+function Test-DeskMatchesMode {
+    param($Mode, $State)
+
+    $wanted = @(Get-ModeMembers -Mode $Mode -State $State | ForEach-Object { $_.Id } | Sort-Object)
+    $on = @($State | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
+    return ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
+}
+
 function Invoke-StartupRestore {
     if (-not (Get-ActiveSettings).restoreLastMode) { return }
 
@@ -412,26 +453,15 @@ function Invoke-StartupRestore {
     }
 
     $state = Get-CachedState
-    $modes = @(Get-DisplayModes $state (Get-ActiveSettings))
-    $mode = $modes | Where-Object { $_.Key -eq $last.Key } | Select-Object -First 1
-    if (-not $mode -or -not $mode.Available) {
-        # Монитора нет на месте. Гасить ради него остальные нельзя — останется
-        # чёрный экран, а это ровно та цена ошибки, из-за которой здесь проверка.
+    $mode = Get-AvailableMode -Key $last.Key -State $state
+    if (-not $mode) {
         Write-DisplayLog ("startup: '{0}' is not available right now, leaving the displays as Windows set them" -f `
             (Get-ModeTitleFromKey $last.Key))
         return
     }
 
-    # Набор уже правильный — значит всплывашка не нужна, чинить будем разве что
-    # раскладку (см. -Silent в Invoke-Mode). Сравниваем НАБОРЫ экранов, а не ключи
-    # режимов: пока ASUS не воткнут, «все» и «рабочие» — это один и тот же стол, и
-    # сравнение ключей объявило бы переключением то, чего не происходит.
-    $wanted = @(Get-ModeMembers $mode $state | ForEach-Object { $_.Id } | Sort-Object)
-    $on = @($state | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
-    $silent = ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
-
     Write-DisplayLog ("startup: restoring '{0}', chosen at {1}" -f $mode.Title, $last.When)
-    Invoke-Mode $last.Key -Auto -Silent:$silent
+    Invoke-Mode $last.Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 }
 
 # --- мир изменился сам ------------------------------------------------------
@@ -445,25 +475,15 @@ function Invoke-ReapplyMode {
 
     if (-not $Key) { return }
     $state = Get-CachedState
-    $modes = @(Get-DisplayModes $state (Get-ActiveSettings))
-    $mode = $modes | Where-Object { $_.Key -eq $Key } | Select-Object -First 1
-    if (-not $mode -or -not $mode.Available) {
-        # Ни одного монитора этого режима на столе нет. Гасить ради него остальные
-        # нельзя — останется чёрный экран, а это ровно та цена ошибки, из-за
-        # которой здесь проверка.
+    $mode = Get-AvailableMode -Key $Key -State $state
+    if (-not $mode) {
         Write-DisplayLog ("reapply: '{0}' is not available right now, leaving the displays alone" -f `
             (Get-ModeTitleFromKey $Key))
         return
     }
 
-    # Набор уже правильный — значит всплывашка не нужна, чинить будем разве что
-    # раскладку и частоту (см. -Silent в Invoke-Mode).
-    $wanted = @(Get-ModeMembers $mode $state | ForEach-Object { $_.Id } | Sort-Object)
-    $on = @($state | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
-    $silent = ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
-
     Write-DisplayLog ("reapply: {0} -> '{1}'" -f $Reason, $mode.Title)
-    Invoke-Mode $Key -Auto -Silent:$silent
+    Invoke-Mode $Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 }
 
 # Событие о смене конфигурации приходит и на наши собственные переключения,
@@ -557,12 +577,10 @@ $script:PowerTicker = New-Object System.Windows.Forms.Timer
 # Раз в пять секунд: обратный отсчёт показывается в минутах, и чаще незачем.
 $script:PowerTicker.Interval = 5000
 $script:PowerTicker.add_Tick({
-    # Условие выхода — ОТСУТСТВИЕ срока, а не отрицательный остаток. Таймер
-    # WinForms всегда опаздывает и никогда не спешит, за сотню тиков опоздание
-    # накапливается, и тик, который должен был поймать срок, приходит уже за ним.
-    # Проверка «остаток меньше нуля» принимала это за «таймера нет», останавливала
-    # отсчёт и уходила — компьютер не выключался, а подсказка значка продолжала
-    # обещать выключение. Срок в прошлом означает «пора», и ниже это и делается.
+    # Условие выхода — ОТСУТСТВИЕ срока, а не отрицательный остаток. Таймер WinForms
+    # всегда опаздывает и никогда не спешит, за сотню тиков опоздание накапливается,
+    # и тик, который должен был поймать срок, приходит уже за ним. Срок в прошлом
+    # означает «пора», а не «таймера нет».
     if (-not $script:PowerDeadline) { $script:PowerTicker.Stop(); return }
     $left = Get-PowerRemaining
     Update-TrayText
@@ -608,15 +626,12 @@ $script:ActivityTimer = New-Object System.Windows.Forms.Timer
 $script:ActivityTimer.Interval = 10000
 $script:ActivityTimer.add_Tick({ Invoke-ActivityTick })
 
-# Окно настроек живёт в SettingsDialog.ps1 — его можно собрать и проверить
-# в изоляции, что и вскрыло падение на недопустимом Anchor = 'West'.
-
-# --- память -------------------------------------------------------------------
-# Обрезка рабочего набора: после старта процесс держит ~75 МБ, из них живого —
-# около десяти (замерено на этой машине), остальное — следы компиляции и первого
-# построения меню. Дёргается один раз после запуска и после закрытия окна
-# настроек (WPF оставляет за собой больше всех) — не по таймеру: страницы,
-# которыми пользуются, обрезать бессмысленно, они тут же вернутся.
+# --- память -----------------------------------------------------------------
+# Обрезка рабочего набора: после старта процесс держит ~75 МБ, из них живого около
+# десяти, остальное — следы компиляции и первого построения меню. Дёргается один
+# раз после запуска и после закрытия окна настроек (WPF оставляет за собой больше
+# всех), а не по таймеру: страницы, которыми пользуются, обрезать бессмысленно —
+# они тут же вернутся.
 function Optimize-TrayMemory {
     try {
         [GC]::Collect()
@@ -627,10 +642,9 @@ function Optimize-TrayMemory {
     catch { Write-DisplayLog "memory: trim failed - $($_.Exception.Message)" }
 }
 
-# Обрезка на старте — разовая: за несколько минут работы куча .NET заново
-# набирает свой бюджет, и рабочий набор возвращается к прежним ~70 МБ (замерено).
-# Поэтому главная обрезка — эта: человек отошёл, страницы остыли, самое время их
-# отдать. Один раз на каждый перерыв, порог — пять минут: короткая пауза за
+# Обрезка на старте — разовая: за несколько минут работы куча .NET заново набирает
+# свой бюджет, и рабочий набор возвращается к прежним ~70 МБ. Поэтому главная
+# обрезка — эта: человек отошёл, страницы остыли, самое время их отдать. Один раз на каждый перерыв, порог — пять минут: короткая пауза за
 # чаем не повод гонять страницы туда-обратно.
 $script:AwayTrimDone = $false
 
@@ -739,11 +753,11 @@ $menu.add_Opening({
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     }
 
-    # Настройки — ради комбинаций: без них Get-DisplayModes отдал бы только соло,
-    # группы и «все». Через функцию, а не $script:Settings (см. Get-ActiveSettings).
-    $modes = @(Get-DisplayModes $state (Get-ActiveSettings))
+    # Настройки — ради комбинаций: без них Get-DisplayModes отдал бы только соло и
+    # «все». Через функцию, а не $script:Settings (см. Get-ActiveSettings).
+    $modes = @(Get-DisplayModes -State $state -Settings (Get-ActiveSettings))
     $activeKey = $null
-    if ($state) { $activeKey = Get-ActiveModeKey $state $modes }
+    if ($state) { $activeKey = Get-ActiveModeKey -State $state -Modes $modes }
 
     Add-MenuHeader 'SWITCH TO'
     foreach ($mode in $modes) {
@@ -752,8 +766,7 @@ $menu.add_Opening({
         $item.Tag = $mode.Key
         $item.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
 
-        # Через функцию, а не $script:Settings: см. комментарий у Get-ActiveSettings.
-        # Здесь та же ловушка не падала, а просто молча не показывала комбинации.
+        # Через функцию, а не $script:Settings: см. Get-ActiveSettings.
         $combo = (Get-ActiveSettings).hotkeys[$mode.Key]
         if ($combo) { $item.ShortcutKeyDisplayString = $combo }
 
@@ -849,14 +862,14 @@ $menu.add_Opening({
     $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
     $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     # Имя приложения кладём в локальную переменную: замыкание её захватит, а вот
-    # $script:AppName внутри .GetNewClosure() разрешается в пустоту — заголовок
-    # окна с ошибкой из-за этого был пустым.
+    # $script:AppName внутри .GetNewClosure() разрешается в пустоту, и заголовок окна
+    # с ошибкой оказался бы пустым.
     $appName = $script:AppName
     $settingsItem.add_Click({
         # Ошибку в построении окна WinForms показывает безымянным системным окном,
         # без подробностей. Ловим сами и пишем в журнал — иначе такое не отладить.
         try {
-            $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings) -Icon $tray.Icon
+            $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings)
             if ($updated) {
                 Set-ActiveSettings $updated
                 Register-Hotkeys
@@ -896,12 +909,12 @@ $menu.add_Opening({
 })
 
 # Меню открывается только правой кнопкой — это делает сам NotifyIcon, раз ему
-# назначен ContextMenuStrip. Обработчик левого клика тут был и убран по просьбе:
-# левым он открывался через приватный ShowContextMenu, и это сбивало с толку.
+# назначен ContextMenuStrip. Открывать его ещё и левым кликом (через приватный
+# ShowContextMenu) намеренно не стали: это сбивает с толку.
 
 # --- первый запуск ----------------------------------------------------------
 # Клавиши по умолчанию раскладываются один раз: соло-режимы получают F1, F2, …,
-# затем группы. Дальше их правит пользователь, и мы больше не вмешиваемся.
+# затем комбинации. Дальше их правит пользователь, и мы больше не вмешиваемся.
 
 # Набор ПОДКЛЮЧЁННЫХ мониторов заполняется первым же обновлением кэша, поэтому
 # объявлен ДО него: присваивание после затирало бы то, что уже узнали, и первое
@@ -978,38 +991,18 @@ catch { Write-DisplayLog "windows: could not clean stale snapshots - $($_.Except
 
 # Монитор мог переехать на другой вход, пока приложение не работало — тогда
 # привязка сама переезжает на новый ключ. Делаем это до регистрации клавиш.
-$needSave = Update-HotkeyKeys $script:Settings (Get-CachedState)
-
-# Роли из старого settings.json уже превратились в комбинации при чтении — но
-# только в памяти: писать из функции чтения нельзя, настройки читают и другие
-# процессы. Прибираем файл здесь, один раз за переезд.
-if ($script:LegacyRolesOnDisk) {
-    Write-DisplayLog ('settings: display groups moved into combinations - ' +
-                      (@($script:Settings.combos.Keys) -join ', '))
-    $needSave = $true
+if (Update-HotkeyKeys -Settings $script:Settings -State (Get-CachedState)) {
+    Save-DisplaySettings $script:Settings
 }
 
-# То же для автоматического игрового режима, переехавшего в rules. Без этой
-# записи переезд оставался только в памяти: в файле продолжал лежать autoGame, и
-# правило собиралось из него заново на каждом чтении — удалить его из rules
-# рукой было невозможно, оно возвращалось.
-if ($script:LegacyAutoGameOnDisk) {
-    Write-DisplayLog 'settings: the automatic game mode moved into rules'
-    $needSave = $true
-}
-
-if ($needSave) { Save-DisplaySettings $script:Settings }
-
-# Признак первого запуска — ОТСУТСТВИЕ файла настроек, а не пустой список
-# клавиш. Пустой список — это законный выбор: человек снял все привязки в окне
-# настроек, а на следующем старте они возвращались сами, потому что приложение
-# принимало это за первый запуск. Комментарий выше при этом обещал обратное.
-# По той же причине испорченный settings.json затирался значениями по умолчанию:
-# разбор падал, список получался пустой, и вот эта ветка дописывала поверх.
+# Признак первого запуска — ОТСУТСТВИЕ файла настроек, а не пустой список клавиш.
+# Пустой список — законный выбор: человек снял все привязки в окне настроек, и
+# возвращать их на следующем старте нельзя. По ключу «файл есть» испорченный
+# settings.json тоже не затирается значениями по умолчанию.
 if (-not (Test-Path $script:SettingsFile)) {
     $state = Get-CachedState
     $i = 1
-    foreach ($mode in @(Get-DisplayModes $state (Get-ActiveSettings))) {
+    foreach ($mode in @(Get-DisplayModes -State $state -Settings (Get-ActiveSettings))) {
         if ($i -gt 8) { break }
         $script:Settings.hotkeys[$mode.Key] = "Ctrl+Alt+F$i"
         $i++
@@ -1046,7 +1039,7 @@ finally {
     Write-DisplayLog 'tray: stopped'
     # Копилку дневника — на диск: последние минуты живут в памяти, и выход из
     # приложения не повод их терять.
-    try { Save-ActivityStore } catch { }
+    try { Save-ActivityStore } catch { }   # на выходе ронять уже нечего
     foreach ($timer in $script:WatchTimer, $script:StartupTimer, $script:ActivityTimer,
                        $script:PowerTicker) {
         if ($timer) { $timer.Stop(); $timer.Dispose() }

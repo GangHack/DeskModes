@@ -46,11 +46,5 @@
     "stats": false,
     "audio": {
         "combo:Movie night": "DELL"
-    },
-    "autoGame": {
-        "enabled": false,
-        "process": "",
-        "gameMode": "",
-        "backMode": ""
     }
 }

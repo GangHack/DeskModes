@@ -270,10 +270,10 @@ function Get-ActivityReport {
     $report.To = [string]$dates[-1]
     if ($report.DaysRecorded -gt 0) { $report.AverageDay = [int]($report.Active / $report.DaysRecorded) }
 
-    $report.Apps = @(ConvertTo-ActivityRows $apps $report.Active)
-    $report.Displays = @(ConvertTo-ActivityRows $displays $report.Active)
-    $report.Modes = @(ConvertTo-ActivityRows $modes $report.Active)
-    $report.Pairs = @(ConvertTo-ActivityRows $pairs $report.Active)
+    $report.Apps = @(ConvertTo-ActivityRows -Map $apps -Total $report.Active)
+    $report.Displays = @(ConvertTo-ActivityRows -Map $displays -Total $report.Active)
+    $report.Modes = @(ConvertTo-ActivityRows -Map $modes -Total $report.Active)
+    $report.Pairs = @(ConvertTo-ActivityRows -Map $pairs -Total $report.Active)
 
     # Часы отдаём все двадцать четыре, включая пустые: гистограмма с провалом на
     # обед — это и есть то, ради чего её смотрят.
@@ -314,7 +314,7 @@ function ConvertTo-ActivityRows {
     return @($rows | Sort-Object -Property Seconds -Descending)
 }
 
-# Средний час прихода и уход: «08:42». Строки HH:mm складываем в минутах.
+# Средний час прихода и ухода: «08:42». Строки HH:mm складываем в минутах.
 function Get-AverageClock {
     param($Times)
 
@@ -408,7 +408,7 @@ function Format-ActivityReport {
 
 # --- отчёт картинкой --------------------------------------------------------
 # Тот же отчёт, но с полосками и в цвете темы. Своего окна не заводим: WPF-окно
-# со графиками — это день работы и лишняя тысяча строк, а страница в браузере
+# с графиками — это день работы и лишняя тысяча строк, а страница в браузере
 # читается лучше, открывается везде и уходит человеку файлом, который можно
 # сохранить. Внутри нет ни одной внешней ссылки — ни шрифта, ни скрипта: файл
 # должен открываться на машине без интернета и не звать никого в гости.

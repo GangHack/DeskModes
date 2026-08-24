@@ -17,7 +17,7 @@
     каждом открытии (Test-DarkTheme и Get-AccentColor в DisplayCore.ps1).
 #>
 
-# --- WPF ----------------------------------------------------------------------
+# --- WPF --------------------------------------------------------------------
 # Загрузка при первом открытии окна, а не при дот-сорсе: этот файл подключается
 # на старте трея, и «tray: started in N ms» не должен оплачивать четыре сборки,
 # которые понадобятся только когда человек откроет настройки.
@@ -35,7 +35,7 @@ function Initialize-WpfRuntime {
     $script:WpfReady = $true
 }
 
-# --- палитра ------------------------------------------------------------------
+# --- палитра ----------------------------------------------------------------
 # Значения списаны с приложения «Параметры» Windows 11: фон окна, карточки чуть
 # светлее (в тёмной) или белые (в светлой), приглушённый второй текст. Акцент —
 # системный; на нём считается контрастный цвет текста, иначе на жёлтом акценте
@@ -74,7 +74,7 @@ function Get-UiPalette {
     }
 }
 
-# --- разметка -----------------------------------------------------------------
+# --- разметка ---------------------------------------------------------------
 # Ресурсы (кисти и стили) — одним блоком, он подставляется и в главное окно, и в
 # редактор комбинации: StaticResource разрешается при разборе, поэтому ресурсы
 # обязаны приехать вместе с разметкой окна, а не после.
@@ -570,58 +570,12 @@ $script:SettingsWindowXaml = @'
                 </Border>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Combinations"/>
+                        <TextBlock Style="{StaticResource H2}" Text="Modes"/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Your own modes: any set of displays under a name you choose, with the taskbar wherever you want it. One display can be in as many combinations as you like. Each one gets an entry in the tray menu, a shortcut if you want one, and a Remove button right here."/>
-                        <StackPanel x:Name="CombosPanel"/>
-                        <Button x:Name="AddComboBtn" Style="{StaticResource Btn}" Content="Add a combination"
-                                HorizontalAlignment="Left" Margin="0,6,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Keyboard shortcuts"/>
-                        <TextBlock Style="{StaticResource Hint}"
-                                   Text="Every mode you can switch to: one per display, every combination you made, and all of them at once. Click a box and press the keys; the cross removes a shortcut. Modes are not removed here - a display's mode exists while the display does, and a combination is removed in the card above."/>
+                                   Text="Everything you can switch to: one mode per display, every combination you made, and all of them at once. Edit opens the one place a mode is set up - the displays it turns on, where the taskbar goes, the shortcut, and the brightness of its monitors. A display's mode exists while the display does; combinations are yours to add and to remove."/>
                         <StackPanel x:Name="ModesPanel"/>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Brightness"/>
-                        <TextBlock Style="{StaticResource Hint}"
-                                   Text="A mode can carry the brightness of your monitors - the evening one dims the big panel, the work one puts it back, and you stop reaching for the buttons on the bezel. It goes over DDC/CI, the service channel inside the cable, so only monitors that answer it can be set: press &quot;Ask the monitors&quot; to see which of yours do. Contrast is the same idea and lives in settings.json."/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Mode" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ComboBox x:Name="LevelModeBox" Grid.Column="1" Style="{StaticResource Select}" Height="30"/>
-                        </Grid>
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Then" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ComboBox x:Name="LevelKindBox" Grid.Column="1" Style="{StaticResource Select}" Height="30"/>
-                        </Grid>
-                        <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
-                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
-                        </Grid>
-                        <StackPanel x:Name="LevelRowsPanel" Margin="0,10,0,0"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"/>
-                            <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" VerticalAlignment="Center"
-                                       Margin="12,0,0,0" MaxWidth="380"/>
-                        </StackPanel>
+                        <Button x:Name="AddComboBtn" Style="{StaticResource Btn}" Content="Add a combination"
+                                HorizontalAlignment="Left" Margin="0,10,0,0"/>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
@@ -702,10 +656,10 @@ $script:SettingsWindowXaml = @'
 </Window>
 '@
 
-$script:ComboEditorXaml = @'
+$script:ModeEditorXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ScreenDeck - Combination"
+        Title="ScreenDeck - Mode"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -714,28 +668,54 @@ $script:ComboEditorXaml = @'
     <Window.Resources>
 %%RES%%
     </Window.Resources>
-    <StackPanel Margin="20,16" Width="330">
-        <TextBlock Style="{StaticResource H2}" Text="Name"/>
-        <TextBox x:Name="NameBox" Style="{StaticResource Input}" Margin="0,4,0,0"/>
-        <TextBlock Style="{StaticResource H2}" Text="Displays" Margin="0,16,0,0"/>
-        <TextBlock Style="{StaticResource Hint}" Text="Tick every display this combination switches on."/>
-        <StackPanel x:Name="MembersPanel"/>
-        <TextBlock Style="{StaticResource H2}" Text="Taskbar" Margin="0,14,0,0"/>
-        <TextBlock Style="{StaticResource Hint}" Text="Which display keeps the taskbar while this combination is on."/>
-        <ComboBox x:Name="PrimaryBox" Style="{StaticResource Select}" Height="30"/>
-        <TextBlock Style="{StaticResource H2}" Text="Shortcut" Margin="0,16,0,0"/>
-        <TextBlock Style="{StaticResource Hint}" Text="Optional - the combination works from the tray menu either way. Click the box and press the keys: Ctrl, Alt, Shift or Win plus something."/>
-        <StackPanel Orientation="Horizontal">
-            <TextBox x:Name="HotkeyBox" Style="{StaticResource Input}" Width="150" TextAlignment="Center"/>
-            <Button x:Name="ClearHotkeyBtn" Style="{StaticResource BtnSubtle}" Content="&#x00D7;"
-                    FontSize="15" Width="26" Margin="4,0,0,0" VerticalAlignment="Center"
-                    ToolTip="Remove this shortcut"/>
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+    <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="20,14,20,16">
             <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="90" IsDefault="True"/>
             <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="90" Margin="8,0,0,0" IsCancel="True"/>
         </StackPanel>
-    </StackPanel>
+        <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,16,20,0" Width="400">
+                <TextBlock x:Name="HeadTitle" Style="{StaticResource H2}" Text="Mode"/>
+                <TextBlock x:Name="HeadHint" Style="{StaticResource Hint}"/>
+                <StackPanel x:Name="ComboPart" Margin="0,12,0,0">
+                    <TextBlock Style="{StaticResource H2}" Text="Name"/>
+                    <TextBox x:Name="NameBox" Style="{StaticResource Input}" Margin="0,4,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Displays" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="Tick every display this combination switches on."/>
+                    <StackPanel x:Name="MembersPanel"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Taskbar" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="Which display keeps the taskbar while this combination is on."/>
+                    <ComboBox x:Name="PrimaryBox" Style="{StaticResource Select}" Height="30"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource H2}" Text="Shortcut" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}" Text="Optional - the mode works from the tray menu either way. Click the box and press the keys: Ctrl, Alt, Shift or Win plus something."/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBox x:Name="HotkeyBox" Style="{StaticResource Input}" Width="150" TextAlignment="Center"/>
+                    <Button x:Name="ClearHotkeyBtn" Style="{StaticResource BtnSubtle}" Content="&#x00D7;"
+                            FontSize="15" Width="26" Margin="4,0,0,0" VerticalAlignment="Center"
+                            ToolTip="Remove this shortcut"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,18,0,0"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="This mode can carry the brightness of its monitors, so you stop reaching for the buttons on the bezel. It goes over DDC/CI, the service channel inside the cable: only monitors that answer can be set, and &quot;Ask the monitors&quot; tells which of yours do. Contrast is the same idea and lives in settings.json."/>
+                <ComboBox x:Name="LevelKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
+                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+                <StackPanel x:Name="LevelRowsPanel" Margin="0,8,0,0"/>
+                <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
+                        HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>
 '@
 
@@ -750,13 +730,11 @@ function Convert-UiXaml {
     return [System.Windows.Markup.XamlReader]::Parse($text)
 }
 
-# --- обработчики событий: почему без .GetNewClosure() ---------------------------
-# Обработчик, созданный через .GetNewClosure(), получает собственную область, и
-# из неё не разрешается ни $script: (об этом в проекте уже есть комментарий у
-# Get-ActiveSettings), ни — как выяснилось 2026-08-19 — имена функций, если
-# замыкание создано в дот-сорснутом файле и вызывается WPF через делегат: клик
-# по кнопке падал с «ConvertFrom-HotkeyString is not recognized». Поймали тесты,
-# и это было не свойство тестов: тем же путём шли Save и все кнопки окна.
+# --- обработчики событий: почему без .GetNewClosure() -----------------------
+# Обработчик, созданный через .GetNewClosure(), получает собственную область, и из
+# неё не разрешается ни $script: (см. Get-ActiveSettings в Displays.ps1), ни имена
+# функций, если замыкание создано в дот-сорснутом файле и вызывается WPF через
+# делегат: клик по кнопке падает с «ConvertFrom-HotkeyString is not recognized».
 #
 # Поэтому здесь ни один обработчик не замыкается. Всё, что ему нужно, приезжает
 # двумя путями: состояние окна — через $script:ActiveUi, состояние конкретной
@@ -768,7 +746,7 @@ function Convert-UiXaml {
 $script:ActiveUi = $null
 $script:ActiveEditor = $null
 
-# Тёмный заголовок окна — сразу после появления HWND (раньше его просто нет).
+# Тёмный заголовок окна — сразу после появления HWND: до этого его просто нет.
 function Register-WindowTheme {
     param($Window, [bool]$Dark)
 
@@ -779,7 +757,7 @@ function Register-WindowTheme {
             $h = (New-Object System.Windows.Interop.WindowInteropHelper $this).Handle
             [NativeTheme]::TryDarkTitleBar($h, [bool]$this.Tag.Dark)
         }
-        catch { }
+        catch { }   # не вышло — заголовок останется светлым
     })
 
     try {
@@ -789,10 +767,10 @@ function Register-WindowTheme {
                 (New-Object System.Uri $ico), 'None', 'OnLoad')
         }
     }
-    catch { }
+    catch { }   # иконка не обязательна: окно откроется и без неё
 }
 
-# --- мелкие фабрики -----------------------------------------------------------
+# --- мелкие фабрики ---------------------------------------------------------
 
 function New-UiTextBlock {
     param([string]$Text, $Style, $Window)
@@ -810,10 +788,10 @@ $script:NoHotkeyText = 'no shortcut'
 # момент, когда человек смотрит на поле, а не абзацем выше.
 $script:PressKeysText = 'press the keys'
 
-# Приём комбинации клавиш. Той же логикой, что и в WinForms-версии: ловим
-# PreviewKeyDown, ждём основную клавишу при зажатых модификаторах. Биты
+# Приём комбинации клавиш: ловим PreviewKeyDown и ждём основную клавишу при
+# зажатых модификаторах. Биты
 # ModifierKeys у WPF совпадают с MOD_* у RegisterHotKey (Alt 1, Ctrl 2, Shift 4,
-# Win 8) — перекодировка не нужна, совпадение проверено тестом маппинга.
+# Win 8) — перекодировка не нужна, совпадение закреплено тестом маппинга.
 function Register-HotkeyCapture {
     param($Box)
 
@@ -864,7 +842,7 @@ function Register-HotkeyCapture {
         }
 
         $vk = [System.Windows.Input.KeyInterop]::VirtualKeyFromKey($key)
-        $text = Format-HotkeyString $mods $vk
+        $text = Format-HotkeyString -Modifiers $mods -Vk $vk
         if (ConvertFrom-HotkeyString $text) { $sender.Text = $text }
         else { $sender.Text = 'unsupported key' }
     })
@@ -895,14 +873,11 @@ function Register-HotkeyClearButton {
 
 # Подпись под названием режима: ОТКУДА он взялся и из чего состоит.
 #
-# Происхождение — не украшение. Пока в проекте были и группы, и комбинации,
-# «Work displays» и «Movie night» в списке выглядели одинаково, а удалялись
-# по-разному; вопрос «а Work displays — это комбинация?» прозвучал трижды. Групп
-# больше нет (роли переехали в комбинации), но подпись осталась: она отвечает,
-# почему у одной строки есть кнопка Remove, а у другой нет — режим монитора и
-# «все» появляются сами, комбинацию создаёшь и удаляешь ты.
+# Происхождение — не украшение: подпись отвечает, почему у одной строки есть
+# кнопка Remove, а у другой нет. Режим монитора и «все» появляются сами,
+# комбинацию создаёшь и удаляешь ты.
 function Get-ModeSubtitle {
-    param($Mode, $State)
+    param($Mode)
 
     switch ([string]$Mode.Kind) {
         'solo'   { return 'Display' }
@@ -912,12 +887,12 @@ function Get-ModeSubtitle {
             return $text
         }
         'all'    { return 'Every connected display' }
-        'orphan' { return 'Not connected now - the shortcut stays reserved' }
+        'orphan' { return 'Gone from your desk - what was set for it is kept until you remove it' }
     }
     return ''
 }
 
-# --- сборка окна ---------------------------------------------------------------
+# --- сборка окна ------------------------------------------------------------
 
 function New-SettingsWindow {
     param(
@@ -936,16 +911,17 @@ function New-SettingsWindow {
     Register-WindowTheme -Window $win -Dark $dark
 
     # Ниже рабочей области окно не растёт — дальше прокрутка. Запас на панель задач.
-    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 40 } catch { }
+    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 40 } catch { }   # нет рабочей области — не ограничиваем
 
     $ui = [pscustomobject]@{
         Window            = $win
         Dark              = $dark
-        Boxes             = [ordered]@{}   # ключ режима -> поле комбинации клавиш
+        # Ключ режима -> текст комбинации клавиш. Не поля ввода: клавиша живёт в
+        # редакторе режима, а главному окну довольно строк.
+        Hotkeys           = [ordered]@{}
         Combos            = (New-Object System.Collections.ArrayList)
         DeletedComboKeys  = @()
         DeskPanel         = $win.FindName('DeskPanel')
-        CombosPanel       = $win.FindName('CombosPanel')
         ModesPanel        = $win.FindName('ModesPanel')
         AddComboBtn       = $win.FindName('AddComboBtn')
         SaveBtn           = $win.FindName('SaveBtn')
@@ -958,20 +934,9 @@ function New-SettingsWindow {
         StatsBox          = $win.FindName('StatsBox')
         PreviewCanvas     = $win.FindName('PreviewCanvas')
         PreviewHint       = $win.FindName('PreviewHint')
-        LevelModeBox      = $win.FindName('LevelModeBox')
-        LevelKindBox      = $win.FindName('LevelKindBox')
-        LevelOnePanel     = $win.FindName('LevelOnePanel')
-        LevelOneSlider    = $win.FindName('LevelOneSlider')
-        LevelOneValue     = $win.FindName('LevelOneValue')
-        LevelRowsPanel    = $win.FindName('LevelRowsPanel')
-        LevelTestBtn      = $win.FindName('LevelTestBtn')
-        LevelNote         = $win.FindName('LevelNote')
-        # Ключ режима -> модель яркости (см. ConvertTo-LevelModel). Правится
-        # ползунками, уезжает в settings.json на Save.
+        # Ключ режима -> модель яркости (см. ConvertTo-LevelModel). Правится в
+        # редакторе режима, уезжает в settings.json на Save.
         Levels            = [ordered]@{}
-        # Пока карточка перестраивается, обработчики ползунков молчат: иначе
-        # программная установка значения тут же считалась бы правкой человека.
-        LevelBusy         = $false
         Modes             = @($Modes)
         Settings          = $Settings
         State             = @($State)
@@ -1000,15 +965,14 @@ function New-SettingsWindow {
         }
     }
 
+    Import-LevelSettings -Ui $ui -Settings $Settings
     Update-DeskPanel  -Ui $ui
-    Update-CombosPanel -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
-    Initialize-LevelCard -Ui $ui -Settings $Settings
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
     $ui.NotifyBox.IsChecked   = [bool]$Settings.notifications
-    # Отсутствие ключа в старом settings.json означает «по умолчанию», то есть
-    # включено — ровно как в WinForms-версии, на этом уже ломался restoreWindows.
+    # Отсутствие ключа в settings.json означает «по умолчанию», то есть включено:
+    # файл правится руками, и половины ключей в нём может не быть.
     $ui.WindowsBox.IsChecked  = ($null -eq $Settings.restoreWindows -or [bool]$Settings.restoreWindows)
     $ui.LastModeBox.IsChecked = ($null -eq $Settings.restoreLastMode -or [bool]$Settings.restoreLastMode)
     # Дневник — наоборот: отсутствие ключа означает «выключено». Это данные о
@@ -1018,57 +982,10 @@ function New-SettingsWindow {
     # Окно собрано — с этого момента обработчики находят его здесь.
     $script:ActiveUi = $ui
 
-    # Яркость. Обработчики — обычные блоки, состояние через $script:ActiveUi:
-    # .GetNewClosure() в этом окне запрещён (см. заголовок файла).
-    $ui.LevelModeBox.add_SelectionChanged({
-        $ui = $script:ActiveUi
-        if (-not $ui -or $ui.LevelBusy) { return }
-        Update-LevelCard -Ui $ui
-    })
-
-    $ui.LevelKindBox.add_SelectionChanged({
-        $ui = $script:ActiveUi
-        if (-not $ui -or $ui.LevelBusy) { return }
-        $item = $ui.LevelKindBox.SelectedItem
-        if (-not $item) { return }
-        $model = Get-SelectedLevelModel -Ui $ui
-        if (-not $model) { return }
-        $model.Kind = [string]$item.Tag
-        # Переход «одно число» -> «каждому своё»: заполняем мониторы режима тем
-        # самым числом. Так человек получает то, что видел, и правит от него, а
-        # не пустой список. Обратный переход карту не стирает — вернувшись, он
-        # найдёт свои значения на месте.
-        if ($model.Kind -eq 'each' -and $model.Map.Count -eq 0) {
-            $key = [string]$ui.LevelModeBox.SelectedItem.Tag
-            foreach ($name in @(Get-LevelRowNames -Ui $ui -ModeKey $key -Map $model.Map)) {
-                $model.Map[$name] = [int]$model.Value
-            }
-        }
-        Update-LevelCard -Ui $ui
-    })
-
-    $ui.LevelOneSlider.add_ValueChanged({
-        $ui = $script:ActiveUi
-        if (-not $ui -or $ui.LevelBusy) { return }
-        $model = Get-SelectedLevelModel -Ui $ui
-        if (-not $model) { return }
-        $model.Value = [int]$ui.LevelOneSlider.Value
-        $ui.LevelOneValue.Text = [string][int]$ui.LevelOneSlider.Value
-    })
-
-    $ui.LevelTestBtn.add_Click({
-        $ui = $script:ActiveUi
-        if (-not $ui) { return }
-        Invoke-LevelProbe -Ui $ui
-    })
-
     $ui.AddComboBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        $taken = @($ui.Combos | ForEach-Object { $_.Name })
-        $made = Show-ComboEditor -Combo $null -State $ui.State -TakenNames $taken `
-                                 -TakenHotkeys (Get-TakenHotkeys -Ui $ui) -Owner $ui.Window -Dark $ui.Dark
-        if ($made) { Set-UiCombo -Ui $ui -Combo $null -Edited $made }
+        Invoke-ModeEditor -Ui $ui -Mode $null -Combo $null
     })
 
     # Save проверяет ввод ДО закрытия: старое окно на дубликате комбинации клавиш
@@ -1076,7 +993,7 @@ function New-SettingsWindow {
     $ui.SaveBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        $got = Read-SettingsFromUi -Ui $ui -Settings $ui.Settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $ui.Settings
         if (-not $got.Ok) {
             [void][System.Windows.MessageBox]::Show($ui.Window, $got.Problem, 'ScreenDeck',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
@@ -1089,7 +1006,7 @@ function New-SettingsWindow {
     return $ui
 }
 
-# --- стол: порядок и панель задач ----------------------------------------------
+# --- стол: порядок и панель задач -------------------------------------------
 # Карточки в DeskPanel и есть раскладка: их порядок слева направо уезжает в
 # settings.json -> layout, отмеченная звезда -> primary. Записи для мониторов,
 # которых сейчас нет, не теряются: для них строится своя, приглушённая карточка.
@@ -1271,11 +1188,11 @@ function Move-DeskCard {
     $Panel.Children.Insert($j, $Card)
 }
 
-# --- предпросмотр стола ---------------------------------------------------------
+# --- предпросмотр стола -----------------------------------------------------
 # Карточки говорят, в каком порядке мониторы стоят, но не показывают, что из
 # этого получится: экраны разной высоты (1440 и 2160) выстраиваются по центру, и
-# по краям остаются полосы, через которые курсор не переходит. Раньше это
-# выяснялось только после Save — на живом столе.
+# по краям остаются полосы, через которые курсор не переходит. Без предпросмотра
+# это выясняется только после Save — на живом столе.
 #
 # Координаты берём у Get-LayoutPositions — той самой функции, которой считает
 # переключатель. Не «похожая картинка», а ровно то, что будет применено: если
@@ -1404,7 +1321,7 @@ function Update-DeskPreview {
     }
 }
 
-# --- яркость --------------------------------------------------------------------
+# --- яркость ----------------------------------------------------------------
 # Яркость в настройках записана двумя способами, и оба нужны: число («всем
 # мониторам режима поровну», так пишут чаще всего) и объект («каждому своё»).
 # Окно обязано уметь оба И НЕ ПРЕВРАЩАТЬ ОДИН В ДРУГОЙ САМО: развернув число в
@@ -1476,59 +1393,59 @@ function ConvertTo-BrightnessSettings {
     return $out
 }
 
-# Мониторы режима — по именам, как их запишут в файл. Плюс «сироты»: имена,
-# которые уже есть в карте, но ни одному монитору режима не соответствуют
-# (монитор увезли, комбинацию правили рукой). Их надо ПОКАЗАТЬ, иначе настройку
-# нельзя ни увидеть, ни снять — тем же правилом живут привязки клавиш.
-function Get-LevelRowNames {
-    param($Ui, [string]$ModeKey, $Map)
+# Мониторы режима — по именам, как их запишут в файл. Ключ режима знает о них
+# всё: «all» — весь стол, «solo:» — один монитор, «combo:» — набор из рабочего
+# списка окна.
+function Get-ModeDisplayNames {
+    param([string]$ModeKey, $State, $Combos)
 
     $names = @()
-    $state = @($Ui.State | Where-Object { $_ })
+    $live = @($State | Where-Object { $_ })
 
     if ($ModeKey -eq 'all') {
-        $names = @($state | Where-Object { -not $_.Disconnected } | ForEach-Object { [string]$_.Label })
+        $names = @($live | Where-Object { -not $_.Disconnected } | ForEach-Object { [string]$_.Label })
     }
     elseif ($ModeKey -like 'solo:*') {
         $names = @($ModeKey.Substring(5))
     }
     elseif ($ModeKey -like 'combo:*') {
         $name = $ModeKey.Substring(6)
-        $combo = @($Ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
+        $combo = @($Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
         if ($combo.Count -gt 0) {
             foreach ($pattern in @($combo[0].Patterns)) {
                 if (-not $pattern) { continue }
                 # Название монитора точнее шаблона: «ULTRAFINE» из файла станет
                 # «LG ULTRAFINE», и обе записи по-прежнему совпадают (сравнение
                 # идёт вхождением в обе стороны).
-                $hit = @($state | Where-Object { Test-DisplayNameMatch -Pattern $pattern -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1)
+                $hit = @($live | Where-Object { Test-DisplayNameMatch -Pattern $pattern -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1)
                 $names += $(if ($hit.Count -gt 0) { [string]$hit[0].Label } else { [string]$pattern })
             }
         }
     }
-
-    foreach ($key in @($Map.Keys)) {
-        if ($names -notcontains [string]$key) { $names += [string]$key }
-    }
     return @($names | Where-Object { $_ })
 }
 
-# Список режимов для выпадающего списка: все известные окну плюс те, у которых
-# яркость уже задана, а самого режима сейчас нет (монитор увезли). Иначе такая
-# запись стала бы невидимой и неудаляемой.
-function Get-LevelModeChoices {
-    param($Ui)
+# Строки ползунков: мониторы режима плюс «сироты» — имена, которые уже есть в
+# карте, но ни одному монитору режима не соответствуют (монитор увезли,
+# комбинацию правили рукой). Их надо ПОКАЗАТЬ, иначе настройку нельзя ни
+# увидеть, ни снять — тем же правилом живут привязки клавиш.
+function Get-LevelRowNames {
+    # Имя параметра не должно совпадать с именем накопителя даже регистром: в
+    # PowerShell $rows и $Rows — одна переменная, и первое же присваивание стёрло
+    # бы то, что пришло снаружи.
+    param($Displays, $Map)
 
-    $choices = @()
-    foreach ($mode in @($Ui.Modes)) {
-        $choices += [pscustomobject]@{ Key = [string]$mode.Key; Title = [string]$mode.Title }
+    $rows = @()
+    foreach ($name in @($Displays)) {
+        if (-not $name) { continue }
+        if ($rows -notcontains [string]$name) { $rows += [string]$name }
     }
-    $known = @($choices | ForEach-Object { $_.Key })
-    foreach ($key in @($Ui.Levels.Keys)) {
-        if ($known -contains [string]$key) { continue }
-        $choices += [pscustomobject]@{ Key = [string]$key; Title = (Get-ModeTitleFromKey ([string]$key)) }
+    if ($Map) {
+        foreach ($key in @($Map.Keys)) {
+            if ($rows -notcontains [string]$key) { $rows += [string]$key }
+        }
     }
-    return @($choices)
+    return @($rows | Where-Object { $_ })
 }
 
 $script:LevelKindTitles = [ordered]@{
@@ -1537,7 +1454,9 @@ $script:LevelKindTitles = [ordered]@{
     each = 'a level for each display'
 }
 
-function Initialize-LevelCard {
+# Яркость из настроек — в рабочие модели окна, ключом режима. Правит их редактор
+# режима, а уезжают они на Save (см. ConvertTo-BrightnessSettings).
+function Import-LevelSettings {
     param($Ui, $Settings)
 
     $Ui.Levels = [ordered]@{}
@@ -1546,74 +1465,85 @@ function Initialize-LevelCard {
             $Ui.Levels[[string]$key] = ConvertTo-LevelModel $Settings.brightness[$key]
         }
     }
+}
 
-    $Ui.LevelBusy = $true
+# Копия модели: редактор правит её на месте, и Cancel обязан оставить окно с
+# тем, что было. Откатывать ползунки назад было бы враньём — копия честнее и
+# стоит одну запись в словаре.
+function Copy-LevelModel {
+    param($Model)
+
+    $copy = [pscustomobject]@{ Kind = 'none'; Value = 80; Map = [ordered]@{} }
+    if (-not $Model) { return $copy }
+    $copy.Kind = [string]$Model.Kind
+    $copy.Value = [int]$Model.Value
+    foreach ($key in @($Model.Map.Keys)) { $copy.Map[[string]$key] = [int]$Model.Map[$key] }
+    return $copy
+}
+
+# Мониторы, на которые смотрит редактор. У комбинации — ОТМЕЧЕННЫЕ галочки, а не
+# то, что записано в файле: человек снял монитор — строка яркости обязана уйти
+# вместе с ним, не дожидаясь Save.
+function Get-EditorDisplayNames {
+    param($Editor)
+
+    if ($Editor.Kind -eq 'combo') {
+        return @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+    }
+    return @(Get-ModeDisplayNames -ModeKey ([string]$Editor.ModeKey) -State $Editor.State -Combos @())
+}
+
+# Список форм записи — в редактор. Порядок пунктов и есть порядок
+# $script:LevelKindTitles: по нему же выбирается пункт в Update-EditorLevel.
+function Initialize-EditorLevel {
+    param($Editor)
+
+    $Editor.LevelBusy = $true
     try {
-        $Ui.LevelKindBox.Items.Clear()
+        $Editor.LevelKindBox.Items.Clear()
         foreach ($kind in @($script:LevelKindTitles.Keys)) {
             $item = New-Object System.Windows.Controls.ComboBoxItem
             $item.Content = [string]$script:LevelKindTitles[$kind]
             $item.Tag = [string]$kind
-            [void]$Ui.LevelKindBox.Items.Add($item)
+            [void]$Editor.LevelKindBox.Items.Add($item)
         }
-
-        $Ui.LevelModeBox.Items.Clear()
-        foreach ($choice in @(Get-LevelModeChoices -Ui $Ui)) {
-            $item = New-Object System.Windows.Controls.ComboBoxItem
-            $item.Content = $choice.Title
-            $item.Tag = $choice.Key
-            [void]$Ui.LevelModeBox.Items.Add($item)
-        }
-        if ($Ui.LevelModeBox.Items.Count -gt 0) { $Ui.LevelModeBox.SelectedIndex = 0 }
     }
-    finally { $Ui.LevelBusy = $false }
+    finally { $Editor.LevelBusy = $false }
 
-    Update-LevelCard -Ui $Ui
+    Update-EditorLevel -Editor $Editor
 }
 
-# Модель выбранного режима, заводя её при первом обращении.
-function Get-SelectedLevelModel {
-    param($Ui)
+# Показать модель редактора: выбор формы, один ползунок или строка на монитор.
+function Update-EditorLevel {
+    param($Editor)
 
-    $item = $Ui.LevelModeBox.SelectedItem
-    if (-not $item) { return $null }
-    $key = [string]$item.Tag
-    if (-not $Ui.Levels.Contains($key)) { $Ui.Levels[$key] = ConvertTo-LevelModel $null }
-    return $Ui.Levels[$key]
-}
+    $model = $Editor.Level
+    if (-not $model) { return }
 
-function Update-LevelCard {
-    param($Ui)
-
-    $item = $Ui.LevelModeBox.SelectedItem
-    if (-not $item) { return }
-    $model = Get-SelectedLevelModel -Ui $Ui
-
-    $Ui.LevelBusy = $true
+    $Editor.LevelBusy = $true
     try {
-        # Выбор формы записи — в том же порядке, в котором заведены пункты.
         $index = @($script:LevelKindTitles.Keys).IndexOf([string]$model.Kind)
         if ($index -lt 0) { $index = 0 }
-        $Ui.LevelKindBox.SelectedIndex = $index
+        $Editor.LevelKindBox.SelectedIndex = $index
 
-        $Ui.LevelOnePanel.Visibility = $(if ($model.Kind -eq 'one') { 'Visible' } else { 'Collapsed' })
-        $Ui.LevelOneSlider.Value = [double][int]$model.Value
-        $Ui.LevelOneValue.Text = [string][int]$model.Value
+        $Editor.LevelOnePanel.Visibility = $(if ($model.Kind -eq 'one') { 'Visible' } else { 'Collapsed' })
+        $Editor.LevelOneSlider.Value = [double][int]$model.Value
+        $Editor.LevelOneValue.Text = [string][int]$model.Value
 
-        $Ui.LevelRowsPanel.Children.Clear()
+        $Editor.LevelRowsPanel.Children.Clear()
         if ($model.Kind -eq 'each') {
-            foreach ($name in @(Get-LevelRowNames -Ui $Ui -ModeKey ([string]$item.Tag) -Map $model.Map)) {
-                Add-LevelRow -Ui $Ui -Model $model -Name $name
+            foreach ($name in @(Get-LevelRowNames -Displays (Get-EditorDisplayNames -Editor $Editor) -Map $model.Map)) {
+                Add-LevelRow -Editor $Editor -Model $model -Name $name
             }
         }
     }
-    finally { $Ui.LevelBusy = $false }
+    finally { $Editor.LevelBusy = $false }
 }
 
 function Add-LevelRow {
-    param($Ui, $Model, [string]$Name)
+    param($Editor, $Model, [string]$Name)
 
-    $win = $Ui.Window
+    $win = $Editor.Window
     $set = $Model.Map.Contains($Name)
 
     $grid = New-Object System.Windows.Controls.Grid
@@ -1658,36 +1588,36 @@ function Add-LevelRow {
 
     # Состояние строки — на самих элементах (.Tag), как и во всех остальных
     # обработчиках этого окна: .GetNewClosure() здесь запрещён (см. заголовок).
-    $row = [pscustomobject]@{ Ui = $Ui; Model = $Model; Name = $Name; Slider = $slider; Value = $value; Check = $check }
+    $row = [pscustomobject]@{ Owner = $Editor; Model = $Model; Name = $Name; Slider = $slider; Value = $value; Check = $check }
     $check.Tag = $row
     $slider.Tag = $row
 
     $check.add_Click({
         $row = $this.Tag
-        if ($row.Ui.LevelBusy) { return }
+        if ($row.Owner.LevelBusy) { return }
         if ($this.IsChecked) {
             $row.Model.Map[$row.Name] = [int]$row.Slider.Value
             $row.Slider.IsEnabled = $true
             $row.Value.Text = [string][int]$row.Slider.Value
-            $row.Value.Foreground = $row.Ui.Window.FindResource('TextBrush')
+            $row.Value.Foreground = $row.Owner.Window.FindResource('TextBrush')
         }
         else {
             $row.Model.Map.Remove($row.Name)
             $row.Slider.IsEnabled = $false
             $row.Value.Text = 'off'
-            $row.Value.Foreground = $row.Ui.Window.FindResource('DimBrush')
+            $row.Value.Foreground = $row.Owner.Window.FindResource('DimBrush')
         }
     })
 
     $slider.add_ValueChanged({
         $row = $this.Tag
-        if ($row.Ui.LevelBusy) { return }
+        if ($row.Owner.LevelBusy) { return }
         if (-not $row.Check.IsChecked) { return }
         $row.Model.Map[$row.Name] = [int]$this.Value
         $row.Value.Text = [string][int]$this.Value
     })
 
-    [void]$Ui.LevelRowsPanel.Children.Add($grid)
+    [void]$Editor.LevelRowsPanel.Children.Add($grid)
 }
 
 # «Ask the monitors» — спросить DDC/CI прямо сейчас. Отдельной кнопкой, а не при
@@ -1695,19 +1625,19 @@ function Add-LevelRow {
 # шине — до секунды с повторами, и платить это за каждое открытие настроек
 # незачем.
 function Invoke-LevelProbe {
-    param($Ui)
+    param($Editor)
 
-    $Ui.LevelNote.Text = 'asking...'
+    $Editor.LevelNote.Text = 'asking...'
     $answers = @()
     try { $answers = @(Get-MonitorLevels) }
     catch {
-        $Ui.LevelNote.Text = "could not ask the monitors - $($_.Exception.Message)"
+        $Editor.LevelNote.Text = "could not ask the monitors - $($_.Exception.Message)"
         return
     }
 
     # DDC отдаёт имя выхода (\\.\DISPLAY1), человеку нужно название монитора.
     $byOutput = @{}
-    foreach ($m in @($Ui.State)) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
+    foreach ($m in @($Editor.State)) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
 
     $good = @()
     $bad = @()
@@ -1722,194 +1652,155 @@ function Invoke-LevelProbe {
     if ($parts.Count -eq 0) { $parts += 'nobody answered - only displays that are ON can be asked' }
     # Про спящие говорим всегда: их в ответе нет вовсе, и без этой строки
     # выглядело бы, будто монитор не умеет.
-    $Ui.LevelNote.Text = ($parts -join '; ') + '. Sleeping displays cannot be asked.'
+    $Editor.LevelNote.Text = ($parts -join '; ') + '. Sleeping displays cannot be asked.'
 }
 
-# --- комбинации -----------------------------------------------------------------
+# --- режим: правка одного ---------------------------------------------------
+# Один редактор на любой режим, и это ответ на вопрос «где это настраивается».
+# У комбинации правится всё — имя, состав, панель задач, клавиша, яркость; у
+# режима монитора и у «all» состав задан самой жизнью, и остаются клавиша с
+# яркостью. Трёх карточек на это больше нет: человек ищет настройки режима там,
+# где нажал Edit.
 
-# Применить результат редактора к рабочему списку: $Combo — существующая запись,
-# $null — новая. Отдельно от обработчиков кликов: это и есть проверяемая часть
-# правки комбинаций, обработчики только зовут редактор и передают его ответ сюда.
-function Set-UiCombo {
-    param($Ui, $Combo, $Edited)
+# Применить ответ редактора к рабочему состоянию окна. Отдельно от обработчиков
+# кликов: это и есть проверяемая часть правки, обработчики только зовут редактор
+# и передают его ответ сюда.
+function Set-UiMode {
+    param($Ui, $Mode, $Combo, $Edited)
 
     if (-not $Edited) { return }
-    if ($Combo) {
-        $Combo.Name = [string]$Edited.Name
-        $Combo.Patterns = @($Edited.Patterns)
-        $Combo.Primary = [string]$Edited.Primary
-    }
-    else {
-        [void]$Ui.Combos.Add([pscustomobject]@{
-            Name         = [string]$Edited.Name
-            Patterns     = @($Edited.Patterns)
-            Primary      = [string]$Edited.Primary
-            OriginalName = ''
-        })
-    }
-    # Вернули имя, которое в этом же сеансе удаляли, — удаление отменилось.
-    $Ui.DeletedComboKeys = @($Ui.DeletedComboKeys | Where-Object { $_ -ne ('combo:' + $Edited.Name) })
-    Update-CombosPanel -Ui $Ui
-    Update-ModesPanel -Ui $Ui
 
-    # Клавиша из редактора — в поле главного окна: правда о привязках одна, и
-    # живёт она в полях. Пустая строка честно означает «клавиши нет» — человек
-    # мог и снять её.
-    if ($null -ne $Edited.PSObject.Properties['Hotkey']) {
-        $key = 'combo:' + $Edited.Name
-        if ($Ui.Boxes.Contains($key)) {
+    # Ключ, под которым режим лежал до правки: у комбинации он меняется вместе с
+    # именем, и всё привязанное к нему обязано переехать.
+    $oldKey = $(if ($Mode) { [string]$Mode.Key } else { '' })
+    $newKey = $oldKey
+
+    if ($null -ne $Edited.PSObject.Properties['Name']) {
+        if ($Combo) {
+            $Combo.Name = [string]$Edited.Name
+            $Combo.Patterns = @($Edited.Patterns)
+            $Combo.Primary = [string]$Edited.Primary
+        }
+        else {
+            [void]$Ui.Combos.Add([pscustomobject]@{
+                Name         = [string]$Edited.Name
+                Patterns     = @($Edited.Patterns)
+                Primary      = [string]$Edited.Primary
+                OriginalName = ''
+            })
+        }
+        $newKey = 'combo:' + [string]$Edited.Name
+        # Вернули имя, которое в этом же сеансе удаляли, — удаление отменилось.
+        $Ui.DeletedComboKeys = @($Ui.DeletedComboKeys | Where-Object { $_ -ne $newKey })
+    }
+
+    # Переименование уводит клавишу и яркость на новый ключ: под старым осталась
+    # бы настройка-призрак, которой не видно ни в одном окне. То же самое для
+    # звука и команд делает Read-SettingsFromUi — там ключ известен только на Save.
+    if ($oldKey -and $newKey -and $oldKey -ne $newKey) {
+        if ($Ui.Hotkeys.Contains($oldKey)) { $Ui.Hotkeys.Remove($oldKey) }
+        if ($Ui.Levels.Contains($oldKey))  { $Ui.Levels.Remove($oldKey) }
+    }
+
+    if ($newKey) {
+        # Пустая клавиша честно означает «клавиши нет»: человек мог её и снять.
+        if ($null -ne $Edited.PSObject.Properties['Hotkey']) {
             $parsed = ConvertFrom-HotkeyString ([string]$Edited.Hotkey)
-            $Ui.Boxes[$key].Text = $(if ($parsed) { $parsed.Text } else { $script:NoHotkeyText })
+            if ($parsed) { $Ui.Hotkeys[$newKey] = $parsed.Text }
+            elseif ($Ui.Hotkeys.Contains($newKey)) { $Ui.Hotkeys.Remove($newKey) }
+        }
+        if ($null -ne $Edited.PSObject.Properties['Level']) {
+            $Ui.Levels[$newKey] = $Edited.Level
         }
     }
+
+    Update-ModesPanel -Ui $Ui
 }
 
 function Remove-UiCombo {
     param($Ui, $Combo)
 
-    # Помним оба ключа: под OriginalName комбинация лежит в файле (звук), под
-    # текущим именем — в полях клавиш этого окна.
+    # Помним оба ключа: под OriginalName комбинация лежит в файле (звук, команды),
+    # под нынешним именем — в клавишах и яркости этого окна.
     $keys = @('combo:' + $Combo.Name)
     if ($Combo.OriginalName) { $keys += ('combo:' + $Combo.OriginalName) }
     $Ui.DeletedComboKeys = @($Ui.DeletedComboKeys) + $keys
     $Ui.Combos.Remove($Combo)
-    Update-CombosPanel -Ui $Ui
+    foreach ($key in $keys) {
+        if ($Ui.Hotkeys.Contains($key)) { $Ui.Hotkeys.Remove($key) }
+        if ($Ui.Levels.Contains($key))  { $Ui.Levels.Remove($key) }
+    }
     Update-ModesPanel -Ui $Ui
 }
 
-function Update-CombosPanel {
-    param($Ui)
+# Снять всё, что осталось от режима, которого больше нет: монитор увезли,
+# комбинацию стёрли рукой из файла. Клавиша-то занята глобально, и снять её
+# можно только отсюда — потому у такой строки своя кнопка.
+function Remove-UiOrphan {
+    param($Ui, [string]$Key)
 
-    $Ui.CombosPanel.Children.Clear()
-    $win = $Ui.Window
-
-    if ($Ui.Combos.Count -eq 0) {
-        $none = New-UiTextBlock -Text 'No combinations yet.' -Style 'RowSub' -Window $win
-        $none.Margin = New-Object System.Windows.Thickness 0, 2, 0, 2
-        [void]$Ui.CombosPanel.Children.Add($none)
-        return
-    }
-
-    foreach ($combo in @($Ui.Combos)) {
-        $row = New-Object System.Windows.Controls.Grid
-        $row.Margin = New-Object System.Windows.Thickness 0, 4, 0, 4
-        $c0 = New-Object System.Windows.Controls.ColumnDefinition
-        $c1 = New-Object System.Windows.Controls.ColumnDefinition
-        $c1.Width = [System.Windows.GridLength]::Auto
-        $c2 = New-Object System.Windows.Controls.ColumnDefinition
-        $c2.Width = [System.Windows.GridLength]::Auto
-        [void]$row.ColumnDefinitions.Add($c0)
-        [void]$row.ColumnDefinitions.Add($c1)
-        [void]$row.ColumnDefinitions.Add($c2)
-
-        $textStack = New-Object System.Windows.Controls.StackPanel
-        $title = New-UiTextBlock -Text $combo.Name -Style 'RowTitle' -Window $win
-        $title.FontWeight = 'SemiBold'
-        [void]$textStack.Children.Add($title)
-        $subText = (@($combo.Patterns) -join ' + ')
-        if ($combo.Primary) { $subText += '   (taskbar on ' + $combo.Primary + ')' }
-        $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
-        [void]$textStack.Children.Add($sub)
-        [void]$row.Children.Add($textStack)
-
-        # Именно кнопки с рамкой, а не приглушённые надписи: плоские Edit/Remove
-        # первый же человек принял за подписи и не нашёл, как удалить комбинацию.
-        $edit = New-Object System.Windows.Controls.Button
-        $edit.Content = 'Edit'
-        $edit.Style = $win.FindResource('BtnSmall')
-        $edit.VerticalAlignment = 'Center'
-        [System.Windows.Controls.Grid]::SetColumn($edit, 1)
-        [void]$row.Children.Add($edit)
-
-        $remove = New-Object System.Windows.Controls.Button
-        $remove.Content = 'Remove'
-        $remove.Style = $win.FindResource('BtnSmall')
-        $remove.VerticalAlignment = 'Center'
-        $remove.Margin = New-Object System.Windows.Thickness 6, 0, 0, 0
-        [System.Windows.Controls.Grid]::SetColumn($remove, 2)
-        [void]$row.Children.Add($remove)
-
-        # Какую комбинацию правит эта кнопка — на самой кнопке.
-        $edit.Tag = $combo
-        $remove.Tag = $combo
-
-        $edit.add_Click({
-            $ui = $script:ActiveUi
-            $combo = $this.Tag
-            if (-not $ui -or -not $combo) { return }
-            $taken = @($ui.Combos | Where-Object { $_ -ne $combo } | ForEach-Object { $_.Name })
-            $key = 'combo:' + $combo.Name
-            $current = ''
-            if ($ui.Boxes.Contains($key)) { $current = $ui.Boxes[$key].Text }
-            $made = Show-ComboEditor -Combo $combo -State $ui.State -TakenNames $taken `
-                                     -Hotkey $current -TakenHotkeys (Get-TakenHotkeys -Ui $ui -ExceptKey $key) `
-                                     -Owner $ui.Window -Dark $ui.Dark
-            if ($made) { Set-UiCombo -Ui $ui -Combo $combo -Edited $made }
-        })
-
-        $remove.add_Click({
-            $ui = $script:ActiveUi
-            if ($ui -and $this.Tag) { Remove-UiCombo -Ui $ui -Combo $this.Tag }
-        })
-
-        [void]$Ui.CombosPanel.Children.Add($row)
-    }
+    if ($Ui.Hotkeys.Contains($Key)) { $Ui.Hotkeys.Remove($Key) }
+    if ($Ui.Levels.Contains($Key))  { $Ui.Levels.Remove($Key) }
+    Update-ModesPanel -Ui $Ui
 }
 
-# Редактор одной комбинации: сборка отдельно от показа, по той же причине, что
-# и у главного окна, — собранное без показа окно можно проверить.
-function New-ComboEditorWindow {
-    param(
-        $Combo,          # $null — создание новой
-        $State,
-        [string[]]$TakenNames = @(),
-        # Комбинация — это не только клавиша, но клавишу человек хочет назначить
-        # там же, где создаёт набор, а не идти за ней в другую карточку. Поэтому
-        # поле шортката живёт и здесь; правда о привязках остаётся в полях
-        # главного окна — сюда приезжает текущий текст, обратно — новый.
-        [string]$Hotkey = '',
-        # Комбинации, занятые другими режимами: назначить одну клавишу дважды
-        # нельзя, и сказать об этом надо сейчас, а не после закрытия редактора.
-        [string[]]$TakenHotkeys = @(),
-        $Owner,
-        [bool]$Dark
-    )
+# Редактор режима: сборка отдельно от показа, по той же причине, что и у
+# главного окна, — собранное без показа окно можно проверить.
+# Заголовок редактора и то, какая его часть вообще видна. Зависит только от вида
+# режима: комбинацию человек собирает сам, поэтому у неё есть имя и состав; режим
+# монитора и «все» задаёт стол, и правится у них только клавиша с яркостью —
+# спорить о названии и участниках там не о чем, эта часть окна прячется.
+function Set-ModeEditorHeader {
+    param($Window, [string]$Kind, $Mode, $Combo)
 
-    Initialize-WpfRuntime
-    $palette = Get-UiPalette -Dark $Dark
-    $win = Convert-UiXaml -Xaml $script:ComboEditorXaml -Palette $palette
-    Register-WindowTheme -Window $win -Dark $Dark
-    if ($Owner) { $win.Owner = $Owner }
+    $headTitle = $Window.FindName('HeadTitle')
+    $headHint = $Window.FindName('HeadHint')
 
-    $nameBox = $win.FindName('NameBox')
-    $membersPanel = $win.FindName('MembersPanel')
-    $primaryBox = $win.FindName('PrimaryBox')
-    $hotkeyBox = $win.FindName('HotkeyBox')
-    $okBtn = $win.FindName('OkBtn')
+    if ($Kind -eq 'combo') {
+        # Имя и состав правятся ниже, своими полями: заголовку остаётся сказать,
+        # что это вообще такое. Заведённой комбинации объяснять уже нечего —
+        # подсказка уходит, окно становится короче на две строки.
+        $headTitle.Text = $(if ($Combo) { 'Combination' } else { 'New combination' })
+        if ($Combo) { $headHint.Visibility = 'Collapsed' }
+        else {
+            $headHint.Text = 'Any set of displays under a name you choose. It gets an entry in the tray menu, a shortcut if you want one, and the brightness set below.'
+        }
+    }
+    else {
+        $Window.FindName('ComboPart').Visibility = 'Collapsed'
+        $headTitle.Text = $(if ($Mode) { [string]$Mode.Title } else { 'Mode' })
+        $headHint.Text = $(if ($Kind -eq 'all') {
+            'Every display on your desk at once. Which displays these are the desk decides, so what belongs to the mode itself is the shortcut and the brightness.'
+        } else {
+            'This mode leaves one display on and turns the rest off. Its set of displays is fixed, so what belongs to the mode itself is the shortcut and the brightness.'
+        })
+    }
 
-    $hotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
-    Register-HotkeyCapture -Box $hotkeyBox
-    $parsedHotkey = ConvertFrom-HotkeyString $Hotkey
-    $hotkeyBox.Text = $(if ($parsedHotkey) { $parsedHotkey.Text } else { $script:NoHotkeyText })
+    $Window.Title = 'ScreenDeck - ' + $headTitle.Text
+}
 
-    $clearHotkey = $win.FindName('ClearHotkeyBtn')
-    $clearHotkey.IsEnabled = [bool]$parsedHotkey
-    Register-HotkeyClearButton -Box $hotkeyBox -Button $clearHotkey
+# Состав комбинации: галочки участников и выпадающий список «кому панель задач».
+# Возвращает список галочек — их читает Read-ModeFromUi, и Tag каждой хранит
+# точную строку, которая уедет в settings.json.
+#
+# Галочки — все подключённые мониторы, затем шаблоны комбинации, не совпавшие ни
+# с одним из них: монитор увезли, но выбрасывать его из комбинации молча нельзя.
+function Add-ComboMemberChecks {
+    param($Window, $Combo, $Live)
+
+    $membersPanel = $Window.FindName('MembersPanel')
+    $primaryBox = $Window.FindName('PrimaryBox')
 
     $patterns = @()
     if ($Combo) {
-        $nameBox.Text = [string]$Combo.Name
+        $Window.FindName('NameBox').Text = [string]$Combo.Name
         $patterns = @($Combo.Patterns)
     }
 
-    # Галочки: все подключённые мониторы, затем шаблоны комбинации, не совпавшие
-    # ни с одним из них, — монитор увезли, но выбрасывать его из комбинации молча
-    # нельзя. Tag хранит точную строку, которая уедет в settings.json.
     $checks = @()
-    $live = @($State | Where-Object { $_ -and -not $_.Disconnected })
-    foreach ($m in $live) {
+    foreach ($m in $Live) {
         $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Style = $win.FindResource('Check')
+        $cb.Style = $Window.FindResource('Check')
         $cb.Content = $m.Label
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
@@ -1920,12 +1811,12 @@ function New-ComboEditorWindow {
     }
     foreach ($pat in $patterns) {
         $matched = $false
-        foreach ($m in $live) {
+        foreach ($m in $Live) {
             if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $matched = $true; break }
         }
         if ($matched) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
-        $cb.Style = $win.FindResource('Check')
+        $cb.Style = $Window.FindResource('Check')
         $cb.Content = ([string]$pat + '   (not connected)')
         $cb.Tag = [string]$pat
         $cb.IsChecked = $true
@@ -1933,8 +1824,7 @@ function New-ComboEditorWindow {
         $checks += $cb
     }
 
-    $defaultChoice = 'Follow the usual rules'
-    [void]$primaryBox.Items.Add($defaultChoice)
+    [void]$primaryBox.Items.Add('Follow the usual rules')
     foreach ($cb in $checks) { [void]$primaryBox.Items.Add([string]$cb.Tag) }
     $primaryBox.SelectedIndex = 0
     if ($Combo -and $Combo.Primary) {
@@ -1946,50 +1836,184 @@ function New-ComboEditorWindow {
         }
     }
 
-    $ed = [pscustomobject]@{
-        Window       = $win
-        NameBox      = $nameBox
-        Checks       = $checks
-        PrimaryBox   = $primaryBox
-        HotkeyBox    = $hotkeyBox
-        TakenNames   = @($TakenNames)
-        TakenHotkeys = @($TakenHotkeys)
-        Result       = $null
+    return $checks
+}
+
+function New-ModeEditorWindow {
+    param(
+        # Режим, который правим. $null — создаём новую комбинацию.
+        $Mode,
+        # Рабочая запись комбинации из списка окна. $null — режим не комбинация
+        # либо комбинация ещё не заведена.
+        $Combo,
+        $State,
+        # Модель яркости режима. Правится КОПИЯ: Cancel обязан оставить окно с
+        # тем, что было.
+        $Level,
+        [string[]]$TakenNames = @(),
+        [string]$Hotkey = '',
+        # Комбинации, занятые другими режимами: назначить одну клавишу дважды
+        # нельзя, и сказать об этом надо сейчас, а не после закрытия редактора.
+        [string[]]$TakenHotkeys = @(),
+        $Owner,
+        [bool]$Dark
+    )
+
+    Initialize-WpfRuntime
+    $palette = Get-UiPalette -Dark $Dark
+    $win = Convert-UiXaml -Xaml $script:ModeEditorXaml -Palette $palette
+    Register-WindowTheme -Window $win -Dark $Dark
+    if ($Owner) { $win.Owner = $Owner }
+
+    # Ниже рабочей области окно не растёт — дальше прокрутка, как и у главного.
+    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 80 } catch { }   # нет рабочей области — не ограничиваем
+
+    # Вид режима решает, что в окне показывать. Новая запись — всегда комбинация:
+    # режимы монитора и «all» заводит стол, а не человек.
+    $kind = 'combo'
+    if ($Mode -and [string]$Mode.Kind -and [string]$Mode.Kind -ne 'combo') { $kind = [string]$Mode.Kind }
+
+    $nameBox = $win.FindName('NameBox')
+    $primaryBox = $win.FindName('PrimaryBox')
+    $hotkeyBox = $win.FindName('HotkeyBox')
+    $okBtn = $win.FindName('OkBtn')
+
+    Set-ModeEditorHeader -Window $win -Kind $kind -Mode $Mode -Combo $Combo
+
+    $hotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
+    Register-HotkeyCapture -Box $hotkeyBox
+    $parsedHotkey = ConvertFrom-HotkeyString $Hotkey
+    $hotkeyBox.Text = $(if ($parsedHotkey) { $parsedHotkey.Text } else { $script:NoHotkeyText })
+
+    $clearHotkey = $win.FindName('ClearHotkeyBtn')
+    $clearHotkey.IsEnabled = [bool]$parsedHotkey
+    Register-HotkeyClearButton -Box $hotkeyBox -Button $clearHotkey
+
+    $checks = @()
+    if ($kind -eq 'combo') {
+        $checks = @(Add-ComboMemberChecks -Window $win -Combo $Combo `
+                        -Live @($State | Where-Object { $_ -and -not $_.Disconnected }))
     }
-    # Обработчик Save находит редактор здесь, а не в замыкании: см. комментарий об
+
+    $ed = [pscustomobject]@{
+        Window         = $win
+        Kind           = $kind
+        ModeKey        = $(if ($Mode) { [string]$Mode.Key } else { '' })
+        NameBox        = $nameBox
+        Checks         = $checks
+        PrimaryBox     = $primaryBox
+        HotkeyBox      = $hotkeyBox
+        LevelKindBox   = $win.FindName('LevelKindBox')
+        LevelOnePanel  = $win.FindName('LevelOnePanel')
+        LevelOneSlider = $win.FindName('LevelOneSlider')
+        LevelOneValue  = $win.FindName('LevelOneValue')
+        LevelRowsPanel = $win.FindName('LevelRowsPanel')
+        LevelTestBtn   = $win.FindName('LevelTestBtn')
+        LevelNote      = $win.FindName('LevelNote')
+        # Пока панель перестраивается, обработчики ползунков молчат: иначе
+        # программная установка значения тут же считалась бы правкой человека.
+        LevelBusy      = $false
+        Level          = (Copy-LevelModel $Level)
+        State          = @($State)
+        TakenNames     = @($TakenNames)
+        TakenHotkeys   = @($TakenHotkeys)
+        Result         = $null
+    }
+    # Обработчики находят редактор здесь, а не в замыкании: см. комментарий об
     # обработчиках выше. Редактор модальный, поэтому одного места достаточно.
     $script:ActiveEditor = $ed
+
+    Initialize-EditorLevel -Editor $ed
+
+    $ed.LevelKindBox.add_SelectionChanged({
+        $ed = $script:ActiveEditor
+        if (-not $ed -or $ed.LevelBusy) { return }
+        $item = $ed.LevelKindBox.SelectedItem
+        if (-not $item) { return }
+        $ed.Level.Kind = [string]$item.Tag
+        # Переход «одно число» -> «каждому своё»: заполняем мониторы режима тем
+        # самым числом. Так человек получает то, что видел, и правит от него, а
+        # не пустой список. Обратный переход карту не стирает — вернувшись, он
+        # найдёт свои значения на месте.
+        if ($ed.Level.Kind -eq 'each' -and $ed.Level.Map.Count -eq 0) {
+            foreach ($name in @(Get-EditorDisplayNames -Editor $ed)) {
+                $ed.Level.Map[[string]$name] = [int]$ed.Level.Value
+            }
+        }
+        Update-EditorLevel -Editor $ed
+    })
+
+    $ed.LevelOneSlider.add_ValueChanged({
+        $ed = $script:ActiveEditor
+        if (-not $ed -or $ed.LevelBusy) { return }
+        $ed.Level.Value = [int]$ed.LevelOneSlider.Value
+        $ed.LevelOneValue.Text = [string][int]$ed.LevelOneSlider.Value
+    })
+
+    $ed.LevelTestBtn.add_Click({
+        $ed = $script:ActiveEditor
+        if (-not $ed) { return }
+        Invoke-LevelProbe -Editor $ed
+    })
+
+    # Сняли монитор с комбинации — его строка яркости уходит следом, не дожидаясь
+    # Save: иначе ползунок стоял бы под монитором, которого в режиме уже нет.
+    foreach ($cb in $checks) {
+        $cb.add_Click({
+            $ed = $script:ActiveEditor
+            if (-not $ed -or $ed.LevelBusy) { return }
+            if ([string]$ed.Level.Kind -eq 'each') { Update-EditorLevel -Editor $ed }
+        })
+    }
 
     $okBtn.add_Click({
         $ed = $script:ActiveEditor
         if (-not $ed) { return }
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         if (-not $got.Ok) {
             [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'ScreenDeck',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
             return
         }
-        $ed.Result = $got.Combo
+        $ed.Result = $got.Mode
         $ed.Window.DialogResult = $true
     })
 
     return $ed
 }
 
-# Что человек набрал в редакторе комбинации, с проверкой. Отдельной функцией — как
-# и Read-SettingsFromUi у главного окна: проверяемо без показа окна.
-function Read-ComboFromUi {
+# Что человек набрал в редакторе, с проверкой. Отдельной функцией — как и
+# Read-SettingsFromUi у главного окна: проверяемо без показа окна.
+function Read-ModeFromUi {
     param($Editor)
 
-    $name = $Editor.NameBox.Text.Trim()
-    $chosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
-    $prim = ''
-    if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem }
     # В поле может стоять и «no shortcut», и подсказка «needs Ctrl…» — клавишей
     # считается только то, что разбирается. Пусто — значит без клавиши.
     $hk = ''
     $parsed = ConvertFrom-HotkeyString $Editor.HotkeyBox.Text
     if ($parsed) { $hk = $parsed.Text }
+
+    if ($hk -and @($Editor.TakenHotkeys) -contains $hk) {
+        return [pscustomobject]@{
+            Ok = $false; Mode = $null
+            Problem = "$hk already drives another mode. Each combination of keys can only drive one."
+        }
+    }
+
+    # У режима монитора и у «all» состав задан столом: правятся только клавиша и
+    # яркость, и проверять больше нечего.
+    if ($Editor.Kind -ne 'combo') {
+        return [pscustomobject]@{
+            Ok = $true
+            Mode = [pscustomobject]@{ Hotkey = $hk; Level = $Editor.Level }
+            Problem = ''
+        }
+    }
+
+    $name = $Editor.NameBox.Text.Trim()
+    $chosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+    $prim = ''
+    if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem }
 
     $problem = ''
     if (-not $name) { $problem = 'Give the combination a name - it becomes its menu entry.' }
@@ -2000,23 +2024,22 @@ function Read-ComboFromUi {
     elseif ($prim -and $chosen -notcontains $prim) {
         $problem = 'The taskbar display must be one of the ticked displays.'
     }
-    elseif ($hk -and @($Editor.TakenHotkeys) -contains $hk) {
-        $problem = "$hk already drives another mode. Each combination of keys can only drive one."
-    }
-    if ($problem) { return [pscustomobject]@{ Ok = $false; Combo = $null; Problem = $problem } }
+    if ($problem) { return [pscustomobject]@{ Ok = $false; Mode = $null; Problem = $problem } }
 
     return [pscustomobject]@{
         Ok = $true
-        Combo = [pscustomobject]@{ Name = $name; Patterns = $chosen; Primary = $prim; Hotkey = $hk }
+        Mode = [pscustomobject]@{ Name = $name; Patterns = $chosen; Primary = $prim; Hotkey = $hk; Level = $Editor.Level }
         Problem = ''
     }
 }
 
-# Показ редактора. Возвращает @{ Name; Patterns; Primary; Hotkey } или $null при отмене.
-function Show-ComboEditor {
+# Показ редактора. Возвращает правку режима или $null при отмене.
+function Show-ModeEditor {
     param(
+        $Mode,
         $Combo,
         $State,
+        $Level,
         [string[]]$TakenNames = @(),
         [string]$Hotkey = '',
         [string[]]$TakenHotkeys = @(),
@@ -2024,8 +2047,9 @@ function Show-ComboEditor {
         [bool]$Dark
     )
 
-    $ed = New-ComboEditorWindow -Combo $Combo -State $State -TakenNames $TakenNames `
-                                -Hotkey $Hotkey -TakenHotkeys $TakenHotkeys -Owner $Owner -Dark $Dark
+    $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State -Level $Level `
+                               -TakenNames $TakenNames -Hotkey $Hotkey -TakenHotkeys $TakenHotkeys `
+                               -Owner $Owner -Dark $Dark
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
         return $null
@@ -2036,99 +2060,163 @@ function Show-ComboEditor {
     }
 }
 
+# Собрать всё, что редактору нужно от окна, показать его и применить ответ. Одно
+# место и на «Add a combination», и на каждую строку Edit: правила о занятых
+# именах и клавишах обязаны быть одинаковыми для всех режимов.
+function Invoke-ModeEditor {
+    param($Ui, $Mode, $Combo)
+
+    $key = $(if ($Mode) { [string]$Mode.Key } else { '' })
+    $taken = @($Ui.Combos | Where-Object { -not $Combo -or $_ -ne $Combo } | ForEach-Object { [string]$_.Name })
+    $hotkey = $(if ($key -and $Ui.Hotkeys.Contains($key)) { [string]$Ui.Hotkeys[$key] } else { '' })
+    $level = $(if ($key -and $Ui.Levels.Contains($key)) { $Ui.Levels[$key] } else { $null })
+
+    $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State -Level $level `
+                            -TakenNames $taken -Hotkey $hotkey `
+                            -TakenHotkeys (Get-TakenHotkeys -Ui $Ui -ExceptKey $key) `
+                            -Owner $Ui.Window -Dark $Ui.Dark
+    if ($made) { Set-UiMode -Ui $Ui -Mode $Mode -Combo $Combo -Edited $made }
+}
+
 # Комбинации клавиш, занятые всеми режимами, КРОМЕ одного (того, что сейчас в
 # редакторе): его собственная клавиша — не конфликт.
 function Get-TakenHotkeys {
     param($Ui, [string]$ExceptKey = '')
 
     $taken = @()
-    foreach ($key in $Ui.Boxes.Keys) {
+    foreach ($key in @($Ui.Hotkeys.Keys)) {
         if ($ExceptKey -and $key -eq $ExceptKey) { continue }
-        $parsed = ConvertFrom-HotkeyString $Ui.Boxes[$key].Text
+        $parsed = ConvertFrom-HotkeyString ([string]$Ui.Hotkeys[$key])
         if ($parsed) { $taken += $parsed.Text }
     }
     return $taken
 }
 
-# --- список режимов и клавиш ------------------------------------------------------
-# Перестраивается при каждой правке групп и комбинаций: режимы — производная от
-# них, и список обязан показывать то, что будет после Save. Уже введённые
-# комбинации клавиш переживают перестроение в тайнике, ключом режима.
+# --- список режимов ---------------------------------------------------------
+# Перестраивается при каждой правке: режимы — производная от стола и от списка
+# комбинаций, и строки обязаны показывать то, что будет после Save. Клавиша и
+# яркость живут не в строках, а в $Ui.Hotkeys и $Ui.Levels: строка их только
+# показывает, правит редактор.
+
+# Короткая правда о яркости режима — в подпись строки. Иначе настройку, спрятанную
+# за кнопкой Edit, не видно, пока не откроешь каждый режим по очереди.
+function Get-LevelSummary {
+    param($Model)
+
+    if (-not $Model) { return '' }
+    switch ([string]$Model.Kind) {
+        'one'  { return 'brightness ' + [string][int]$Model.Value }
+        'each' {
+            if (-not $Model.Map -or $Model.Map.Count -eq 0) { return '' }
+            return 'brightness per display'
+        }
+    }
+    return ''
+}
+
+# Записи, привязанные к режимам, — в порядке самих режимов. Что порядку не
+# соответствует (настройка от режима, которого больше нет), едет следом, в том
+# порядке, в котором лежало. Чистая функция.
+function Get-MapInModeOrder {
+    param($Map, $Modes)
+
+    $sorted = [ordered]@{}
+    if (-not $Map) { return $sorted }
+    foreach ($mode in @($Modes)) {
+        $key = [string]$mode.Key
+        if ($Map.Contains($key) -and -not $sorted.Contains($key)) { $sorted[$key] = $Map[$key] }
+    }
+    foreach ($key in @($Map.Keys)) {
+        if (-not $sorted.Contains([string]$key)) { $sorted[[string]$key] = $Map[$key] }
+    }
+    return $sorted
+}
+
+# Какие строки показывать в списке режимов — и в каком порядке. Ничего не рисует:
+# считает список и раскладывает по нему записи окна.
+#
+# $InitialModes приходит с первым вызовом из New-SettingsWindow (режимы уже
+# посчитаны снаружи, вместе со строками-сиротами); $null означает пересчёт после
+# правок, и тогда комбинации берутся из рабочего списка окна, а не из настроек, с
+# которыми окно открывалось.
+function Resolve-PanelModes {
+    param($Ui, $InitialModes)
+
+    $modes = $InitialModes
+    if ($null -eq $modes) {
+        $settings = @{ combos = (ConvertTo-ComboSettings -Combos $Ui.Combos) }
+        $modes = @(Get-DisplayModes -State $Ui.State -Settings $settings)
+    }
+    $modes = @($modes)
+
+    # Настройки без режима — своей строкой. Клавиша занята глобально
+    # (RegisterHotKey работает независимо от наличия монитора), а яркость висит
+    # на ключе, которого больше нет; увидеть и снять то и другое можно только
+    # отсюда. Пустая модель яркости строки не держит: она заводится от одного
+    # захода в редактор и ничего не значит.
+    $known = @($modes | ForEach-Object { [string]$_.Key })
+    $strays = @()
+    foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys))) {
+        $key = [string]$key
+        if (-not $key -or $known -contains $key -or $strays -contains $key) { continue }
+        if (-not $Ui.Hotkeys.Contains($key)) {
+            if ($null -eq (ConvertFrom-LevelModel $Ui.Levels[$key])) { continue }
+        }
+        $strays += $key
+    }
+    foreach ($key in $strays) {
+        $modes += [pscustomobject]@{
+            Key       = $key
+            Title     = Get-ModeTitleFromKey $key
+            Kind      = 'orphan'
+            Available = $false
+        }
+    }
+
+    # Записи выстраиваем по порядку режимов: иначе settings.json перетасовывался
+    # бы от того, в каком порядке человек открывал редакторы, и каждая правка
+    # одной клавиши переписывала бы полфайла.
+    $Ui.Hotkeys = Get-MapInModeOrder -Map $Ui.Hotkeys -Modes $modes
+    $Ui.Levels  = Get-MapInModeOrder -Map $Ui.Levels  -Modes $modes
+
+    return @($modes)
+}
 
 function Update-ModesPanel {
     param(
         $Ui,
         # Первый вызов из New-SettingsWindow: режимы уже посчитаны снаружи (вместе
-        # со строками-сиротами), а клавиши берутся из настроек, не из полей.
+        # со строками-сиротами), а клавиши берутся из настроек.
         $InitialModes,
         $InitialHotkeys
     )
 
     $win = $Ui.Window
 
-    # Тайник текущего ввода. При первом вызове — то, что лежит в настройках.
-    $stash = [ordered]@{}
     if ($InitialHotkeys) {
-        foreach ($k in @($InitialHotkeys.Keys)) { $stash[$k] = [string]$InitialHotkeys[$k] }
-    }
-    else {
-        foreach ($k in @($Ui.Boxes.Keys)) { $stash[$k] = $Ui.Boxes[$k].Text }
-    }
-
-    # Переименованная комбинация увозит свою клавишу на новый ключ.
-    foreach ($c in @($Ui.Combos)) {
-        if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
-        $old = 'combo:' + $c.OriginalName
-        $new = 'combo:' + $c.Name
-        if ($stash.Contains($old)) {
-            if (-not $stash.Contains($new)) { $stash[$new] = $stash[$old] }
-            $stash.Remove($old)
+        $Ui.Hotkeys = [ordered]@{}
+        foreach ($key in @($InitialHotkeys.Keys)) {
+            $text = [string]$InitialHotkeys[$key]
+            if ($text) { $Ui.Hotkeys[[string]$key] = $text }
         }
     }
 
-    # Клавиши удалённых в этом окне комбинаций умирают вместе с ними — но только
-    # если имя не воскресло заново.
-    $currentComboKeys = @($Ui.Combos | ForEach-Object { 'combo:' + $_.Name })
-    foreach ($dead in @($Ui.DeletedComboKeys)) {
-        if ($currentComboKeys -contains $dead) { continue }
-        if ($stash.Contains($dead)) { $stash.Remove($dead) }
-    }
-
-    $subState = @($Ui.State)
-
-    $modes = $InitialModes
-    if ($null -eq $modes) {
-        # Пересчёт после правок: комбинации берём из рабочего списка окна, а не из
-        # настроек, с которыми окно открывалось, — список клавиш обязан показывать
-        # то, что будет после Save.
-        $settings2 = @{ combos = (ConvertTo-ComboSettings -Combos $Ui.Combos) }
-        $modes = @(Get-DisplayModes $Ui.State $settings2)
-
-        # Привязки без режима (монитор увезли, комбинацию удалили) — своей
-        # строкой: клавиша занята глобально, и снять её можно только отсюда.
-        $known = @($modes | ForEach-Object { $_.Key })
-        foreach ($key in @($stash.Keys)) {
-            if ($known -contains $key) { continue }
-            $modes += [pscustomobject]@{
-                Key       = $key
-                Title     = Get-ModeTitleFromKey $key
-                Kind      = 'orphan'
-                Available = $false
-            }
-        }
-    }
+    $modes = @(Resolve-PanelModes -Ui $Ui -InitialModes $InitialModes)
 
     $Ui.ModesPanel.Children.Clear()
-    $Ui.Boxes = [ordered]@{}
 
-    foreach ($mode in @($modes)) {
+    foreach ($mode in $modes) {
+        $key = [string]$mode.Key
         $row = New-Object System.Windows.Controls.Grid
-        $row.Margin = New-Object System.Windows.Thickness 0, 4, 0, 4
-        $c0 = New-Object System.Windows.Controls.ColumnDefinition
-        $c1 = New-Object System.Windows.Controls.ColumnDefinition
-        $c1.Width = [System.Windows.GridLength]::Auto
-        [void]$row.ColumnDefinitions.Add($c0)
-        [void]$row.ColumnDefinitions.Add($c1)
+        $row.Margin = New-Object System.Windows.Thickness 0, 5, 0, 5
+        foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                             [System.Windows.GridLength]::Auto,
+                             [System.Windows.GridLength]::Auto,
+                             [System.Windows.GridLength]::Auto)) {
+            $column = New-Object System.Windows.Controls.ColumnDefinition
+            $column.Width = $width
+            [void]$row.ColumnDefinitions.Add($column)
+        }
 
         $textStack = New-Object System.Windows.Controls.StackPanel
         $textStack.VerticalAlignment = 'Center'
@@ -2140,53 +2228,82 @@ function Update-ModesPanel {
         }
         if ($mode.Kind -eq 'orphan') { $title.Foreground = $win.FindResource('DimBrush') }
         [void]$textStack.Children.Add($title)
-        $subText = Get-ModeSubtitle -Mode $mode -State $subState
+
+        $subText = Get-ModeSubtitle -Mode $mode
+        $levelText = ''
+        if ($Ui.Levels.Contains($key)) { $levelText = Get-LevelSummary -Model $Ui.Levels[$key] }
+        if ($levelText) { $subText = $(if ($subText) { $subText + '  -  ' + $levelText } else { $levelText }) }
         if ($subText) {
             $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
             [void]$textStack.Children.Add($sub)
         }
         [void]$row.Children.Add($textStack)
 
-        # Поле клавиши и крестик рядом. Крестик — не украшение: снять привязку
-        # можно было только Backspace'ом по строчке-подсказке, и первый же человек
-        # решил, что клавиши вообще не убираются. Видимая кнопка отвечает на это
-        # вопрос без чтения подсказок.
-        $keyCell = New-Object System.Windows.Controls.StackPanel
-        $keyCell.Orientation = 'Horizontal'
-        $keyCell.VerticalAlignment = 'Center'
-        [System.Windows.Controls.Grid]::SetColumn($keyCell, 1)
-        [void]$row.Children.Add($keyCell)
+        # Клавиша — надписью, а не полем: правится она там же, где всё остальное
+        # про режим. Место под неё занято всегда, иначе кнопки прыгали бы по
+        # строке от одной привязки к другой.
+        $shortcut = [string]$(if ($Ui.Hotkeys.Contains($key)) { $Ui.Hotkeys[$key] } else { '' })
+        $keyText = New-UiTextBlock -Text $(if ($shortcut) { $shortcut } else { $script:NoHotkeyText }) `
+                                   -Style 'RowSub' -Window $win
+        $keyText.MinWidth = 110
+        $keyText.TextAlignment = 'Right'
+        $keyText.VerticalAlignment = 'Center'
+        $keyText.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+        if ($shortcut) { $keyText.Foreground = $win.FindResource('TextBrush') }
+        [System.Windows.Controls.Grid]::SetColumn($keyText, 1)
+        [void]$row.Children.Add($keyText)
 
-        $box = New-Object System.Windows.Controls.TextBox
-        $box.Style = $win.FindResource('Input')
-        $box.Width = 150
-        $box.TextAlignment = 'Center'
-        $box.Cursor = [System.Windows.Input.Cursors]::Hand
-        $box.VerticalAlignment = 'Center'
-        # Ключ режима здесь не нужен: поля лежат в $Ui.Boxes под своими ключами, а
-        # .Tag поля занят крестиком (Register-HotkeyClearButton).
-        $existing = $null
-        if ($stash.Contains($mode.Key)) { $existing = [string]$stash[$mode.Key] }
-        if ($existing) { $box.Text = $existing } else { $box.Text = $script:NoHotkeyText }
-        Register-HotkeyCapture -Box $box
-        [void]$keyCell.Children.Add($box)
+        # Именно кнопки с рамкой, а не приглушённые надписи: плоские Edit/Remove
+        # первый же человек принял за подписи и не нашёл, как удалить комбинацию.
+        if ($mode.Kind -ne 'orphan') {
+            $edit = New-Object System.Windows.Controls.Button
+            $edit.Content = 'Edit'
+            $edit.Style = $win.FindResource('BtnSmall')
+            $edit.VerticalAlignment = 'Center'
+            # За какой режим отвечает кнопка — на самой кнопке: обработчики этого
+            # окна замыканий не держат (см. комментарий выше).
+            $edit.Tag = $mode
+            [System.Windows.Controls.Grid]::SetColumn($edit, 2)
+            [void]$row.Children.Add($edit)
+            $edit.add_Click({
+                $ui = $script:ActiveUi
+                $mode = $this.Tag
+                if (-not $ui -or -not $mode) { return }
+                $combo = $null
+                if ([string]$mode.Kind -eq 'combo') {
+                    $name = ([string]$mode.Key).Substring(6)
+                    $combo = @($ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
+                }
+                Invoke-ModeEditor -Ui $ui -Mode $mode -Combo $combo
+            })
+        }
 
-        $clear = New-Object System.Windows.Controls.Button
-        $clear.Content = [string][char]0x00D7   # ×
-        $clear.Style = $win.FindResource('BtnSubtle')
-        $clear.FontSize = 15
-        $clear.Width = 26
-        $clear.Margin = New-Object System.Windows.Thickness 4, 0, 0, 0
-        $clear.VerticalAlignment = 'Center'
-        $clear.ToolTip = 'Remove this shortcut'
-        # Нечего снимать — кнопка есть, но приглушена и не нажимается: пропадающая
-        # кнопка дёргала бы строку по ширине на каждую правку.
-        $clear.IsEnabled = [bool]$existing
-        Register-HotkeyClearButton -Box $box -Button $clear
-        [void]$keyCell.Children.Add($clear)
+        # Убрать можно то, что человек завёл сам, и то, от чего остался один
+        # ключ. Режим монитора и «all» не удаляются: они есть, пока есть стол.
+        if ($mode.Kind -eq 'combo' -or $mode.Kind -eq 'orphan') {
+            $remove = New-Object System.Windows.Controls.Button
+            $remove.Content = 'Remove'
+            $remove.Style = $win.FindResource('BtnSmall')
+            $remove.VerticalAlignment = 'Center'
+            $remove.Margin = New-Object System.Windows.Thickness 6, 0, 0, 0
+            $remove.Tag = $mode
+            [System.Windows.Controls.Grid]::SetColumn($remove, 3)
+            [void]$row.Children.Add($remove)
+            $remove.add_Click({
+                $ui = $script:ActiveUi
+                $mode = $this.Tag
+                if (-not $ui -or -not $mode) { return }
+                if ([string]$mode.Kind -eq 'orphan') {
+                    Remove-UiOrphan -Ui $ui -Key ([string]$mode.Key)
+                    return
+                }
+                $name = ([string]$mode.Key).Substring(6)
+                $combo = @($ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
+                if ($combo) { Remove-UiCombo -Ui $ui -Combo $combo }
+            })
+        }
 
         [void]$Ui.ModesPanel.Children.Add($row)
-        $Ui.Boxes[$mode.Key] = $box
     }
 }
 
@@ -2204,19 +2321,117 @@ function ConvertTo-ComboSettings {
     return $out
 }
 
-# --- сбор настроек из окна --------------------------------------------------------
+# --- переезд ключей режимов -------------------------------------------------
+# Ключ комбинации — `combo:<имя>`, то есть переименование в окне меняет ключ, а
+# удаление его уносит. Всё, что к ключам режимов привязано (звук, команды,
+# яркость, контраст, правила, «монитор появился»), обязано переехать вместе с
+# ними — иначе остаётся настройка-призрак, которую не видно ни в одном окне, или
+# правило, каждые пятнадцать секунд уходящее в режим, которого нет.
+
+# Старый ключ -> новый, по тем комбинациям, которые в окне переименовали.
+#
+# Словарь УПОРЯДОЧЕННЫЙ, в порядке списка комбинаций, и это не косметика: два
+# переименования могут выстроиться в цепочку (одну комбинацию назвали «B», другая
+# при этом «B» освободила), и тогда от порядка применения зависит, доедет ли
+# первая запись до нового ключа. Пусть он будет предсказуемым.
+function Get-ComboRenames {
+    param($Combos)
+
+    $renames = [ordered]@{}
+    foreach ($c in @($Combos)) {
+        if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
+        $renames['combo:' + $c.OriginalName] = 'combo:' + $c.Name
+    }
+    return $renames
+}
+
+# Словарь «ключ режима -> значение» после переименований и удалений. Запись
+# переезжает НА СВОЁМ МЕСТЕ: словари уезжают в settings.json как есть, и ключ,
+# дописанный в конец секции, выглядел бы в git-диффе правкой, которой никто не
+# делал. $What — только для журнала.
+function Move-ModeKeyedEntries {
+    param($Source, $Renames, [string[]]$Gone = @(), [string]$What = 'setting')
+
+    $moved = [ordered]@{}
+    if (-not $Source) { return $moved }
+
+    # Ключи, которые никуда не переезжают: их значения свои, и отдавать своё место
+    # переезжающему они не обязаны.
+    $taken = @{}
+    foreach ($k in @($Source.Keys)) {
+        if (-not $Renames.Contains([string]$k)) { $taken[[string]$k] = $true }
+    }
+
+    foreach ($k in @($Source.Keys)) {
+        $key = [string]$k
+        if ($Renames.Contains($key)) {
+            $new = [string]$Renames[$key]
+            # Новый ключ занят своим значением — оно важнее переезжающего, а
+            # переезжающее теряется вместе со старым именем.
+            if ($taken[$new]) { continue }
+            $taken[$new] = $true
+            $key = $new
+        }
+        if ($Gone -contains $key) {
+            Write-DisplayLog "settings: dropped the $What entry for removed $key"
+            continue
+        }
+        if ($moved.Contains($key)) { continue }
+        $moved[$key] = $Source[$k]
+    }
+    return $moved
+}
+
+# Правила после переименований и удалений. ПЕРЕСОБИРАЕМ, а не правим на месте:
+# результат Save — копия, и неудачная запись на диск не должна оставлять правку в
+# настройках, с которыми живёт трей.
+function Move-RuleModeKeys {
+    param($Rules, $Renames, [string[]]$Gone = @())
+
+    $out = @()
+    foreach ($r in @($Rules)) {
+        if (-not $r) { continue }
+        $copy = [ordered]@{}
+        if ($r -is [System.Collections.IDictionary]) {
+            foreach ($k in @($r.Keys)) { $copy[$k] = $r[$k] }
+        }
+        else {
+            foreach ($p in $r.PSObject.Properties) { $copy[$p.Name] = $p.Value }
+        }
+        foreach ($field in 'mode', 'back') {
+            $v = [string]$copy[$field]
+            if (-not $v) { continue }
+            if ($Renames.Contains($v)) { $copy[$field] = [string]$Renames[$v] }
+            elseif ($Gone -contains $v) {
+                # Пустое «куда возвращаться» — это «туда, где стол был до
+                # срабатывания», законное значение (см. Get-RuleDecision).
+                $copy[$field] = ''
+                Write-DisplayLog "settings: dropped the $field of a rule for removed $v"
+            }
+        }
+        # А вот правило без режима — уже не правило: уходить некуда.
+        if (-not [string]$copy['mode']) {
+            Write-DisplayLog 'settings: dropped a rule whose mode was removed'
+            continue
+        }
+        $out += $copy
+    }
+    return @($out)
+}
+
+# --- сбор настроек из окна --------------------------------------------------
 # Отдельной функцией и без показа окна: это и есть проверяемая часть Save.
 # Возвращает Ok/Settings/Problem; при Problem окно остаётся открытым.
 
 function Read-SettingsFromUi {
-    param($Ui, $Settings, $State)
+    param($Ui, $Settings)
 
-    # Комбинации клавиш — с проверкой на дубликаты. Как и раньше: два режима на
-    # одной клавише — это неразрешимая двусмысленность, а не предупреждение.
+    # Комбинации клавиш — с проверкой на дубликаты: два режима на одной клавише —
+    # это неразрешимая двусмысленность, а не предупреждение.
     $newHotkeys = [ordered]@{}
     $seen = @{}
-    foreach ($key in $Ui.Boxes.Keys) {
-        $parsed = ConvertFrom-HotkeyString $Ui.Boxes[$key].Text
+    foreach ($key in @($Ui.Hotkeys.Keys)) {
+        $parsed = ConvertFrom-HotkeyString ([string]$Ui.Hotkeys[$key])
         if (-not $parsed) { continue }
         if ($seen.ContainsKey($parsed.Text)) {
             Write-DisplayLog "settings dialog: rejected save - $($parsed.Text) is assigned to both $($seen[$parsed.Text]) and $key"
@@ -2241,9 +2456,9 @@ function Read-SettingsFromUi {
     $updated.stats = [bool]$Ui.StatsBox.IsChecked
 
     # Окно правит только то, что в нём есть; остальные поля обязаны проехать
-    # насквозь ДЕФОЛТНЫМИ они уезжать не должны — на этом уже терялись layout и
-    # primary. Переносится всё, кроме полей с элементами формы, чтобы каждая
-    # новая настройка без своего элемента не заводила этот баг заново.
+    # насквозь и НЕ уехать дефолтными — на этом уже терялись layout и primary.
+    # Переносится всё, кроме полей с элементами формы, чтобы каждая новая
+    # настройка без своего элемента не заводила этот баг заново.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
                   'restoreLastMode', 'stats', 'layout', 'primary', 'combos', 'audio')
     foreach ($k in @($Settings.Keys)) {
@@ -2265,9 +2480,6 @@ function Read-SettingsFromUi {
     # который человек не отменял.
     $updated.primary = $(if ($primary) { $primary } else { [string]$Settings.primary })
 
-    # roles в $updated остаётся пустым (из Get-DefaultSettings): роли из файла уже
-    # превратились в комбинации на чтении, и записывать их обратно значило бы
-    # заводить второй вид набора заново. Save заодно и вычищает их с диска.
     $updated.combos = ConvertTo-ComboSettings -Combos $Ui.Combos
 
     # Звук, команды, яркость и контраст привязаны к ключам режимов, а у
@@ -2276,32 +2488,15 @@ function Read-SettingsFromUi {
     # которую не видно ни в одном окне. Одним циклом на все четыре: следующая
     # настройка, привязанная к режиму, не должна заводить этот баг заново.
     $currentComboKeys = @($Ui.Combos | ForEach-Object { 'combo:' + $_.Name })
+    $renames = Get-ComboRenames -Combos $Ui.Combos
+    $gone = @(@($Ui.DeletedComboKeys) | Where-Object { $_ -and $currentComboKeys -notcontains $_ })
+
     foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
         # Яркость приезжает из карточки с ползунками, остальное — из настроек как
         # было: окно этого не правит. Дальше все четыре идут одной дорогой, ведь
         # переименование и удаление комбинации касаются их одинаково.
         $source = $(if ($field -eq 'brightness') { ConvertTo-BrightnessSettings -Levels $Ui.Levels } else { $Settings[$field] })
-        $moved = [ordered]@{}
-        if ($source) {
-            foreach ($k in @($source.Keys)) { $moved[$k] = $source[$k] }
-        }
-        foreach ($c in @($Ui.Combos)) {
-            if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
-            $old = 'combo:' + $c.OriginalName
-            $new = 'combo:' + $c.Name
-            if ($moved.Contains($old)) {
-                if (-not $moved.Contains($new)) { $moved[$new] = $moved[$old] }
-                $moved.Remove($old)
-            }
-        }
-        foreach ($dead in @($Ui.DeletedComboKeys)) {
-            if ($currentComboKeys -contains $dead) { continue }
-            if ($moved.Contains($dead)) {
-                $moved.Remove($dead)
-                Write-DisplayLog "settings: dropped the $field entry for removed $dead"
-            }
-        }
-        $updated[$field] = $moved
+        $updated[$field] = Move-ModeKeyedEntries -Source $source -Renames $renames -Gone $gone -What $field
     }
 
     # Правила и «монитор появился» ссылаются на режимы ТЕМИ ЖЕ ключами, значит и
@@ -2309,55 +2504,15 @@ function Read-SettingsFromUi {
     # смотреть на новое имя, удалили — правило про неё больше не правило. Иначе
     # осталось бы правило, которое каждые пятнадцать секунд уходит в режим,
     # которого нет, и переключение отвечало бы «combination no longer exists».
-    # Ключи режимов меняются в трёх местах, и это третье: то же делают
-    # Convert-RoleSettingsToCombos (переезд ролей) и Update-HotkeyKeys (монитор
-    # переехал на другой вход).
-    $renames = @{}
-    foreach ($c in @($Ui.Combos)) {
-        if (-not $c.OriginalName -or $c.OriginalName -eq $c.Name) { continue }
-        $renames['combo:' + $c.OriginalName] = 'combo:' + $c.Name
-    }
-    $gone = @(@($Ui.DeletedComboKeys) | Where-Object { $_ -and $currentComboKeys -notcontains $_ })
-
-    # Правила ПЕРЕСОБИРАЕМ, а не правим на месте: $updated — копия, и неудачная
-    # запись на диск не должна оставлять правку в настройках, с которыми живёт
-    # трей (см. комментарий у $updated выше).
-    $rules = @()
-    foreach ($r in @($Settings.rules)) {
-        if (-not $r) { continue }
-        $copy = [ordered]@{}
-        if ($r -is [System.Collections.IDictionary]) {
-            foreach ($k in @($r.Keys)) { $copy[$k] = $r[$k] }
-        }
-        else {
-            foreach ($p in $r.PSObject.Properties) { $copy[$p.Name] = $p.Value }
-        }
-        foreach ($field in 'mode', 'back') {
-            $v = [string]$copy[$field]
-            if (-not $v) { continue }
-            if ($renames.ContainsKey($v)) { $copy[$field] = [string]$renames[$v] }
-            elseif ($gone -contains $v) {
-                # Пустое «куда возвращаться» — это «туда, где стол был до
-                # срабатывания», законное значение (см. Get-RuleDecision).
-                $copy[$field] = ''
-                Write-DisplayLog "settings: dropped the $field of a rule for removed $v"
-            }
-        }
-        # А вот правило без режима — уже не правило: уходить некуда.
-        if (-not [string]$copy['mode']) {
-            Write-DisplayLog 'settings: dropped a rule whose mode was removed'
-            continue
-        }
-        $rules += $copy
-    }
-    $updated.rules = @($rules)
+    # То же делает Update-HotkeyKeys, когда монитор переехал на другой вход.
+    $updated.rules = @(Move-RuleModeKeys -Rules $Settings.rules -Renames $renames -Gone $gone)
 
     if ($Settings.reapply -is [System.Collections.IDictionary]) {
         $reapply = [ordered]@{}
         foreach ($k in @($Settings.reapply.Keys)) { $reapply[$k] = $Settings.reapply[$k] }
         $plug = [string]$reapply['onPlug']
         if ($plug) {
-            if ($renames.ContainsKey($plug)) { $reapply['onPlug'] = [string]$renames[$plug] }
+            if ($renames.Contains($plug)) { $reapply['onPlug'] = [string]$renames[$plug] }
             elseif ($gone -contains $plug) {
                 $reapply['onPlug'] = ''
                 Write-DisplayLog "settings: dropped 'on plug' for removed $plug"
@@ -2369,16 +2524,16 @@ function Read-SettingsFromUi {
     return [pscustomobject]@{ Ok = $true; Settings = $updated; Problem = '' }
 }
 
-# --- показ ------------------------------------------------------------------------
+# --- показ ------------------------------------------------------------------
 
 # Режимы для окна: настоящие плюс строки-сироты для привязок, чьих режимов
-# сейчас нет (монитор увезли, группу переименовали, комбинацию стёрли рукой из
+# сейчас нет (монитор увезли, комбинацию переименовали или стёрли рукой из
 # файла). Клавиша-то занята глобально — RegisterHotKey работает независимо от
 # наличия монитора, — и увидеть или снять её можно только из окна.
 function Get-DialogModes {
     param($State, $Settings)
 
-    $modes = @(Get-DisplayModes $State $Settings)
+    $modes = @(Get-DisplayModes -State $State -Settings $Settings)
     $known = @($modes | ForEach-Object { $_.Key })
     foreach ($key in @($Settings.hotkeys.Keys)) {
         if ($known -contains $key) { continue }
@@ -2392,18 +2547,13 @@ function Get-DialogModes {
     return $modes
 }
 
-# Возвращает изменённые настройки, либо $null если отменили.
-# $Icon оставлен в сигнатуре для совместимости с вызовом из трея; окно берёт
-# app.ico с диска само — WPF нужен ImageSource, а не GDI-иконка.
+# Возвращает изменённые настройки, либо $null если отменили. Иконку окно берёт с
+# диска само (Register-WindowTheme): WPF нужен ImageSource, а не GDI-иконка.
 function Show-SettingsDialog {
-    param(
-        $State,
-        $Settings,
-        $Icon
-    )
+    param($State, $Settings)
 
     # Страховка: если настройки не доехали, читаем их с диска, а не падаем на
-    # обращении к $null. Именно так это однажды и сломалось.
+    # обращении к $null.
     if (-not $Settings -or -not $Settings.hotkeys) {
         Write-DisplayLog 'settings dialog: settings arrived empty, reading them from disk'
         $Settings = Get-DisplaySettings

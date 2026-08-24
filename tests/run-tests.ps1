@@ -28,7 +28,7 @@ $script:LogDir = Join-Path $env:TEMP ('mmt-tests-' + [guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path $script:LogDir | Out-Null
 $env:MMT_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 
-# --- крошечный фреймворк -----------------------------------------------------
+# --- крошечный фреймворк ----------------------------------------------------
 
 $script:Total = 0
 $script:Failed = 0
@@ -97,7 +97,7 @@ function Assert-Null {
     }
 }
 
-# --- подопытный код ----------------------------------------------------------
+# --- подопытный код ---------------------------------------------------------
 # Точки входа дот-сорсить нельзя: Displays.ps1 при загрузке поднимает всё
 # приложение. Берём core, WindowLayout и диалог, а Resolve-ModeKey из
 # Set-Display.ps1 вытаскиваем отдельно (см. ниже).
@@ -118,9 +118,8 @@ $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
 $script:ActivityFile = Join-Path $script:TestDir 'activity.json'
 
 # Фиктивные мониторы: тесты не должны зависеть от того, что сейчас на столе.
-# Поля ровно те, что отдаёт Get-DisplayState: роли из состояния ушли вместе с
-# самим понятием (роли переехали в комбинации), и фальшивка не должна знать о
-# полях, которых у настоящего состояния нет.
+# Поля ровно те, что отдаёт Get-DisplayState: фальшивка не должна знать о полях,
+# которых у настоящего состояния нет.
 function New-FakeMonitor {
     param([string]$Label, [string]$ShortId, [string]$Id = '',
           [bool]$Active = $true, [bool]$Disconnected = $false)
@@ -133,7 +132,7 @@ function New-FakeMonitor {
     }
 }
 
-# Настройки с комбинациями, одной строкой: раньше почти каждый тест писал роли.
+# Настройки с комбинациями, одной строкой: их пишет почти каждый тест.
 function New-TestSettings {
     param([hashtable]$Combos = @{})
     $s = Get-DefaultSettings
@@ -153,7 +152,7 @@ Write-Host ''
 Write-Host 'ScreenDeck - tests' -ForegroundColor Cyan
 Write-Host ''
 
-# --- разбор и печать комбинаций клавиш ---------------------------------------
+# --- разбор и печать комбинаций клавиш --------------------------------------
 
 Write-Host 'hotkey strings' -ForegroundColor White
 
@@ -223,15 +222,15 @@ Test-Case 'hotkey: unknown vk prints as VKnn instead of throwing' {
     Assert-Equal 'Ctrl+VK13' (Format-HotkeyString 2 13) 'Enter has no name'
 }
 
-# --- ключи режимов -----------------------------------------------------------
+# --- ключи режимов ----------------------------------------------------------
 
 Write-Host ''
 Write-Host 'mode keys' -ForegroundColor White
 
 Test-Case 'modes: a fresh desk gets one mode per display plus all, and nothing else' {
     # Что видит человек, впервые подключивший три монитора: три отдельных режима и
-    # «все». Ничего не угадывается — ни групп, ни наборов; они появляются только
-    # после того, как он сам их создаст.
+    # «все». Ничего не угадывается: наборы появляются только после того, как он сам
+    # их создаст.
     $state = @(
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
@@ -260,8 +259,8 @@ Test-Case 'modes: two identical models get the short id appended' {
 
 Test-Case 'modes: full twins get numbered, and the keys stay distinct' {
     # Одинаковая модель на одинаковом входе: короткий ID это модель, не экземпляр.
-    # Раньше оба соло-режима получали ОДИН ключ, и «включить только этот» зажигало
-    # оба монитора.
+    # Без нумерации оба соло-режима получили бы ОДИН ключ, и «включить только этот»
+    # зажигало бы оба монитора.
     $state = @(
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-a')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-b')
@@ -291,16 +290,13 @@ Test-Case 'modes: a disconnected display still gets a mode, marked unavailable' 
 Test-Case 'ModeTitleFromKey: every shape' {
     Assert-Equal 'Only LG ULTRAGEAR' (Get-ModeTitleFromKey 'solo:LG ULTRAGEAR') 'solo'
     Assert-Equal 'Only AUSAA1D' (Get-ModeTitleFromKey 'solo:AUSAA1D') 'solo by short id'
-    Assert-Equal 'Work displays' (Get-ModeTitleFromKey 'role:work') 'work'
-    Assert-Equal 'Game displays' (Get-ModeTitleFromKey 'role:game') 'game'
-    # Роли задаёт человек, поэтому имя может быть любым — заголовок строится, а не
-    # ищется в списке из двух заранее известных.
-    Assert-Equal 'Coding displays' (Get-ModeTitleFromKey 'role:coding') 'a role nobody hardcoded'
+    # Имя комбинации задаёт человек, поэтому заголовок берётся из ключа как есть.
+    Assert-Equal 'Movie night' (Get-ModeTitleFromKey 'combo:Movie night') 'combo'
     Assert-Equal 'All displays' (Get-ModeTitleFromKey 'all') 'all'
     Assert-Equal 'something else' (Get-ModeTitleFromKey 'something else') 'unknown falls through'
 }
 
-# --- миграция привязок -------------------------------------------------------
+# --- миграция привязок ------------------------------------------------------
 
 Write-Host ''
 Write-Host 'hotkey migration' -ForegroundColor White
@@ -315,8 +311,8 @@ Test-Case 'migration: a binding keyed by the old short id moves to the name key'
 }
 
 Test-Case 'migration: a longer old name still finds its display' {
-    # Раньше название склеивалось из двух полей дампа: «ROG STRIX XG27AQDMGR»,
-    # а система знает монитор как «XG27AQDMGR». Одно содержится в другом.
+    # Название в настройках может быть полным — «ROG STRIX XG27AQDMGR», — а система
+    # знает монитор как «XG27AQDMGR». Одно содержится в другом.
     $state = @((New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D'))
     $s = Get-DefaultSettings
     $s.hotkeys['solo:ROG STRIX XG27AQDMGR'] = 'Ctrl+Alt+F4'
@@ -355,7 +351,45 @@ Test-Case 'migration: empty settings do not blow up' {
     Assert-True (-not (Update-HotkeyKeys (Get-DefaultSettings) $state)) 'no hotkeys'
 }
 
-# --- настройки ---------------------------------------------------------------
+# --- отказ политики целостности кода ----------------------------------------
+# Smart App Control (или политика WDAC) может отказаться грузить нашу сборку: она
+# не подписана доверенным издателем. Отказ живьём по требованию не вызвать,
+# поэтому тестом закреплён распознаватель — от него зависит, удалит ли код
+# отвергнутый файл вместо того, чтобы получать тот же отказ каждый старт.
+
+Write-Host ''
+Write-Host 'the code integrity policy refusing our assembly' -ForegroundColor White
+
+function New-FakeError {
+    param([int]$HResult, [string]$Message = 'blocked', $Inner = $null)
+
+    $e = New-Object System.IO.FileLoadException $Message, $Inner
+    # HResult у исключения только для чтения — ставим через приватное поле, как это
+    # делает сам .NET. Тесту нужен именно код, потому что по нему код и решает.
+    $field = [System.Exception].GetField('_HResult', 'Instance,NonPublic')
+    $field.SetValue($e, $HResult)
+    return New-Object System.Management.Automation.ErrorRecord $e, 'x', 'NotSpecified', $null
+}
+
+Test-Case 'policy: 0x800711C7 is recognised as a refusal' {
+    Assert-True (Test-BlockedByPolicy (New-FakeError -HResult 0x800711C7)) 'the code Windows returns for a blocked file'
+}
+
+Test-Case 'policy: any other failure is not a refusal' {
+    # Папка только для чтения, занятый файл, битая сборка — их надо писать в
+    # журнал как есть, а файл не трогать.
+    Assert-True (-not (Test-BlockedByPolicy (New-FakeError -HResult 0x80070005))) 'access denied is something else'
+    Assert-True (-not (Test-BlockedByPolicy (New-FakeError -HResult 0x80131018))) 'a bad image is something else'
+}
+
+Test-Case 'policy: the refusal is found however deep it is wrapped' {
+    # PowerShell охотно оборачивает исключения, и проверять только верхнее нельзя.
+    $inner = (New-FakeError -HResult 0x800711C7).Exception
+    $outer = New-FakeError -HResult 0x80004005 -Message 'wrapped' -Inner $inner
+    Assert-True (Test-BlockedByPolicy $outer) 'walked down to the real cause'
+}
+
+# --- настройки --------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'settings' -ForegroundColor White
@@ -368,8 +402,8 @@ Test-Case 'settings: defaults have the shape the rest of the code expects' {
     Assert-True $s.restoreLastMode 'restoreLastMode on by default'
     Assert-Equal 0 @($s.layout).Count 'layout empty'
     Assert-Equal '' $s.primary 'primary empty'
-    Assert-Equal 0 @($s.roles.Keys).Count 'roles empty - no guessing by brand'
-    Assert-True (-not $s.autoGame.enabled) 'autoGame off by default'
+    Assert-Equal 0 @($s.combos.Keys).Count 'combos empty'
+    Assert-Equal 0 @($s.rules).Count 'rules empty'
 }
 
 Test-Case 'settings: a damaged file falls back to defaults and keeps a copy' {
@@ -381,15 +415,13 @@ Test-Case 'settings: a damaged file falls back to defaults and keeps a copy' {
     Remove-Item $script:SettingsFile -Force
 }
 
-Test-Case 'settings: a half-written autoGame keeps the other defaults' {
+Test-Case 'settings: a half-written reapply keeps the other defaults' {
     # Файл правится руками, в нём легко оказаться половине ключей.
-    $json = '{ "autoGame": { "enabled": true, "process": "cs2" } }'
-    Set-Content -Path $script:SettingsFile -Value $json -Encoding UTF8
+    Set-Content -Path $script:SettingsFile -Value '{ "reapply": { "onResume": false } }' -Encoding UTF8
     $s = Get-DisplaySettings
-    Assert-True $s.autoGame.enabled 'enabled read'
-    Assert-Equal 'cs2' $s.autoGame.process 'process read'
-    Assert-Equal '' $s.autoGame.gameMode 'gameMode stayed default, not null'
-    Assert-Equal '' $s.autoGame.backMode 'backMode stayed default, not null'
+    Assert-True (-not $s.reapply.onResume) 'onResume read'
+    Assert-True $s.reapply.onUnplug 'onUnplug stayed default, not null'
+    Assert-Equal '' $s.reapply.onPlug 'onPlug stayed default, not null'
     Remove-Item $script:SettingsFile -Force
 }
 
@@ -410,7 +442,7 @@ Test-Case 'settings: round-trip through disk preserves everything' {
     $s.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
     $s.primary = 'ULTRAGEAR'
     $s.restoreWindows = $false
-    $s.audio['role:work'] = 'ULTRAFINE'
+    $s.audio['combo:Work'] = 'ULTRAFINE'
     Save-DisplaySettings $s
 
     $back = Get-DisplaySettings
@@ -418,14 +450,14 @@ Test-Case 'settings: round-trip through disk preserves everything' {
     Assert-Equal @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR') @($back.layout) 'layout with order'
     Assert-Equal 'ULTRAGEAR' $back.primary 'primary'
     Assert-True (-not $back.restoreWindows) 'restoreWindows false survived'
-    Assert-Equal 'ULTRAFINE' $back.audio['role:work'] 'audio mapping'
+    Assert-Equal 'ULTRAFINE' $back.audio['combo:Work'] 'audio mapping'
     Remove-Item $script:SettingsFile -Force
 }
 
 
-# --- совпадение названий -------------------------------------------------------
+# --- совпадение названий ----------------------------------------------------
 # Одно правило на всё, где человек называет монитор словами: layout, primary,
-# состав комбинации. Раньше называлось Test-RolePatternMatch и жило ради ролей.
+# состав комбинации.
 
 Write-Host ''
 Write-Host 'display name matching' -ForegroundColor White
@@ -454,121 +486,7 @@ Test-Case 'names: an unrelated name does not match' {
     Assert-True (-not (Test-DisplayNameMatch -Pattern 'DELL' -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3')) 'no false positive'
 }
 
-# --- переезд ролей в комбинации ------------------------------------------------
-# Роли были вторым, более слабым способом сказать то же, что говорит комбинация:
-# одна на монитор, без своей панели задач, и удалялась не там, где показана.
-# Старый settings.json обязан переехать сам, вместе с клавишами, звуком и
-# авто-игровым режимом, — иначе переезд выглядит как «настройки сбросились».
-
-Write-Host ''
-Write-Host 'legacy display groups moving into combinations' -ForegroundColor White
-
-Test-Case 'migration: a shared role becomes a combination named after it' {
-    $s = Get-DefaultSettings
-    $s.roles['LG ULTRAFINE'] = 'work'
-    $s.roles['LG ULTRAGEAR'] = 'work'
-    Assert-True (Convert-RoleSettingsToCombos $s) 'reported a change'
-    Assert-Equal @('Work') @($s.combos.Keys) 'one combination, name capitalised'
-    Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($s.combos['Work'].displays) 'both displays, in file order'
-    Assert-Equal '' $s.combos['Work'].primary 'a role had no taskbar display of its own'
-    Assert-Equal 0 @($s.roles.Keys).Count 'roles emptied'
-}
-
-Test-Case 'migration: a role on a single display becomes a combination too' {
-    # У ролей режим появлялся только на двоих, поэтому одиночная роль не давала
-    # ничего, кроме имени для командной строки. Теперь она честно становится
-    # набором из одного монитора - и game.cmd продолжает работать.
-    $s = Get-DefaultSettings
-    $s.roles['XG27AQDMGR'] = 'game'
-    Assert-True (Convert-RoleSettingsToCombos $s) 'changed'
-    Assert-Equal @('XG27AQDMGR') @($s.combos['Game'].displays) 'the one display'
-}
-
-Test-Case 'migration: shortcuts, audio and auto-game follow their role' {
-    $s = Get-DefaultSettings
-    $s.roles['LG ULTRAFINE'] = 'work'
-    $s.roles['LG ULTRAGEAR'] = 'work'
-    $s.hotkeys['solo:LG ULTRAGEAR'] = 'Ctrl+Alt+F1'
-    $s.hotkeys['role:work'] = 'Ctrl+Alt+F3'
-    $s.hotkeys['all'] = 'Ctrl+Alt+F5'
-    $s.audio['role:work'] = 'ULTRAFINE'
-    $s.autoGame.gameMode = 'role:work'
-    $s.autoGame.backMode = 'all'
-
-    [void](Convert-RoleSettingsToCombos $s)
-    Assert-Equal 'Ctrl+Alt+F3' $s.hotkeys['combo:Work'] 'the shortcut moved to the new key'
-    Assert-True (-not $s.hotkeys.Contains('role:work')) 'and left the old one'
-    # Порядок ключей сохраняется: settings.json под git, и перетасовка выглядела бы
-    # правкой, которой никто не делал.
-    Assert-Equal @('solo:LG ULTRAGEAR', 'combo:Work', 'all') @($s.hotkeys.Keys) 'order kept, key renamed in place'
-    Assert-Equal 'ULTRAFINE' $s.audio['combo:Work'] 'audio moved'
-    Assert-Equal 'combo:Work' $s.autoGame.gameMode 'auto-game target moved'
-    Assert-Equal 'all' $s.autoGame.backMode 'and what it did not name is left alone'
-}
-
-Test-Case 'migration: a name already taken by a combination is not overwritten' {
-    $s = Get-DefaultSettings
-    $s.combos['Work'] = [ordered]@{ displays = @('DELL'); primary = 'DELL' }
-    $s.roles['LG ULTRAFINE'] = 'work'
-    $s.roles['LG ULTRAGEAR'] = 'work'
-    [void](Convert-RoleSettingsToCombos $s)
-    Assert-Equal @('DELL') @($s.combos['Work'].displays) 'the existing combination kept its displays'
-    Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($s.combos['Work (group)'].displays) 'the role took a free name'
-    Assert-Equal 'combo:Work (group)' 'combo:Work (group)' 'and its key follows that name'
-}
-
-Test-Case 'migration: runs once and is idempotent' {
-    $s = Get-DefaultSettings
-    $s.roles['LG ULTRAGEAR'] = 'work'
-    Assert-True (Convert-RoleSettingsToCombos $s) 'first pass changed things'
-    Assert-True (-not (Convert-RoleSettingsToCombos $s)) 'second pass has nothing to do'
-    Assert-Equal 1 @($s.combos.Keys).Count 'no duplicate combination'
-}
-
-Test-Case 'migration: nothing to migrate is not a change, and not a crash' {
-    Assert-True (-not (Convert-RoleSettingsToCombos (Get-DefaultSettings))) 'no roles'
-    Assert-True (-not (Convert-RoleSettingsToCombos $null)) 'no settings at all'
-}
-
-Test-Case 'migration: a blank role name is dropped, not turned into a combination' {
-    # Комбинации из этого не выйдет — имени нет; но запись всё равно уходит из
-    # файла, и это изменение, о котором надо сказать: иначе мусор в settings.json
-    # оставался бы там навсегда.
-    $s = Get-DefaultSettings
-    $s.roles['LG ULTRAGEAR'] = '   '
-    Assert-True (Convert-RoleSettingsToCombos $s) 'the junk entry is a change worth saving'
-    Assert-Equal 0 @($s.combos.Keys).Count 'no combination made up out of a blank name'
-    Assert-Equal 0 @($s.roles.Keys).Count 'and the entry is gone'
-}
-
-Test-Case 'migration: happens on read, so the rest of the code never sees a role' {
-    $json = '{ "roles": { "LG ULTRAFINE": "work", "LG ULTRAGEAR": "work" }, ' +
-            '"hotkeys": { "role:work": "Ctrl+Alt+F3" } }'
-    Set-Content -Path $script:SettingsFile -Value $json -Encoding UTF8
-
-    $s = Get-DisplaySettings
-    Assert-Equal 0 @($s.roles.Keys).Count 'roles are gone by the time settings are handed out'
-    Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($s.combos['Work'].displays) 'they arrived as a combination'
-    Assert-Equal 'Ctrl+Alt+F3' $s.hotkeys['combo:Work'] 'with the shortcut'
-    Assert-True $script:LegacyRolesOnDisk 'and the file is flagged for a rewrite'
-
-    # А режимы, построенные из этих настроек, знают только комбинацию.
-    $state = @(
-        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
-        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
-    )
-    $kinds = @(Get-DisplayModes $state $s | ForEach-Object { $_.Kind })
-    Assert-True (-not ($kinds -contains 'role')) 'no group modes anywhere'
-    Assert-True ($kinds -contains 'combo') 'the combination is there'
-
-    # Перезаписали файл — флаг гаснет, второй раз прибирать нечего.
-    Save-DisplaySettings $s
-    [void](Get-DisplaySettings)
-    Assert-True (-not $script:LegacyRolesOnDisk) 'nothing left to migrate after a save'
-    Remove-Item $script:SettingsFile -Force
-}
-
-# --- комбинации ----------------------------------------------------------------
+# --- комбинации -------------------------------------------------------------
 # Комбинация — единственный способ сказать «вот эти два и вон тот»: набор
 # мониторов под своим именем, с необязательной своей панелью задач. Один монитор
 # может входить в любое их число.
@@ -674,7 +592,7 @@ Test-Case 'ModeTitleFromKey: a combo key gives the name back as typed' {
     Assert-Equal 'Movie night' (Get-ModeTitleFromKey 'combo:Movie night') 'combo'
 }
 
-# --- выбор основного монитора -----------------------------------------------------
+# --- выбор основного монитора -----------------------------------------------
 # Лестница из шести ступеней в Select-PrimaryDisplay. Внутри Switch-DisplayMode
 # она была непроверяемой; с собственным primary у комбинаций это стало
 # недопустимо — семантика «жёсткий/мягкий» держится только на этих тестах.
@@ -724,7 +642,7 @@ Test-Case 'primary: current one, then rightmost by layout, then the first' {
     Assert-Equal 'B' (Select-PrimaryDisplay -Wanted $wanted -Layout @('A', 'B')).Label 'rightmost by layout'
     Assert-Equal 'A' (Select-PrimaryDisplay -Wanted $wanted -Layout @()).Label 'first as the last resort'
 }
-# --- отрисовка меню трея -------------------------------------------------------
+# --- отрисовка меню трея ----------------------------------------------------
 # Два бага подряд были невидимы в коде и видны только в пикселях: базовый
 # ToolStripRenderer для ВЫКЛЮЧЕННОГО пункта подменяет наш цвет текста системным
 # GrayText, а картинку прогоняет через DrawImageDisabled. Строки раздела CONNECTED
@@ -842,12 +760,12 @@ Test-Case 'menu: an unavailable mode stays readable too, just quieter' {
 }
 
 
-# --- окно настроек -------------------------------------------------------------
+# --- окно настроек ----------------------------------------------------------
 # Окно теперь WPF и собирается БЕЗ показа: New-SettingsWindow строит дерево
 # элементов, а Read-SettingsFromUi — настоящая ветка Save — читает его. ShowDialog
 # в тестах не зовётся вовсе, поэтому непроверенным остаётся только сам показ.
-# Раньше здесь таймер жал Save в настоящем показанном окне — с выносом сохранения
-# в чистую функцию это стало не нужно, и тесты перестали мигать окном.
+# Жать Save таймером в настоящем показанном окне не нужно: сохранение вынесено в
+# чистую функцию, и тесты не мигают окном.
 
 Write-Host ''
 Write-Host 'the settings window' -ForegroundColor White
@@ -865,22 +783,20 @@ function New-DialogUi {
 }
 
 Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
-    # Регрессия этапа 1: первый же Save стирал layout и primary. Теперь ветка
-    # сохранения — настоящая функция, и проверяется она сама, а не её пересказ.
+    # Ветка сохранения — настоящая функция, и проверяется она сама, а не её пересказ.
     $settings = Get-DefaultSettings
     $settings.hotkeys['solo:LG ULTRAGEAR'] = 'Ctrl+Alt+F1'
     $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
     $settings.primary = 'ULTRAGEAR'
     $settings.audio['combo:Work'] = 'ULTRAFINE'
-    $settings.autoGame.enabled = $true
-    $settings.autoGame.process = 'cs2'
+    $settings.hooks['combo:Work'] = [ordered]@{ before = ''; after = 'x.cmd' }
 
     $ui = New-DialogUi -Settings $settings
     try {
         Assert-True ($null -ne $ui.WindowsBox) 'the window has the window-memory toggle'
         Assert-True ([bool]$ui.WindowsBox.IsChecked) 'it reflects the default (on)'
 
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Ok 'the save was accepted'
         $updated = $got.Settings
 
@@ -889,25 +805,30 @@ Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
         # Звезда стояла по шаблону ULTRAGEAR — в файл уезжает точное название.
         Assert-Equal 'LG ULTRAGEAR' $updated.primary 'primary written as the exact name'
         Assert-Equal 'ULTRAFINE' $updated.audio['combo:Work'] 'audio survived'
-        Assert-True $updated.autoGame.enabled 'autoGame survived'
-        Assert-Equal 'cs2' $updated.autoGame.process 'autoGame process survived'
+        Assert-Equal 'x.cmd' $updated.hooks['combo:Work'].after 'the command survived'
         Assert-Equal 'Ctrl+Alt+F1' $updated.hotkeys['solo:LG ULTRAGEAR'] 'hotkey came from the box'
-        # Роли окно больше не пишет: их место заняли комбинации.
-        Assert-Equal 0 @($updated.roles.Keys).Count 'no roles written back'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: the shortcut boxes keep mode order so Save does not shuffle the file' {
+Test-Case 'dialog: settings tied to modes keep mode order so Save does not shuffle the file' {
     $modes = @(
         [pscustomobject]@{ Key = 'solo:A'; Title = 'Only A'; Kind = 'solo'; Available = $true }
         [pscustomobject]@{ Key = 'solo:B'; Title = 'Only B'; Kind = 'solo'; Available = $true }
         [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Patterns = @('A', 'B'); Available = $true }
         [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     )
-    $ui = New-SettingsWindow -Modes $modes -Settings (Get-DefaultSettings) -State @()
+    # Порядок в файле — какой попало: окно обязано выстроить его по режимам.
+    $settings = Get-DefaultSettings
+    $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
+    $settings.hotkeys['combo:Work'] = 'Ctrl+Alt+F3'
+    $settings.hotkeys['solo:A'] = 'Ctrl+Alt+F1'
+    $settings.brightness = [ordered]@{ 'all' = 70; 'solo:A' = 90 }
+
+    $ui = New-SettingsWindow -Modes $modes -Settings $settings -State @()
     try {
-        Assert-Equal @('solo:A', 'solo:B', 'combo:Work', 'all') @($ui.Boxes.Keys) 'boxes keep mode order'
+        Assert-Equal @('solo:A', 'combo:Work', 'all') @($ui.Hotkeys.Keys) 'shortcuts sorted into mode order'
+        Assert-Equal @('solo:A', 'all') @($ui.Levels.Keys) 'and so is the brightness'
     }
     finally { $ui.Window.Close() }
 }
@@ -916,10 +837,9 @@ Test-Case 'dialog: a duplicate shortcut is refused, with words' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
     try {
-        $keys = @($ui.Boxes.Keys)
-        $ui.Boxes[$keys[0]].Text = 'Ctrl+Alt+F1'
-        $ui.Boxes[$keys[1]].Text = 'Ctrl+Alt+F1'
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $ui.Hotkeys['solo:LG ULTRAGEAR'] = 'Ctrl+Alt+F1'
+        $ui.Hotkeys['all'] = 'Ctrl+Alt+F1'
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True (-not $got.Ok) 'refused'
         Assert-True ($got.Problem -like '*assigned twice*') 'said why'
         Assert-Null $got.Settings 'nothing half-saved'
@@ -934,7 +854,7 @@ Test-Case 'dialog: moving a desk card changes the saved order' {
     try {
         $first = $ui.DeskPanel.Children[0]
         Move-DeskCard -Panel $ui.DeskPanel -Card $first -Delta 1
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($got.Settings.layout) 'the card really moved'
 
         # За край ряда карточка не двигается и не теряется.
@@ -954,11 +874,11 @@ Test-Case 'dialog: removing a combination takes its shortcut and audio along' {
 
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-True ($ui.Boxes.Contains('combo:Movie')) 'the combination has a shortcut row'
+        Assert-True ($ui.Hotkeys.Contains('combo:Movie')) 'the combination has a shortcut'
         Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
-        Assert-True (-not $ui.Boxes.Contains('combo:Movie')) 'its row went away with it'
+        Assert-True (-not $ui.Hotkeys.Contains('combo:Movie')) 'its shortcut went away with it'
 
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Ok 'saved'
         Assert-Equal 0 @($got.Settings.combos.Keys).Count 'the combination is gone'
         Assert-True (-not $got.Settings.hotkeys.Contains('combo:Movie')) 'its shortcut died with it'
@@ -977,12 +897,15 @@ Test-Case 'dialog: renaming a combination carries its shortcut and audio' {
 
     $ui = New-DialogUi -Settings $settings
     try {
-        # Ровно то, что возвращает редактор комбинации по кнопке Save.
-        Set-UiCombo -Ui $ui -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
-            Name = 'Cinema'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = 'LG ULTRAFINE' })
-        Assert-Equal 'Ctrl+Alt+F9' $ui.Boxes['combo:Cinema'].Text 'the shortcut followed the rename in the window'
+        # Ровно то, что возвращает редактор режима по кнопке Save.
+        $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Cinema'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = 'LG ULTRAFINE'
+            Hotkey = 'Ctrl+Alt+F9' })
+        Assert-Equal 'Ctrl+Alt+F9' $ui.Hotkeys['combo:Cinema'] 'the shortcut followed the rename in the window'
+        Assert-True (-not $ui.Hotkeys.Contains('combo:Movie')) 'and left the old key behind'
 
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Ok 'saved'
         Assert-True (-not $got.Settings.combos.Contains('Movie')) 'old name gone'
         Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') @($got.Settings.combos['Cinema'].displays) 'displays updated'
@@ -995,9 +918,11 @@ Test-Case 'dialog: renaming a combination carries its shortcut and audio' {
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: the combination editor prefills members, leftovers, taskbar and shortcut' {
+Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shortcut' {
     $combo = [pscustomobject]@{ Name = 'Movie'; Patterns = @('ULTRAGEAR', 'GONE PANEL'); Primary = 'ULTRAGEAR'; OriginalName = 'Movie' }
-    $ed = New-ComboEditorWindow -Combo $combo -State $script:DlgState -TakenNames @() -Hotkey 'Ctrl+Alt+F9' -Dark $false
+    $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -TakenNames @() `
+                               -Hotkey 'Ctrl+Alt+F9' -Dark $false
     try {
         Assert-Equal 'Movie' $ed.NameBox.Text 'name prefilled'
         Assert-Equal 3 @($ed.Checks).Count 'two live displays plus the leftover pattern'
@@ -1014,28 +939,33 @@ Test-Case 'dialog: the combination editor prefills members, leftovers, taskbar a
 }
 
 Test-Case 'dialog: the editor shows no-shortcut for rubbish instead of pretending it is one' {
-    $ed = New-ComboEditorWindow -Combo $null -State $script:DlgState -TakenNames @() -Hotkey 'needs Ctrl / Alt / Shift' -Dark $false
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -TakenNames @() `
+                               -Hotkey 'needs Ctrl / Alt / Shift' -Dark $false
     try {
         Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'hint text did not survive as a binding'
     }
     finally { $ed.Window.Close() }
 }
 
-Test-Case 'dialog: a shortcut can be removed, and the empty text saves as no binding' {
+Test-Case 'dialog: a shortcut can be removed, and the mode row stays' {
     # «Клавиши не убираются» — так это выглядело, когда снять привязку можно было
-    # только Backspace'ом по мелкой строчке-подсказке. Проверяем сам путь снятия.
+    # только Backspace'ом по мелкой строчке-подсказке. Теперь она снимается в
+    # редакторе режима, и пустой ответ редактора обязан её убрать.
     $settings = Get-DefaultSettings
     $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-Equal 'Ctrl+Alt+F5' $ui.Boxes['all'].Text 'starts bound'
-        $ui.Boxes['all'].Text = $script:NoHotkeyText
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        Assert-Equal 'Ctrl+Alt+F5' $ui.Hotkeys['all'] 'starts bound'
+        $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited ([pscustomobject]@{ Hotkey = '' })
+        Assert-True (-not $ui.Hotkeys.Contains('all')) 'the window forgot it'
+
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Ok 'saved'
         Assert-True (-not $got.Settings.hotkeys.Contains('all')) 'the binding is gone from the file'
         # А сама строка режима осталась: режимы не удаляются здесь, они следуют из
-        # мониторов, групп и комбинаций.
-        Assert-True ($ui.Boxes.Contains('all')) 'the mode row is still there'
+        # мониторов и комбинаций.
+        Assert-Equal 3 $ui.ModesPanel.Children.Count 'two displays and all of them are still listed'
     }
     finally { $ui.Window.Close() }
 }
@@ -1046,29 +976,30 @@ Test-Case 'dialog: in-progress hint text never becomes a binding' {
     $ui = New-DialogUi -Settings $settings
     try {
         foreach ($junk in $script:PressKeysText, 'needs Ctrl / Alt / Shift', 'unsupported key', '') {
-            $ui.Boxes['all'].Text = $junk
-            $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+            $ui.Hotkeys['all'] = $junk
+            $got = Read-SettingsFromUi -Ui $ui -Settings $settings
             Assert-True (-not $got.Settings.hotkeys.Contains('all')) "'$junk' is not a binding"
         }
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: a shortcut picked in the combination editor lands in the shortcut rows' {
+Test-Case 'dialog: a shortcut picked in the mode editor lands on the mode' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
     try {
         # Ровно то, что возвращает редактор по Save, вместе с клавишей.
-        Set-UiCombo -Ui $ui -Combo $null -Edited ([pscustomobject]@{
+        Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited ([pscustomobject]@{
             Name = 'Movie'; Patterns = @('LG ULTRAGEAR'); Primary = ''; Hotkey = 'Ctrl+Alt+F7' })
-        Assert-Equal 'Ctrl+Alt+F7' $ui.Boxes['combo:Movie'].Text 'the shortcut row got the keys'
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        Assert-Equal 'Ctrl+Alt+F7' $ui.Hotkeys['combo:Movie'] 'the mode got the keys'
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal 'Ctrl+Alt+F7' $got.Settings.hotkeys['combo:Movie'] 'and they save'
 
         # Снять клавишу в редакторе — тоже правка, а не «оставить как было».
-        Set-UiCombo -Ui $ui -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+        $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Movie'; Patterns = @('LG ULTRAGEAR'); Primary = ''; Hotkey = '' })
-        Assert-Equal $script:NoHotkeyText $ui.Boxes['combo:Movie'].Text 'cleared back to no shortcut'
+        Assert-True (-not $ui.Hotkeys.Contains('combo:Movie')) 'cleared back to no shortcut'
     }
     finally { $ui.Window.Close() }
 }
@@ -1080,7 +1011,7 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
     )
-    Assert-Equal 'Display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'solo' }) -State $state) 'a single display'
+    Assert-Equal 'Display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'solo' })) 'a single display'
 
     $combo = Get-ModeSubtitle -Mode ([pscustomobject]@{
         Kind = 'combo'; Patterns = @('LG ULTRAFINE', 'XG27AQDMGR'); Primary = 'LG ULTRAFINE' }) -State $state
@@ -1088,19 +1019,33 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
     Assert-True ($combo -like '*LG ULTRAFINE + XG27AQDMGR*') 'and lists its displays'
     Assert-True ($combo -like '*taskbar on LG ULTRAFINE*') 'and where the taskbar goes'
 
-    Assert-Equal 'Every connected display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'all' }) -State $state) 'all'
-    Assert-True ((Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'orphan' }) -State $state) -like '*shortcut stays reserved*') 'orphan'
+    Assert-Equal 'Every connected display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'all' })) 'all'
+    Assert-True ((Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'orphan' })) -like '*kept until you remove it*') 'orphan'
 }
 
-Test-Case 'dialog: there is exactly one place that makes a named set of displays' {
-    # Раньше их было две — карточка групп и карточка комбинаций, — и «Work
-    # displays» нельзя было удалить там, где она показана. Групп в окне больше нет.
-    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+Test-Case 'dialog: every mode is set up in one place, and only combinations can be removed' {
+    # На каждый режим одна строка с кнопкой Edit, а Remove есть только у того, что
+    # человек завёл сам.
+    $settings = Get-DefaultSettings
+    $settings.combos['Movie'] = [ordered]@{ displays = @('ULTRAGEAR'); primary = '' }
+    $ui = New-DialogUi -Settings $settings
     try {
         Assert-Null $ui.Window.FindName('RolesPanel') 'no display-groups panel'
-        Assert-Null $ui.Window.FindName('RolesHint') 'and no groups hint'
-        Assert-True ($null -ne $ui.CombosPanel) 'combinations are the one place'
-        Assert-True ($null -ne $ui.AddComboBtn) 'with a button to add one'
+        Assert-Null $ui.Window.FindName('CombosPanel') 'no separate combinations card'
+        Assert-Null $ui.Window.FindName('LevelModeBox') 'and no brightness card of its own'
+        Assert-True ($null -ne $ui.ModesPanel) 'modes are the one place'
+        Assert-True ($null -ne $ui.AddComboBtn) 'with a button to add a combination'
+
+        # solo:UG, solo:UF, combo:Movie, all — у каждой строки Edit, Remove только
+        # у комбинации.
+        $buttons = @()
+        foreach ($row in $ui.ModesPanel.Children) {
+            $names = @($row.Children | Where-Object { $_ -is [System.Windows.Controls.Button] } | ForEach-Object { [string]$_.Content })
+            $buttons += , $names
+        }
+        Assert-Equal 4 $buttons.Count 'a row per mode'
+        Assert-Equal 4 @($buttons | Where-Object { $_ -contains 'Edit' }).Count 'every mode can be edited'
+        Assert-Equal 1 @($buttons | Where-Object { $_ -contains 'Remove' }).Count 'only the combination can be removed'
     }
     finally { $ui.Window.Close() }
 }
@@ -1108,11 +1053,10 @@ Test-Case 'dialog: there is exactly one place that makes a named set of displays
 Test-Case 'dialog: the cross clears a shortcut and greys itself out when there is nothing to clear' {
     # Кнопка и поле находят друг друга через .Tag — без этого крестик молча не
     # работал бы (замыкания в обработчиках теряют и функции, и $script:).
-    $settings = Get-DefaultSettings
-    $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
-    $ui = New-DialogUi -Settings $settings
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -TakenNames @() `
+                               -Hotkey 'Ctrl+Alt+F5' -Dark $false
     try {
-        $box = $ui.Boxes['all']
+        $box = $ed.HotkeyBox
         $clear = $box.Tag
         Assert-True ($null -ne $clear) 'the box knows its cross'
         Assert-True $clear.IsEnabled 'enabled while a shortcut is set'
@@ -1125,56 +1069,56 @@ Test-Case 'dialog: the cross clears a shortcut and greys itself out when there i
         $box.Text = 'Ctrl+Alt+F8'
         Assert-True $clear.IsEnabled 'awake again'
     }
-    finally { $ui.Window.Close() }
+    finally { $ed.Window.Close() }
 }
 
-Test-Case 'combo editor: what it reads, and every refusal' {
-    $ed = New-ComboEditorWindow -Combo $null -State $script:DlgState `
-                                -TakenNames @('Movie') -TakenHotkeys @('Ctrl+Alt+F5') -Dark $false
+Test-Case 'mode editor: what it reads, and every refusal' {
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState `
+                               -TakenNames @('Movie') -TakenHotkeys @('Ctrl+Alt+F5') -Dark $false
     try {
         # Пустое имя.
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'no name is refused'
         Assert-True ($got.Problem -like '*name*') 'and says so'
 
         # Имя занято.
         $ed.NameBox.Text = 'movie'
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'a taken name is refused, case aside'
         Assert-True ($got.Problem -like "*already exists*") 'and says so'
 
         # Ни одного монитора.
         $ed.NameBox.Text = 'Cinema'
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'no displays is refused'
         Assert-True ($got.Problem -like '*at least one display*') 'and says so'
 
         # Чужая клавиша.
         $ed.Checks[0].IsChecked = $true
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'a shortcut owned by another mode is refused'
         Assert-True ($got.Problem -like '*already drives another mode*') 'and says so'
 
         # Всё в порядке.
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F6'
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True $got.Ok 'accepted'
-        Assert-Equal 'Cinema' $got.Combo.Name 'name trimmed and kept'
-        Assert-Equal @('LG ULTRAGEAR') @($got.Combo.Patterns) 'the ticked display'
-        Assert-Equal 'Ctrl+Alt+F6' $got.Combo.Hotkey 'the shortcut'
-        Assert-Equal '' $got.Combo.Primary 'no taskbar display chosen means the usual rules'
+        Assert-Equal 'Cinema' $got.Mode.Name 'name trimmed and kept'
+        Assert-Equal @('LG ULTRAGEAR') @($got.Mode.Patterns) 'the ticked display'
+        Assert-Equal 'Ctrl+Alt+F6' $got.Mode.Hotkey 'the shortcut'
+        Assert-Equal '' $got.Mode.Primary 'no taskbar display chosen means the usual rules'
     }
     finally { $ed.Window.Close() }
 }
 
 Test-Case 'combo editor: the taskbar display must be one of the ticked ones' {
-    $ed = New-ComboEditorWindow -Combo $null -State $script:DlgState -TakenNames @() -Dark $false
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -TakenNames @() -Dark $false
     try {
         $ed.NameBox.Text = 'Pair'
         $ed.Checks[0].IsChecked = $true
         $ed.PrimaryBox.SelectedItem = [string]$ed.Checks[1].Tag   # не отмечен
-        $got = Read-ComboFromUi -Editor $ed
+        $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'refused'
         Assert-True ($got.Problem -like '*must be one of the ticked*') 'and says why'
     }
@@ -1200,9 +1144,11 @@ Test-Case 'dialog: a binding without its display still gets a row' {
     $settings.hotkeys['solo:GONE MONITOR'] = 'Ctrl+Alt+F8'
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-True ($ui.Boxes.Contains('solo:GONE MONITOR')) 'orphan row exists'
-        Assert-Equal 'Ctrl+Alt+F8' $ui.Boxes['solo:GONE MONITOR'].Text 'with its combination shown'
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        Assert-True ($ui.Hotkeys.Contains('solo:GONE MONITOR')) 'orphan binding kept'
+        Assert-Equal 'Ctrl+Alt+F8' $ui.Hotkeys['solo:GONE MONITOR'] 'with its combination shown'
+        # Строка-сирота есть в списке: снять привязку можно только отсюда.
+        Assert-Equal 4 $ui.ModesPanel.Children.Count 'two displays, all of them, and the orphan'
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal 'Ctrl+Alt+F8' $got.Settings.hotkeys['solo:GONE MONITOR'] 'and it survives a save'
     }
     finally { $ui.Window.Close() }
@@ -1219,7 +1165,7 @@ Test-Case 'dialog: WPF modifier bits equal the RegisterHotKey bits' {
     Assert-Equal 0x70 ([System.Windows.Input.KeyInterop]::VirtualKeyFromKey([System.Windows.Input.Key]::F1)) 'F1 virtual key'
 }
 
-# --- Resolve-ModeKey из Set-Display.ps1 --------------------------------------
+# --- Resolve-ModeKey из Set-Display.ps1 -------------------------------------
 
 Write-Host ''
 Write-Host 'command line mode resolution' -ForegroundColor White
@@ -1247,45 +1193,44 @@ $script:ResolveSettings = New-TestSettings @{
 $script:ResolveModes = @(Get-DisplayModes $script:ResolveState $script:ResolveSettings)
 
 Test-Case 'resolve: an exact key' {
-    Assert-Equal 'all' (Resolve-ModeKey 'all' $script:ResolveModes $script:ResolveState).Key 'all'
-    Assert-Equal 'combo:Work' (Resolve-ModeKey 'combo:Work' $script:ResolveModes $script:ResolveState).Key 'combo key'
+    Assert-Equal 'all' (Resolve-ModeKey 'all' $script:ResolveModes).Key 'all'
+    Assert-Equal 'combo:Work' (Resolve-ModeKey 'combo:Work' $script:ResolveModes).Key 'combo key'
 }
 
 Test-Case 'resolve: a combination by name, case and spaces aside' {
-    Assert-Equal 'combo:Movie night' (Resolve-ModeKey 'movie night' $script:ResolveModes $script:ResolveState).Key 'lower case, with a space'
+    Assert-Equal 'combo:Movie night' (Resolve-ModeKey 'movie night' $script:ResolveModes).Key 'lower case, with a space'
 }
 
-Test-Case 'resolve: work.cmd and game.cmd keep working after the groups moved' {
-    # Обёртки зовут `Set-Display.ps1 work` и `game`. Это были имена ролей; после
-    # переезда они стали именами комбинаций («Work», «Game»), и сравнение имени
-    # регистр не различает — значит .cmd-файлы править не пришлось.
-    Assert-Equal 'combo:Work' (Resolve-ModeKey 'work' $script:ResolveModes $script:ResolveState).Key 'work'
-    Assert-Equal 'combo:Game' (Resolve-ModeKey 'game' $script:ResolveModes $script:ResolveState).Key 'game, a set of one'
+Test-Case 'resolve: work.cmd and game.cmd find their combinations' {
+    # Обёртки зовут `Set-Display.ps1 work` и `game`, а комбинации названы «Work» и
+    # «Game»: сравнение имени регистр не различает.
+    Assert-Equal 'combo:Work' (Resolve-ModeKey 'work' $script:ResolveModes).Key 'work'
+    Assert-Equal 'combo:Game' (Resolve-ModeKey 'game' $script:ResolveModes).Key 'game, a set of one'
 }
 
 Test-Case 'resolve: a short monitor id' {
-    Assert-Equal 'solo:LG ULTRAFINE' (Resolve-ModeKey 'GSM5CBC' $script:ResolveModes $script:ResolveState).Key 'by short id'
+    Assert-Equal 'solo:LG ULTRAFINE' (Resolve-ModeKey 'GSM5CBC' $script:ResolveModes).Key 'by short id'
 }
 
 Test-Case 'resolve: part of a monitor name' {
-    Assert-Equal 'solo:LG ULTRAGEAR' (Resolve-ModeKey 'ULTRAGEAR' $script:ResolveModes $script:ResolveState).Key 'by name part'
+    Assert-Equal 'solo:LG ULTRAGEAR' (Resolve-ModeKey 'ULTRAGEAR' $script:ResolveModes).Key 'by name part'
 }
 
 Test-Case 'resolve: an ambiguous name is refused, not guessed' {
     $threw = $false
-    try { [void](Resolve-ModeKey 'LG' $script:ResolveModes $script:ResolveState) }
+    try { [void](Resolve-ModeKey 'LG' $script:ResolveModes) }
     catch { $threw = $true; Assert-True ($_.Exception.Message -like '*matches several modes*') 'said why' }
     Assert-True $threw 'threw on ambiguity'
 }
 
 Test-Case 'resolve: an unknown name is refused with a hint' {
     $threw = $false
-    try { [void](Resolve-ModeKey 'nosuchthing' $script:ResolveModes $script:ResolveState) }
+    try { [void](Resolve-ModeKey 'nosuchthing' $script:ResolveModes) }
     catch { $threw = $true; Assert-True ($_.Exception.Message -like '*Unknown mode*') 'said unknown' }
     Assert-True $threw 'threw on unknown'
 }
 
-# --- ключ раскладки столов ---------------------------------------------------
+# --- ключ раскладки столов --------------------------------------------------
 
 Write-Host ''
 Write-Host 'window layout keys' -ForegroundColor White
@@ -1320,11 +1265,11 @@ Test-Case 'layout key: empty and blank paths are ignored' {
     Assert-Equal 'a' (Get-DisplayLayoutKey -DevicePaths @('a', '', $null)) 'blanks dropped'
 }
 
-# --- ретрай раскладки и вердикт переключения ----------------------------------
-# 17 августа 2026: валидация раскладки вернула 87 сразу после смены топологии,
-# единственная попытка молча провалилась, а переключение отчиталось успехом — и
-# мониторы до следующего хоткея стояли перепутанными. Отсюда два свойства,
-# которые здесь прибиты тестами: раскладка повторяется, провал попадает в вердикт.
+# --- ретрай раскладки и вердикт переключения --------------------------------
+# Валидация раскладки отвечает 87 сразу после смены топологии. Если единственная
+# попытка молча провалится, а переключение отчитается успехом, мониторы до
+# следующего хоткея стоят перепутанными. Отсюда два свойства, прибитые тестами:
+# раскладка повторяется, провал попадает в вердикт.
 
 Write-Host ''
 Write-Host 'layout retry and the switch verdict' -ForegroundColor White
@@ -1375,7 +1320,7 @@ Test-Case 'layout retry: success on the first try is not retried' {
     Assert-True (-not $r.Changed) 'already correct passes through'
 }
 
-# --- стол одним переходом -----------------------------------------------------
+# --- стол одним переходом ---------------------------------------------------
 # Переключение с изменением набора экранов перестраивало стол трижды: набор,
 # потом позиции, потом частоты. Каждый переход замораживает ввод — курсор замирал
 # и «выстреливал» вперёд. Здесь прибито то, из чего собран единый переход:
@@ -1474,7 +1419,7 @@ Test-Case 'targets: a sleeping display takes its mode from the cache' {
 
 Test-Case 'targets: an exact rate is asked for only when it belongs to that mode' {
     # 144 Гц в кэше и просят 240 — дроби для 240 у нас нет. Просить «240/1»
-    # нельзя: CCD отвергает такой запрос целиком (validate -> 1610, 20 августа),
+    # нельзя: CCD отвергает такой запрос целиком (validate -> 1610),
     # и вместе с частотой терялись бы разрешение и раскладка.
     $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
     $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 240 }
@@ -1519,6 +1464,44 @@ Test-Case 'targets: -KeepMode leaves the mode alone' {
     $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 240 }
     $t = @(Get-SwitchTargets -Wanted @($m) -KeepMode)
     Assert-Equal 144 $t[0].Hz 'the rate it is on now, not the best one'
+}
+
+Test-Case 'already best: every display sitting in its maximum mode' {
+    # Третья проверка «уже сделано»: на ней стоит пропуск перечисления выходов и
+    # двух запросов режима на каждый монитор при повторном нажатии хоткея.
+    $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
+    $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
+    Assert-True (Test-ModesAlreadyBest @($m)) 'current mode equals the best one'
+}
+
+Test-Case 'already best: a lower refresh rate is not "already best"' {
+    # Ровно тот случай, ради которого сторож частоты и существует: разрешение то
+    # же, а герцы Windows уронила.
+    $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
+    $m.Hz = 60
+    $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
+    Assert-True (-not (Test-ModesAlreadyBest @($m))) 'the rate has to match too'
+}
+
+Test-Case 'already best: a display that is off or has no best mode is not' {
+    # У только что проснувшегося монитора BestMode ещё $null — перебор режимов
+    # обязан состояться, иначе он останется на частоте из реестра Windows.
+    $off = New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D' 'p-xg' $false
+    $off.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
+    Assert-True (-not (Test-ModesAlreadyBest @($off))) 'a dark display proves nothing'
+
+    $woke = New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D' 'p-xg'
+    $woke.BestMode = $null
+    Assert-True (-not (Test-ModesAlreadyBest @($woke))) 'nothing known about the best mode'
+}
+
+Test-Case 'already best: one display out of three is enough to spoil it' {
+    $good = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
+    $good.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
+    $bad = New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'p-uf'
+    $bad.Width = 3840; $bad.Height = 2160; $bad.Hz = 30
+    $bad.BestMode = [pscustomobject]@{ Width = 3840; Height = 2160; Hz = 60 }
+    Assert-True (-not (Test-ModesAlreadyBest @($good, $bad))) 'the whole set has to be right'
 }
 
 Test-Case 'full config: the refresh rate is dropped before the whole switch is' {
@@ -1650,8 +1633,8 @@ Test-Case 'verdict: clean success' {
 }
 
 Test-Case 'verdict: a failed layout is not a success' {
-    # Регрессия 17 августа: трей показал зелёное «Displays switched», хотя
-    # мониторы стояли не в том порядке.
+    # Иначе трей показывает зелёное «Displays switched», хотя мониторы стоят не в
+    # том порядке.
     $v = Format-SwitchResult -Summary @('A') -LayoutFailed $true
     Assert-True (-not $v.Ok) 'not ok'
     Assert-True ($v.Text -like '*positions not arranged*') 'says what went wrong'
@@ -1675,7 +1658,18 @@ Test-Case 'verdict: problems without a summary still read as a sentence' {
     Assert-True ($v.Text -like 'did not come up*') 'starts with the problem, not punctuation'
 }
 
-# --- последний выбранный режим -----------------------------------------------
+Test-Case 'phases: breakdown keeps switch order and drops the invisible' {
+    $t = Format-PhaseTimes ([ordered]@{ state = 0.31; apply = 1.24; settle = 0.01 })
+    Assert-Equal 'state 0.3, apply 1.2' $t 'only phases that took time, in the order they ran'
+}
+
+Test-Case 'phases: a quiet switch prints nothing at all' {
+    # Иначе каждый no-op тащил бы в done: хвост из нулей.
+    Assert-Equal '' ([string](Format-PhaseTimes ([ordered]@{ apply = 0.01 }))) 'all quiet - empty'
+    Assert-Equal '' ([string](Format-PhaseTimes $null)) 'no phases at all is fine too'
+}
+
+# --- последний выбранный режим ----------------------------------------------
 
 Write-Host ''
 Write-Host 'the remembered mode' -ForegroundColor White
@@ -1707,7 +1701,7 @@ Test-Case 'last mode: a file without a key reads as nothing remembered' {
     Remove-Item $script:LastModeFile -Force
 }
 
-# --- возврат режима при старте трея ------------------------------------------
+# --- возврат режима при старте трея -----------------------------------------
 # Живьём это проверяется только перезагрузкой, поэтому решение («возвращать или
 # не трогать») тестируем отдельно от самого переключения. Функцию достаём из
 # Displays.ps1 разбором файла — дот-сорснуть его нельзя, он поднимает всё
@@ -1718,10 +1712,12 @@ Write-Host ''
 Write-Host 'restoring the mode when the tray starts' -ForegroundColor White
 
 $trayAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'Displays.ps1'), [ref]$null, [ref]$null)
-$srAst = $trayAst.FindAll({ param($n)
-    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-StartupRestore' }, $true)
-if ($srAst.Count -ne 1) { throw "expected exactly one Invoke-StartupRestore in Displays.ps1, found $($srAst.Count)" }
-. ([scriptblock]::Create($srAst[0].Extent.Text))
+foreach ($name in 'Get-AvailableMode', 'Test-DeskMatchesMode', 'Invoke-StartupRestore') {
+    $found = $trayAst.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }.GetNewClosure(), $true)
+    if ($found.Count -ne 1) { throw "expected exactly one $name in Displays.ps1, found $($found.Count)" }
+    . ([scriptblock]::Create($found[0].Extent.Text))
+}
 
 # Окружение трея, которое эта функция вокруг себя ожидает.
 $script:TestSettings = Get-DefaultSettings
@@ -1736,8 +1732,7 @@ function Invoke-Mode {
     $script:Invoked = [pscustomobject]@{ Key = $Key; Auto = [bool]$Auto; Silent = [bool]$Silent }
 }
 
-# Включён только ASUS, все три монитора подключены — то же, что было на столе
-# 12 августа.
+# Включён только ASUS, все три монитора подключены.
 function Set-RestoreScene {
     param([bool]$UltraGearConnected = $true)
     $script:TestState = @(
@@ -1849,7 +1844,7 @@ Test-Case 'session id: the same within one run, and not empty' {
     Assert-True ($a -like '*/*') 'built from both sources'
 }
 
-# --- настройки: новые ключи ---------------------------------------------------
+# --- настройки: новые ключи -------------------------------------------------
 # Разбор настроек — единственное место, куда попадает написанное рукой, и правил
 # сокращённой записи здесь больше, чем кажется: число вместо словаря, строка
 # вместо объекта, отсутствие ключа вместо значения по умолчанию.
@@ -1888,6 +1883,65 @@ Test-Case 'settings: rules read in file order, with their defaults' {
     Assert-Equal 'combo:Work' $s.rules[1].back 'where to go back to'
 }
 
+# Разбор каждой формы записи — чистыми функциями, по одной на форму. Файл правят
+# руками, поэтому «не разобралось» обязано означать «настройки нет», а не падение.
+
+Test-Case 'parse: a combination in all three spellings comes out the same shape' {
+    $full = ConvertTo-ComboSetting ([pscustomobject]@{ displays = @('A', 'B'); primary = 'A' })
+    Assert-Equal @('A', 'B') @($full.displays) 'the full form'
+    Assert-Equal 'A' $full.primary 'with its taskbar display'
+
+    $short = ConvertTo-ComboSetting @('A', 'B')
+    Assert-Equal @('A', 'B') @($short.displays) 'a bare array'
+    Assert-Equal '' $short.primary 'and no taskbar display of its own'
+
+    $shorter = ConvertTo-ComboSetting 'A'
+    Assert-Equal @('A') @($shorter.displays) 'a bare string is a set of one'
+}
+
+Test-Case 'parse: junk in a combination is an empty set, not a crash' {
+    $empty = ConvertTo-ComboSetting $null
+    Assert-Equal 0 @($empty.displays).Count 'nothing at all'
+    $blanks = ConvertTo-ComboSetting @('A', '', $null)
+    Assert-Equal @('A') @($blanks.displays) 'empty names are dropped'
+}
+
+Test-Case 'parse: a command is a string for after, an object for both' {
+    Assert-Equal 'x.cmd' (ConvertTo-HookSetting 'x.cmd').after 'a bare string means after'
+    Assert-Equal '' (ConvertTo-HookSetting 'x.cmd').before 'and only after'
+    $both = ConvertTo-HookSetting ([pscustomobject]@{ before = 'a'; after = 'b' })
+    Assert-Equal 'a' $both.before 'before'
+    Assert-Equal 'b' $both.after 'after'
+    Assert-Null (ConvertTo-HookSetting ([pscustomobject]@{ })) 'an empty pair is not a setting'
+    Assert-Null (ConvertTo-HookSetting $null) 'and neither is nothing'
+}
+
+Test-Case 'parse: a level is a number or a map, and junk is neither' {
+    Assert-Equal 80 (ConvertTo-LevelSetting 80) 'one number for the whole mode'
+    $per = ConvertTo-LevelSetting ([pscustomobject]@{ 'ULTRAFINE' = 25; 'ULTRAGEAR' = 60 })
+    Assert-Equal 25 $per['ULTRAFINE'] 'a level for each display'
+    Assert-Null (ConvertTo-LevelSetting $null) 'nothing is not a setting'
+    Assert-Null (ConvertTo-LevelSetting ([pscustomobject]@{ })) 'and neither is an empty map'
+}
+
+Test-Case 'parse: rules always come out as a list, even a list of one' {
+    # Функция, вернувшая массив из одного элемента, отдаёт его СКАЛЯРОМ — поэтому
+    # вызывающий обязан обернуть её в @(). Иначе $s.rules[0] перестаёт существовать.
+    $one = @(ConvertTo-RuleSettings @([pscustomobject]@{ process = 'cs2'; mode = 'all' }))
+    Assert-Equal 1 $one.Count 'one rule'
+    Assert-Equal 'process' ([string]$one[0].when) 'when defaults to process'
+    Assert-Equal $true $one[0].enabled 'and a rule is on unless it says otherwise'
+    Assert-Equal 0 $one[0].minutes 'minutes default to zero'
+
+    $none = @(ConvertTo-RuleSettings $null)
+    Assert-Equal 0 $none.Count 'nothing in, nothing out'
+}
+
+Test-Case 'parse: WHEN is lower-cased so the file can shout' {
+    $r = @(ConvertTo-RuleSettings @([pscustomobject]@{ when = 'IDLE'; minutes = 5; mode = 'all' }))
+    Assert-Equal 'idle' ([string]$r[0].when) 'compared in lower case downstream'
+}
+
 Test-Case 'settings: a rule without "when" is a process rule' {
     Set-TestSettingsFile '{ "rules": [ { "process": "cs2", "mode": "all" } ] }'
     $s = Get-DisplaySettings
@@ -1924,69 +1978,6 @@ Test-Case 'settings: a damaged file still gives working defaults for the new key
     Assert-Equal $true $s.reapply.onResume 'and the rest of the defaults are intact'
 }
 
-# --- переезд авто-игрового режима в правила -----------------------------------
-
-Write-Host ''
-Write-Host 'the auto game mode moving into rules' -ForegroundColor White
-
-Test-Case 'autoGame: an old settings file turns into a rule' {
-    Set-TestSettingsFile '{ "autoGame": { "enabled": true, "process": "cs2", "gameMode": "solo:XG27AQDMGR", "backMode": "combo:Work" } }'
-    $s = Get-DisplaySettings
-    Assert-Equal 1 @($s.rules).Count 'one rule'
-    Assert-Equal 'process' $s.rules[0].when 'as a process rule'
-    Assert-Equal 'cs2' $s.rules[0].process 'the process'
-    Assert-Equal 'solo:XG27AQDMGR' $s.rules[0].mode 'where it goes'
-    Assert-Equal 'combo:Work' $s.rules[0].back 'and where it comes back'
-    Assert-Equal $true $s.rules[0].enabled 'it was on, it stays on'
-    Assert-Equal '' $s.autoGame.process 'the old key is emptied'
-    Assert-True $script:LegacyAutoGameOnDisk 'the tray is told to rewrite the file'
-}
-
-Test-Case 'autoGame: an empty one is not turned into a rule at all' {
-    Set-TestSettingsFile '{ "autoGame": { "enabled": false, "process": "", "gameMode": "" } }'
-    $s = Get-DisplaySettings
-    Assert-Equal 0 @($s.rules).Count 'nothing to move, nothing invented'
-    Assert-Equal $false $script:LegacyAutoGameOnDisk 'and no pointless rewrite of the file'
-}
-
-Test-Case 'autoGame: the move happens once, not on every read' {
-    $s = Get-DefaultSettings
-    $s.autoGame.enabled = $true
-    $s.autoGame.process = 'cs2'
-    $s.autoGame.gameMode = 'all'
-    Assert-True (Convert-AutoGameToRules $s) 'moved'
-    Assert-Equal 1 @($s.rules).Count 'one rule'
-    # Второй вызов на уже переехавших настройках не должен плодить копии.
-    [void](Convert-AutoGameToRules $s)
-    Assert-Equal 1 @($s.rules).Count 'still one'
-}
-
-Test-Case 'autoGame: it keeps its seniority over rules written later' {
-    $s = Get-DefaultSettings
-    $s.rules = @([ordered]@{ when = 'idle'; minutes = 20; mode = 'solo:A'; back = ''; enabled = $true; process = '' })
-    $s.autoGame.enabled = $true
-    $s.autoGame.process = 'cs2'
-    $s.autoGame.gameMode = 'solo:B'
-    [void](Convert-AutoGameToRules $s)
-    Assert-Equal 'process' $s.rules[0].when 'the game rule goes first'
-    Assert-Equal 'idle' $s.rules[1].when 'the idle rule follows'
-}
-
-Test-Case 'roles: the move carries commands, levels and rules along' {
-    $s = Get-DefaultSettings
-    $s.roles = [ordered]@{ 'ULTRAFINE' = 'work'; 'ULTRAGEAR' = 'work' }
-    $s.hooks = [ordered]@{ 'role:work' = [ordered]@{ before = ''; after = 'x.cmd' } }
-    $s.brightness = [ordered]@{ 'role:work' = 80 }
-    $s.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'role:work'; back = 'role:work'; enabled = $true })
-    $s.reapply.onPlug = 'role:work'
-    Assert-True (Convert-RoleSettingsToCombos $s) 'moved'
-    Assert-True ($s.hooks.Contains('combo:Work')) 'the command moved with the combination'
-    Assert-True ($s.brightness.Contains('combo:Work')) 'so did the brightness'
-    Assert-Equal 'combo:Work' $s.rules[0].mode 'and the rule points at the new key'
-    Assert-Equal 'combo:Work' $s.rules[0].back 'both of its ends'
-    Assert-Equal 'combo:Work' $s.reapply.onPlug 'and so does "when a display appears"'
-}
-
 Test-Case 'hotkeys: a display on a new input takes its levels and commands with it' {
     # Тот же случай, что и с клавишей: монитор переехал на другой вход, ключ
     # режима сменился. Яркость обязана переехать вместе с ним, иначе одна
@@ -2004,7 +1995,7 @@ Test-Case 'hotkeys: a display on a new input takes its levels and commands with 
     Assert-Equal 'solo:LG ULTRAGEAR' $s.rules[0].mode 'and the rule points at the display, still'
 }
 
-# --- команды вокруг переключения ---------------------------------------------
+# --- команды вокруг переключения --------------------------------------------
 
 Write-Host ''
 Write-Host 'the commands around a switch' -ForegroundColor White
@@ -2032,7 +2023,7 @@ Test-Case 'hook: nothing to run means nothing is returned' {
     Assert-Null (Get-HookLaunch -Command '   ') 'spaces only'
 }
 
-# --- яркость -----------------------------------------------------------------
+# --- яркость ----------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'brightness and contrast as part of a mode' -ForegroundColor White
@@ -2081,7 +2072,7 @@ Test-Case 'levels: junk in the settings is ignored, not guessed at' {
     Assert-Equal 0 $plan.Count 'nothing set at all'
 }
 
-# --- правила -----------------------------------------------------------------
+# --- правила ----------------------------------------------------------------
 # Живьём это проверяется запуском игры и двадцатиминутным ожиданием, поэтому
 # решение отделено от исполнения и проверяется здесь целиком.
 
@@ -2202,7 +2193,7 @@ Test-Case 'rule reason: reads like a sentence in the log' {
     Assert-Equal 'idle for 20 min' (Format-RuleReason (New-TestRule -When 'idle' -Minutes 20))
 }
 
-# --- мир изменился сам -------------------------------------------------------
+# --- мир изменился сам ------------------------------------------------------
 
 Write-Host ''
 Write-Host 'rebuilding the desk when the world changed' -ForegroundColor White
@@ -2264,7 +2255,7 @@ Test-Case 'reapply: a cable swapped for another display prefers the plug rule' {
     Assert-Equal 'all' $d.Mode 'the new display is the news here'
 }
 
-# --- таймер выключения -------------------------------------------------------
+# --- таймер выключения ------------------------------------------------------
 
 Write-Host ''
 Write-Host 'the shutdown timer' -ForegroundColor White
@@ -2298,7 +2289,7 @@ Test-Case 'duration: reads back as a human would say it' {
     Assert-Equal '0 s' (Format-Duration -5)
 }
 
-# --- дневник -----------------------------------------------------------------
+# --- дневник ----------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'the diary' -ForegroundColor White
@@ -2485,7 +2476,7 @@ Test-Case 'diary: the page holds the numbers and calls nobody' {
     Assert-Equal $false ($html -match '(width|height):[0-9]+,') 'and no locale comma anywhere in the CSS'
 }
 
-# --- окно настроек: новое ------------------------------------------------------
+# --- окно настроек: новое ---------------------------------------------------
 
 Write-Host ''
 Write-Host 'the settings window, the new parts' -ForegroundColor White
@@ -2496,7 +2487,7 @@ Test-Case 'dialog: the diary toggle goes both ways' {
     try {
         Assert-Equal $false ([bool]$ui.StatsBox.IsChecked) 'off, as it is in the settings'
         $ui.StatsBox.IsChecked = $true
-        $got = Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Settings.stats 'turning it on is saved'
     }
     finally { $ui.Window.Close() }
@@ -2511,7 +2502,7 @@ Test-Case 'dialog: commands and levels survive a save like everything else' {
     $settings.reapply.onPlug = 'all'
     $ui = New-DialogUi -Settings $settings
     try {
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 'notepad.exe' $updated.hooks['all'].after 'the command'
         Assert-Equal 80 $updated.brightness['all'] 'the brightness'
         Assert-Equal 70 $updated.contrast['all'] 'the contrast'
@@ -2529,7 +2520,7 @@ Test-Case 'dialog: renaming a combination carries its command and brightness' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ui.Combos[0].Name = 'Office'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-True ($updated.hooks.Contains('combo:Office')) 'the command followed the new name'
         Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'and left no ghost behind'
         Assert-Equal 55 $updated.brightness['combo:Office'] 'so did the brightness'
@@ -2545,18 +2536,82 @@ Test-Case 'dialog: removing a combination takes its command and brightness along
     $ui = New-DialogUi -Settings $settings
     try {
         Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal $false ($updated.hooks.Contains('combo:Work')) 'no command left for a mode that is gone'
         Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and no brightness either'
     }
     finally { $ui.Window.Close() }
 }
 
+# Сам переезд ключей — чистыми функциями, отдельно от окна: их три штуки на
+# четыре настройки, и проверять их через сборку WPF-дерева дороже и мутнее.
+
+Test-Case 'mode keys: a rename moves the entry and keeps the file order' {
+    $renames = Get-ComboRenames -Combos @(
+        [pscustomobject]@{ Name = 'Office'; OriginalName = 'Work' }
+        [pscustomobject]@{ Name = 'Movie night'; OriginalName = 'Movie night' }
+    )
+    Assert-Equal @('combo:Work') @($renames.Keys) 'only the renamed one is in the map'
+
+    $source = [ordered]@{ 'solo:A' = 10; 'combo:Work' = 80; 'all' = 55 }
+    $moved = Move-ModeKeyedEntries -Source $source -Renames $renames
+    Assert-Equal @('solo:A', 'combo:Office', 'all') @($moved.Keys) 'moved in place, order untouched'
+    Assert-Equal 80 $moved['combo:Office'] 'with its value'
+}
+
+Test-Case 'mode keys: a removed combination takes its entry with it' {
+    $source = [ordered]@{ 'combo:Work' = 80; 'all' = 55 }
+    $moved = Move-ModeKeyedEntries -Source $source -Renames @{} -Gone @('combo:Work')
+    Assert-Equal @('all') @($moved.Keys) 'the ghost setting is gone'
+}
+
+Test-Case 'mode keys: an occupied new key keeps its own value' {
+    # Своё значение у занятого ключа важнее переезжающего: молча выбросить одно из
+    # двух хуже, чем оставить то, что уже там.
+    $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'B'; OriginalName = 'A' })
+    $moved = Move-ModeKeyedEntries -Source ([ordered]@{ 'combo:A' = 1; 'combo:B' = 2 }) -Renames $renames
+    Assert-Equal 2 $moved['combo:B'] 'the value that was already there'
+    Assert-True (-not $moved.Contains('combo:A')) 'and the old key is gone either way'
+}
+
+Test-Case 'mode keys: a chain of renames is applied in the order of the list' {
+    # «A» переименовали в «B», а «B» — в «C». Порядок применения тут значим,
+    # поэтому словарь переименований упорядоченный, а не хэш-таблица.
+    $renames = Get-ComboRenames -Combos @(
+        [pscustomobject]@{ Name = 'C'; OriginalName = 'B' }
+        [pscustomobject]@{ Name = 'B'; OriginalName = 'A' }
+    )
+    $moved = Move-ModeKeyedEntries -Source ([ordered]@{ 'combo:A' = 1; 'combo:B' = 2 }) -Renames $renames
+    Assert-Equal 2 $moved['combo:C'] 'B moved on to C first'
+    Assert-Equal 1 $moved['combo:B'] 'and only then A took the freed name'
+}
+
+Test-Case 'mode keys: a rule whose mode is gone is dropped, a way back is only cleared' {
+    $rules = @(
+        [ordered]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work'; back = ''; enabled = $true }
+        [ordered]@{ when = 'idle'; minutes = 20; mode = 'all'; back = 'combo:Work'; enabled = $true }
+    )
+    $left = @(Move-RuleModeKeys -Rules $rules -Renames @{} -Gone @('combo:Work'))
+    Assert-Equal 1 $left.Count 'the rule with nowhere to go is dropped'
+    Assert-Equal 'all' ([string]$left[0].mode) 'the other one stays'
+    Assert-Equal '' ([string]$left[0].back) 'with an empty way back - that is legal'
+}
+
+Test-Case 'mode keys: rules survive as objects, not just dictionaries' {
+    # Из ConvertFrom-Json правила приезжают PSCustomObject'ами.
+    $rules = @([pscustomobject]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work'; back = 'all' })
+    $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'Office'; OriginalName = 'Work' })
+    $left = @(Move-RuleModeKeys -Rules $rules -Renames $renames)
+    Assert-Equal 1 $left.Count 'kept'
+    Assert-Equal 'combo:Office' ([string]$left[0].mode) 'and renamed'
+    Assert-Equal 'cs2' ([string]$left[0].process) 'the rest of the rule came along'
+}
+
 # Правила и «монитор появился» держат те же ключи режимов, и переименование в
 # окне обязано доехать и до них. Иначе правило каждые пятнадцать секунд уходило
 # бы в режим, которого больше нет, а переключение отвечало бы «combination no
-# longer exists» — то же место, из-за которого этот переезд делают ещё в двух
-# функциях (Convert-RoleSettingsToCombos и Update-HotkeyKeys).
+# longer exists» — то же место, из-за которого этот переезд делает и
+# Update-HotkeyKeys.
 
 Test-Case 'dialog: renaming a combination carries its rules along' {
     $settings = Get-DefaultSettings
@@ -2569,7 +2624,7 @@ Test-Case 'dialog: renaming a combination carries its rules along' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ui.Combos[0].Name = 'Office'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 2 @($updated.rules).Count 'both rules are still there'
         Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the rule follows the new name'
         Assert-Equal 'combo:Office' ([string]$updated.rules[1].back) 'and so does the way back'
@@ -2589,7 +2644,7 @@ Test-Case 'dialog: removing a combination takes its rules along' {
     $ui = New-DialogUi -Settings $settings
     try {
         Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         # Первое правило уходить некуда — оно больше не правило. Второму пропал
         # только возврат, и пустой возврат законен: «туда, где стол был до».
         Assert-Equal 1 @($updated.rules).Count 'the rule with nowhere to go is gone'
@@ -2609,14 +2664,14 @@ Test-Case 'dialog: a save leaves the rules the tray is living with alone' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ui.Combos[0].Name = 'Office'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the copy moved'
         Assert-Equal 'combo:Work' ([string]$settings.rules[0].mode) 'the original did not'
     }
     finally { $ui.Window.Close() }
 }
 
-# --- предпросмотр стола --------------------------------------------------------
+# --- предпросмотр стола -----------------------------------------------------
 # Картинка считается той же функцией, которой считает переключатель
 # (Get-LayoutPositions), поэтому проверять надо ровно одно: что в неё попадает.
 
@@ -2686,7 +2741,7 @@ Test-Case 'preview: the taskbar display is where the coordinates start' {
     Assert-Equal -3840 $pos['preview-0'].X 'and the other one is to the left of it'
 }
 
-# --- карточка яркости ----------------------------------------------------------
+# --- карточка яркости -------------------------------------------------------
 # Две формы записи (число и словарь) окно обязано уметь и НЕ превращать одну в
 # другую само: развернув число по мониторам, которые сейчас на столе, оно
 # потеряло бы яркость выдернутого и изменило бы смысл «all» для монитора,
@@ -2747,61 +2802,74 @@ Test-Case 'level settings: modes without brightness stay out of the file' {
 }
 
 Test-Case 'level rows: "all displays" lists what is connected' {
-    $ui = New-DialogUi -Settings (Get-DefaultSettings)
-    try {
-        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map ([ordered]@{}))
-        Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') $names 'both connected displays'
-    }
-    finally { $ui.Window.Close() }
+    $names = @(Get-ModeDisplayNames -ModeKey 'all' -State $script:DlgState -Combos @())
+    Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') $names 'both connected displays'
 }
 
 Test-Case 'level rows: a combination lists its displays by their real names' {
-    $settings = Get-DefaultSettings
     # В файле шаблон, а в строке должно стоять полное название монитора: обе
     # записи совпадают, но точнее — то, что видит человек.
-    $settings.combos['Work'] = [ordered]@{ displays = @('ULTRAFINE'); primary = '' }
-    $ui = New-DialogUi -Settings $settings
-    try {
-        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'combo:Work' -Map ([ordered]@{}))
-        Assert-Equal @('LG ULTRAFINE') $names 'resolved to the display name'
-    }
-    finally { $ui.Window.Close() }
+    $combos = @([pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = ''; OriginalName = 'Work' })
+    $names = @(Get-ModeDisplayNames -ModeKey 'combo:Work' -State $script:DlgState -Combos $combos)
+    Assert-Equal @('LG ULTRAFINE') $names 'resolved to the display name'
 }
 
 Test-Case 'level rows: a level for a display that is gone is still shown' {
     # Иначе такую настройку нельзя ни увидеть, ни снять — тем же правилом живут
     # привязки клавиш к отсутствующим мониторам.
-    $ui = New-DialogUi -Settings (Get-DefaultSettings)
-    try {
-        $names = @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map ([ordered]@{ 'XG27AQDMGR' = 40 }))
-        Assert-True ($names -contains 'XG27AQDMGR') 'the orphan row is there'
-    }
-    finally { $ui.Window.Close() }
+    $names = @(Get-LevelRowNames -Displays @('LG ULTRAGEAR') -Map ([ordered]@{ 'XG27AQDMGR' = 40 }))
+    Assert-True ($names -contains 'XG27AQDMGR') 'the orphan row is there'
+    Assert-True ($names -contains 'LG ULTRAGEAR') 'next to the display that is here'
 }
 
-Test-Case 'dialog: the brightness card offers every mode' {
-    $settings = Get-DefaultSettings
-    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
-    $ui = New-DialogUi -Settings $settings
-    try {
-        $keys = @($ui.LevelModeBox.Items | ForEach-Object { [string]$_.Tag })
-        Assert-True ($keys -contains 'all') 'all displays'
-        Assert-True ($keys -contains 'combo:Work') 'the combination'
-        Assert-True ($keys -contains 'solo:LG ULTRAGEAR') 'and each display on its own'
-        Assert-Equal 3 $ui.LevelKindBox.Items.Count 'leave alone / one level / each display'
+Test-Case 'mode editor: brightness is offered for every kind of mode' {
+    # Яркость живёт в редакторе режима — и обязана быть в редакторе любого режима,
+    # не только комбинации.
+    foreach ($mode in @(
+        [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+        [pscustomobject]@{ Key = 'solo:LG ULTRAGEAR'; Title = 'Only LG ULTRAGEAR'; Kind = 'solo'; Available = $true }
+        [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+    )) {
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Level $null -Dark $false
+        try {
+            Assert-Equal 3 $ed.LevelKindBox.Items.Count "leave alone / one level / each display for $($mode.Key)"
+            Assert-Equal 'none' ([string]$ed.Level.Kind) 'nothing set until asked'
+        }
+        finally { $ed.Window.Close() }
     }
-    finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: a brightness set for a mode that no longer exists is still listed' {
+Test-Case 'mode editor: a display mode has no name, members or taskbar to argue about' {
+    $mode = [pscustomobject]@{ Key = 'solo:LG ULTRAGEAR'; Title = 'Only LG ULTRAGEAR'; Kind = 'solo'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Level $null -Dark $false
+    try {
+        Assert-Equal 'Collapsed' ([string]$ed.Window.FindName('ComboPart').Visibility) 'the combination part is out of the way'
+        Assert-Equal 'Only LG ULTRAGEAR' ([string]$ed.Window.FindName('HeadTitle').Text) 'the mode names itself'
+        # Пустое имя у комбинации — отказ; у режима монитора имени нет вовсе, и
+        # Save обязан пройти.
+        $got = Read-ModeFromUi -Editor $ed
+        Assert-True $got.Ok 'saving asks nothing of it'
+        Assert-Null $got.Mode.PSObject.Properties['Name'] 'and it carries no name back'
+    }
+    finally { $ed.Window.Close() }
+}
+
+Test-Case 'dialog: a brightness set for a mode that no longer exists gets its own row' {
     $settings = Get-DefaultSettings
     $settings.brightness['solo:GONE MONITOR'] = 55
     $ui = New-DialogUi -Settings $settings
     try {
-        $keys = @($ui.LevelModeBox.Items | ForEach-Object { [string]$_.Tag })
-        Assert-True ($keys -contains 'solo:GONE MONITOR') 'visible, so it can be cleared'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        # Два монитора, «все» и строка-сирота: увидеть и снять настройку можно
+        # только отсюда.
+        Assert-Equal 4 $ui.ModesPanel.Children.Count 'the setting without a mode is listed'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 55 $updated.brightness['solo:GONE MONITOR'] 'and untouched by a plain Save'
+
+        # Remove у такой строки снимает именно её.
+        Remove-UiOrphan -Ui $ui -Key 'solo:GONE MONITOR'
+        Assert-Equal 3 $ui.ModesPanel.Children.Count 'the row went away'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal $false ($updated.brightness.Contains('solo:GONE MONITOR')) 'and so did the setting'
     }
     finally { $ui.Window.Close() }
 }
@@ -2814,25 +2882,52 @@ Test-Case 'dialog: a hand-written number survives a Save untouched' {
     $settings.brightness['all'] = 80
     $ui = New-DialogUi -Settings $settings
     try {
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 80 $updated.brightness['all'] 'still a number'
         Assert-Equal $false ($updated.brightness['all'] -is [System.Collections.IDictionary]) 'and not a dictionary'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: moving the one-level slider is what gets saved' {
+Test-Case 'mode editor: moving the one-level slider is what gets saved' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        # Как это делает человек: выбрать режим, выбрать форму, подвинуть ползунок.
-        $ui.LevelModeBox.SelectedIndex = 0
-        $key = [string]$ui.LevelModeBox.SelectedItem.Tag
-        $model = Get-SelectedLevelModel -Ui $ui
-        $model.Kind = 'one'
-        $model.Value = 35
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
-        Assert-Equal 35 $updated.brightness[$key] 'the level landed in the settings'
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $null -Dark $false
+        try {
+            # Как это делает человек: выбрать форму, подвинуть ползунок, Save.
+            $ed.LevelKindBox.SelectedIndex = 1
+            $ed.LevelOneSlider.Value = 35
+            Assert-Equal 'Visible' ([string]$ed.LevelOnePanel.Visibility) 'the slider showed up'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'accepted'
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
+        }
+        finally { $ed.Window.Close() }
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 35 $updated.brightness['all'] 'the level landed in the settings'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'mode editor: Cancel leaves the brightness the window already had' {
+    # Редактор правит КОПИЮ модели: иначе «подвигал и передумал» уже изменило бы
+    # настройку, и Cancel врал бы.
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = 70
+    $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    try {
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        try {
+            $ed.LevelOneSlider.Value = 20
+            Assert-Equal 20 ([int]$ed.Level.Value) 'the editor moved'
+        }
+        finally { $ed.Window.Close() }
+        # Ответ редактора не применяли — окно обязано остаться при своих.
+        Assert-Equal 70 ([int]$ui.Levels['all'].Value) 'the window did not'
     }
     finally { $ui.Window.Close() }
 }
@@ -2843,33 +2938,36 @@ Test-Case 'dialog: unticking every display removes the setting instead of writin
     $ui = New-DialogUi -Settings $settings
     try {
         $ui.Levels['all'].Map.Remove('LG ULTRAGEAR')
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal $false ($updated.brightness.Contains('all')) 'the key is gone, not zeroed'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: switching a mode to per-display seeds it from the level it had' {
+Test-Case 'mode editor: switching to per-display seeds it from the level it had' {
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = 70
     $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        # То, что делает выпадающий список «Then...»: человек видел 70 и должен
-        # править от семидесяти, а не от пустого списка.
-        $model = $ui.Levels['all']
-        Assert-Equal 'one' $model.Kind 'started as one level'
-        foreach ($name in @(Get-LevelRowNames -Ui $ui -ModeKey 'all' -Map $model.Map)) {
-            $model.Map[$name] = [int]$model.Value
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        try {
+            Assert-Equal 'one' ([string]$ed.Level.Kind) 'started as one level'
+            # Человек видел 70 и должен править от семидесяти, а не от пустого списка.
+            $ed.LevelKindBox.SelectedIndex = 2
+            $got = Read-ModeFromUi -Editor $ed
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
         }
-        $model.Kind = 'each'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        finally { $ed.Window.Close() }
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 70 $updated.brightness['all']['LG ULTRAGEAR'] 'seeded with what was shown'
         Assert-Equal 70 $updated.brightness['all']['LG ULTRAFINE'] 'for every display of the mode'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: the per-display rows are really built' {
+Test-Case 'mode editor: the per-display rows are really built' {
     # Тест на построение, а не на модель: первая версия строк звала
     # [GridLength]::Parse, которого не существует, и переход на «каждому своё»
     # падал в живом окне. Модель при этом была в полном порядке — поймал снимок
@@ -2877,39 +2975,62 @@ Test-Case 'dialog: the per-display rows are really built' {
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 }
     $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        foreach ($item in @($ui.LevelModeBox.Items)) {
-            if ([string]$item.Tag -eq 'all') { $ui.LevelModeBox.SelectedItem = $item; break }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        try {
+            Assert-Equal 'Collapsed' ([string]$ed.LevelOnePanel.Visibility) 'the single slider is out of the way'
+            Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'a row per display'
+            # Первый столбец строки — галочка «задано», она же подписана названием.
+            $first = $ed.LevelRowsPanel.Children[0]
+            Assert-Equal 'LG ULTRAGEAR' ([string]$first.Children[0].Content) 'named after the display'
+            Assert-True ([bool]$first.Children[0].IsChecked) 'ticked, because a level is set'
+            Assert-Equal 60 ([int]$first.Children[1].Value) 'and the slider stands where the setting says'
         }
-        Update-LevelCard -Ui $ui
-        Assert-Equal 'Collapsed' ([string]$ui.LevelOnePanel.Visibility) 'the single slider is out of the way'
-        Assert-Equal 2 $ui.LevelRowsPanel.Children.Count 'a row per display'
-        # Первый столбец строки — галочка «задано», она же подписана названием.
-        $first = $ui.LevelRowsPanel.Children[0]
-        Assert-Equal 'LG ULTRAGEAR' ([string]$first.Children[0].Content) 'named after the display'
-        Assert-True ([bool]$first.Children[0].IsChecked) 'ticked, because a level is set'
-        Assert-Equal 60 ([int]$first.Children[1].Value) 'and the slider stands where the setting says'
+        finally { $ed.Window.Close() }
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: a display with no level gets an unticked, disabled row' {
+Test-Case 'mode editor: a display with no level gets an unticked, disabled row' {
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60 }
     $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        foreach ($item in @($ui.LevelModeBox.Items)) {
-            if ([string]$item.Tag -eq 'all') { $ui.LevelModeBox.SelectedItem = $item; break }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        try {
+            $rows = @($ed.LevelRowsPanel.Children)
+            $off = @($rows | Where-Object { [string]$_.Children[0].Content -eq 'LG ULTRAFINE' })
+            Assert-Equal 1 $off.Count 'the display without a level still has a row'
+            Assert-Equal $false ([bool]$off[0].Children[0].IsChecked) 'unticked'
+            Assert-Equal $false ([bool]$off[0].Children[1].IsEnabled) 'and its slider is out of action'
+            Assert-Equal 'off' ([string]$off[0].Children[2].Text) 'and it says off, not zero'
         }
-        Update-LevelCard -Ui $ui
-        $rows = @($ui.LevelRowsPanel.Children)
-        $off = @($rows | Where-Object { [string]$_.Children[0].Content -eq 'LG ULTRAFINE' })
-        Assert-Equal 1 $off.Count 'the display without a level still has a row'
-        Assert-Equal $false ([bool]$off[0].Children[0].IsChecked) 'unticked'
-        Assert-Equal $false ([bool]$off[0].Children[1].IsEnabled) 'and its slider is out of action'
-        Assert-Equal 'off' ([string]$off[0].Children[2].Text) 'and it says off, not zero'
+        finally { $ed.Window.Close() }
     }
     finally { $ui.Window.Close() }
+}
+
+Test-Case 'mode editor: unticking a display drops its brightness row with it' {
+    # Иначе под комбинацией остался бы ползунок монитора, которого в ней уже нет.
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+    $level = ConvertTo-LevelModel ([ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 })
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Level $level -Dark $false
+    try {
+        Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'both displays have a row'
+        $uf = @($ed.Checks | Where-Object { [string]$_.Tag -eq 'LG ULTRAFINE' })[0]
+        $uf.IsChecked = $false
+        $uf.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        $names = @($ed.LevelRowsPanel.Children | ForEach-Object { [string]$_.Children[0].Content })
+        # Строка остаётся, но уже как сирота: значение задано, и снять его можно
+        # только видя его.
+        Assert-True ($names -contains 'LG ULTRAGEAR') 'the display that stayed keeps its row'
+        $got = Read-ModeFromUi -Editor $ed
+        Assert-Equal @('LG ULTRAGEAR') @($got.Mode.Patterns) 'and the combination lost the display'
+    }
+    finally { $ed.Window.Close() }
 }
 
 Test-Case 'dialog: renaming a combination carries the sliders too' {
@@ -2919,14 +3040,14 @@ Test-Case 'dialog: renaming a combination carries the sliders too' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ui.Combos[0].Name = 'Office'
-        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings -State $ui.State).Settings
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 45 $updated.brightness['combo:Office'] 'followed the new name'
         Assert-Equal $false ($updated.brightness.Contains('combo:Work')) 'and left no ghost'
     }
     finally { $ui.Window.Close() }
 }
 
-# --- итог --------------------------------------------------------------------
+# --- итог -------------------------------------------------------------------
 
 Remove-Item -LiteralPath $script:TestDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item Env:\MMT_LOG_FILE -ErrorAction SilentlyContinue
