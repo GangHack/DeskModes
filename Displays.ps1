@@ -50,10 +50,6 @@ $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-# Ради одного InputBox для таймера выключения: своё окно на одну строку ввода —
-# это лишняя сотня строк, а сборка лежит в .NET Framework, который здесь и так
-# есть, и ничего не устанавливает.
-Add-Type -AssemblyName Microsoft.VisualBasic
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $script:AppName = 'ScreenDeck'
@@ -96,9 +92,7 @@ $script:StateCache = $null
 
 function Update-StateCache {
     try {
-        # Настройки у трея уже в руках — отдаём их, иначе состояние перечитывало бы
-        # файл с диска на каждое обновление кэша.
-        $script:StateCache = @(Get-DisplayState -Settings (Get-ActiveSettings))
+        $script:StateCache = @(Get-DisplayState)
         # Кто ПОДКЛЮЧЁН (а не включён): по изменению этого набора видно, что
         # монитор воткнули или выдернули, и только на это стоит реагировать —
         # включённые меняем мы сами на каждом переключении (см. Get-ReapplyDecision).
@@ -421,18 +415,6 @@ function Get-AvailableMode {
     return $null
 }
 
-# Стоит ли на столе уже ровно этот набор экранов. Сравниваем НАБОРЫ, а не ключи
-# режимов: пока один монитор не воткнут, «все» и «рабочие» — это один и тот же
-# стол, и сравнение ключей объявило бы переключением то, чего не происходит.
-# «Да» означает, что чинить будем разве что раскладку, и всплывашка не нужна.
-function Test-DeskMatchesMode {
-    param($Mode, $State)
-
-    $wanted = @(Get-ModeMembers -Mode $Mode -State $State | ForEach-Object { $_.Id } | Sort-Object)
-    $on = @($State | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
-    return ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
-}
-
 function Invoke-StartupRestore {
     if (-not (Get-ActiveSettings).restoreLastMode) { return }
 
@@ -559,7 +541,8 @@ function Start-PowerTimer {
     $script:PowerTicker.Start()
     Write-DisplayLog ("power: {0} scheduled in {1} min" -f $Action, $Minutes)
     Update-TrayText
-    Show-Balloon 'Timer set' ('The computer will {0} in {1}. Cancel it from this menu.' -f $Action, (Format-Duration ($Minutes * 60)))
+    Show-Balloon 'Timer set' ('The computer will {0} in {1}, {2}. Cancel it from this menu.' -f $Action,
+                              (Format-DurationShort $Minutes), (Get-TimerTargetText -Minutes $Minutes))
 }
 
 function Stop-PowerTimer {
@@ -571,6 +554,44 @@ function Stop-PowerTimer {
     Write-DisplayLog 'power: timer cancelled'
     Update-TrayText
     if (-not $Quiet) { Show-Balloon 'Timer cancelled' 'The computer stays on.' }
+}
+
+# Подвинуть заведённый таймер, не заводя его заново: «ещё пятнадцать минут» — это
+# сдвиг срока, а не новый отсчёт от нуля, и разница видна как раз тогда, когда
+# просят добавить в третий раз подряд.
+function Add-PowerTime {
+    param([int]$Minutes)
+
+    if (-not $script:PowerDeadline) { return }
+    $when = $script:PowerDeadline.AddMinutes($Minutes)
+
+    # Меньше минуты не оставляем ни при каком убавлении: предупреждение за минуту —
+    # часть уговора, и таймер без него выключил бы компьютер молча.
+    $floor = (Get-Date).AddMinutes(1)
+    if ($when -lt $floor) { $when = $floor }
+    $script:PowerDeadline = $when
+
+    $left = Get-PowerRemaining
+    # Предупреждение снова в силе, если после сдвига до срока больше минуты:
+    # иначе добавленное время прошло бы без него.
+    if ($left -gt 60) { $script:PowerWarned = $false }
+
+    Write-DisplayLog ("power: {0} moved by {1} min, {2} left" -f $script:PowerAction, $Minutes, (Format-Duration $left))
+    Update-TrayText
+    Show-Balloon 'Timer moved' ('The computer will {0} in {1}, {2}.' -f $script:PowerAction,
+                                (Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))))
+}
+
+# С чего открывать окно выбора: с остатка, если этот таймер уже заведён (человек
+# идёт его править), и с сорока пяти минут, если нет.
+function Get-PowerPrefill {
+    param([string]$Action)
+
+    if ($script:PowerDeadline -and $script:PowerAction -eq $Action) {
+        $left = [int][math]::Ceiling((Get-PowerRemaining) / 60.0)
+        if ($left -gt 0) { return $left }
+    }
+    return 45
 }
 
 $script:PowerTicker = New-Object System.Windows.Forms.Timer
@@ -787,23 +808,43 @@ $menu.add_Opening({
 
     # Таймер: «выключи через час», «усни через двадцать минут». Отсчёт видно и
     # здесь, и в подсказке значка — таймер, о котором нельзя узнать, страшный.
+    # Рядом с каждой величиной — время на часах: «через два часа» человек сверяет
+    # с собственными планами не в минутах, а в «во сколько это будет».
     foreach ($spec in @(@{ Action = 'shutdown'; Title = 'Shut down' }, @{ Action = 'sleep'; Title = 'Sleep' })) {
         $action = [string]$spec.Action
         $armed = ($script:PowerDeadline -and $script:PowerAction -eq $action)
+        $left = $(if ($armed) { Get-PowerRemaining } else { 0 })
         $parent = New-Object System.Windows.Forms.ToolStripMenuItem
-        $parent.Text = $(if ($armed) { '{0} in {1}' -f $spec.Title, (Format-Duration (Get-PowerRemaining)) }
+        $parent.Text = $(if ($armed) { '{0} in {1}' -f $spec.Title, (Format-Duration $left) }
                          else { '{0} in...' -f $spec.Title })
         $parent.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
         if ($armed) {
             $parent.Checked = $true
             $parent.Font = Get-UiFont -Semibold
+            $parent.ShortcutKeyDisplayString = Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))
+
+            # Заведённый таймер чаще двигают, чем отменяют: «ещё пятнадцать минут»
+            # — это то, ради чего к нему обычно и возвращаются.
+            foreach ($shift in 15, -15) {
+                $move = New-Object System.Windows.Forms.ToolStripMenuItem
+                $move.Text = $(if ($shift -gt 0) { 'Add {0} minutes' -f $shift }
+                               else { 'Take {0} minutes off' -f [math]::Abs($shift) })
+                $move.Tag = $shift
+                # Убавлять нечего, когда осталось меньше: таймер не должен уметь
+                # выключить компьютер прямо сейчас, мимо предупреждения за минуту.
+                $move.Enabled = ($shift -gt 0 -or $left -gt ([math]::Abs($shift) + 1) * 60)
+                $move.add_Click({ Add-PowerTime -Minutes ([int]$this.Tag) }.GetNewClosure())
+                [void]$parent.DropDownItems.Add($move)
+            }
+
             $cancel = New-Object System.Windows.Forms.ToolStripMenuItem 'Cancel the timer'
             $cancel.add_Click({ Stop-PowerTimer })
             [void]$parent.DropDownItems.Add($cancel)
             [void]$parent.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         }
         foreach ($minutes in 15, 30, 60, 120) {
-            $item = New-Object System.Windows.Forms.ToolStripMenuItem (Format-Duration ($minutes * 60))
+            $item = New-Object System.Windows.Forms.ToolStripMenuItem (Format-DurationShort $minutes)
+            $item.ShortcutKeyDisplayString = Get-TimerTargetText -Minutes $minutes
             $item.Tag = '{0}|{1}' -f $action, $minutes
             $item.add_Click({
                 $parts = ([string]$this.Tag) -split '\|'
@@ -811,21 +852,27 @@ $menu.add_Opening({
             }.GetNewClosure())
             [void]$parent.DropDownItems.Add($item)
         }
-        $custom = New-Object System.Windows.Forms.ToolStripMenuItem 'Another time...'
+        [void]$parent.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+
+        # Своё время — окном (Show-TimerDialog в SettingsDialog.ps1): ползунок,
+        # таблетки, колесо и то же время на часах, что и у готовых величин. Ноль
+        # оттуда означает «передумал», и заводить тогда нечего.
+        $custom = New-Object System.Windows.Forms.ToolStripMenuItem 'Pick a time...'
         $custom.Tag = $action
         $custom.add_Click({
             $act = [string]$this.Tag
-            # Свой диалог ради одной строки — это отдельное окно WPF и сотня строк
-            # кода; InputBox лежит в .NET Framework, который здесь и так есть.
-            $answer = [Microsoft.VisualBasic.Interaction]::InputBox(
-                "In how long? For example 20, 90m or 1h30.", $script:AppName, '45')
-            if (-not $answer) { return }
-            $minutes = ConvertFrom-DurationText $answer
-            if ($minutes -le 0) {
-                Show-Balloon 'Did not understand that' "Try a number of minutes (45), or 90m, or 1h30." 'Warning'
-                return
+            # Ошибку в построении окна WinForms показывает безымянным системным
+            # окном, без подробностей. Ловим сами и пишем в журнал.
+            try {
+                $minutes = Show-TimerDialog -Action $act -Minutes (Get-PowerPrefill -Action $act)
+                if ($minutes -gt 0) { Start-PowerTimer -Minutes $minutes -Action $act }
             }
-            Start-PowerTimer -Minutes $minutes -Action $act
+            catch {
+                Write-DisplayLog "timer dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
+                Show-Balloon 'Could not open the timer' 'Details are in the log.' 'Warning'
+            }
+            # Окно WPF, как и настройки, оставляет за собой рабочий набор.
+            Optimize-TrayMemory
         }.GetNewClosure())
         [void]$parent.DropDownItems.Add($custom)
         [void]$menu.Items.Add($parent)

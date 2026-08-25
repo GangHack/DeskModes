@@ -93,10 +93,10 @@ function Resolve-ModeKey {
     throw "Unknown mode '$Text'. Run: .\Set-Display.ps1 modes"
 }
 
-# Настройки читаются один раз и раздаются дальше: и состоянию, и режимам нужен
-# состав комбинаций. Иначе каждый потребитель шёл бы на диск сам.
+# Настройки читаются один раз и раздаются дальше: состав комбинаций нужен
+# режимам. Иначе каждый потребитель шёл бы на диск сам.
 $settings = Get-DisplaySettings
-$state = @(Get-DisplayState -Settings $settings)
+$state = @(Get-DisplayState)
 
 if ($Mode -eq 'status') {
     Write-Host ''

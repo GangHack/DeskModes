@@ -1,5 +1,6 @@
 ﻿<#
-    SettingsDialog.ps1 — окно настроек ScreenDeck.
+    SettingsDialog.ps1 — окна ScreenDeck на WPF: настройки, редактор режима и
+    выбор времени для таймера.
 
     WPF, а не WinForms: у WinForms нет шаблонов, и «современно» там означает
     рисовать каждую кнопку руками в Paint. В WPF скруглённые углы, тумблеры и
@@ -12,6 +13,11 @@
         New-SettingsWindow    собрать окно, вернуть его и элементы (проверяемо)
         Read-SettingsFromUi   собрать настройки из элементов окна (проверяемо)
         Show-SettingsDialog   показать и вернуть изменённые настройки или $null
+        New-TimerWindow       собрать окно таймера (проверяемо)
+        Show-TimerDialog      показать его и вернуть минуты или 0
+
+    Общее у них — палитра, ресурсы разметки и Convert-UiXaml: три окна одного
+    приложения обязаны выглядеть как одно, а не как три.
 
     Тема — системная: тёмная/светлая и акцентный цвет читаются из реестра при
     каждом открытии (Test-DarkTheme и Get-AccentColor в DisplayCore.ps1).
@@ -525,6 +531,69 @@ $script:UiResourcesXaml = @'
                     </Setter>
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- Крупное поле окна таймера: сама цифра, без коробки вокруг неё. Поле,
+             а не надпись — в него можно писать; но выглядеть оно должно как
+             значение, а не как форма, поэтому рамка появляется только под
+             курсором и в фокусе, и только снизу. -->
+        <Style x:Key="Big" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FontSize" Value="30"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="0,0,0,2" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource InputBorderBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Таблетка быстрого значения: «15 min», «1 h». Обводка акцентом под
+             курсором, а не заливка — их несколько в ряд, и заливка превратила бы
+             ряд в светофор. -->
+        <Style x:Key="Chip" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="13" Background="{StaticResource MiniBrush}"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 '@
 
@@ -1393,38 +1462,6 @@ function ConvertTo-BrightnessSettings {
     return $out
 }
 
-# Мониторы режима — по именам, как их запишут в файл. Ключ режима знает о них
-# всё: «all» — весь стол, «solo:» — один монитор, «combo:» — набор из рабочего
-# списка окна.
-function Get-ModeDisplayNames {
-    param([string]$ModeKey, $State, $Combos)
-
-    $names = @()
-    $live = @($State | Where-Object { $_ })
-
-    if ($ModeKey -eq 'all') {
-        $names = @($live | Where-Object { -not $_.Disconnected } | ForEach-Object { [string]$_.Label })
-    }
-    elseif ($ModeKey -like 'solo:*') {
-        $names = @($ModeKey.Substring(5))
-    }
-    elseif ($ModeKey -like 'combo:*') {
-        $name = $ModeKey.Substring(6)
-        $combo = @($Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
-        if ($combo.Count -gt 0) {
-            foreach ($pattern in @($combo[0].Patterns)) {
-                if (-not $pattern) { continue }
-                # Название монитора точнее шаблона: «ULTRAFINE» из файла станет
-                # «LG ULTRAFINE», и обе записи по-прежнему совпадают (сравнение
-                # идёт вхождением в обе стороны).
-                $hit = @($live | Where-Object { Test-DisplayNameMatch -Pattern $pattern -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1)
-                $names += $(if ($hit.Count -gt 0) { [string]$hit[0].Label } else { [string]$pattern })
-            }
-        }
-    }
-    return @($names | Where-Object { $_ })
-}
-
 # Строки ползунков: мониторы режима плюс «сироты» — имена, которые уже есть в
 # карте, но ни одному монитору режима не соответствуют (монитор увезли,
 # комбинацию правили рукой). Их надо ПОКАЗАТЬ, иначе настройку нельзя ни
@@ -1456,13 +1493,18 @@ $script:LevelKindTitles = [ordered]@{
 
 # Яркость из настроек — в рабочие модели окна, ключом режима. Правит их редактор
 # режима, а уезжают они на Save (см. ConvertTo-BrightnessSettings).
+#
+# Пустых моделей здесь не заводится: «ключ есть, а яркости в нём нет» — это не
+# настройка, а мусор из файла ({} или число, которое не число). Раз его не
+# кладут, «пусто значит нет» не приходится проверять всем, кто в карту смотрит.
 function Import-LevelSettings {
     param($Ui, $Settings)
 
     $Ui.Levels = [ordered]@{}
     if ($Settings -and $Settings.brightness) {
         foreach ($key in @($Settings.brightness.Keys)) {
-            $Ui.Levels[[string]$key] = ConvertTo-LevelModel $Settings.brightness[$key]
+            $model = ConvertTo-LevelModel $Settings.brightness[$key]
+            if ($null -ne (ConvertFrom-LevelModel $model)) { $Ui.Levels[[string]$key] = $model }
         }
     }
 }
@@ -1481,16 +1523,20 @@ function Copy-LevelModel {
     return $copy
 }
 
-# Мониторы, на которые смотрит редактор. У комбинации — ОТМЕЧЕННЫЕ галочки, а не
-# то, что записано в файле: человек снял монитор — строка яркости обязана уйти
-# вместе с ним, не дожидаясь Save.
+# Мониторы, на которые смотрит редактор, — по именам, как их запишут в файл. У
+# комбинации это ОТМЕЧЕННЫЕ галочки, а не то, что записано в файле: человек снял
+# монитор — строка яркости обязана уйти вместе с ним, не дожидаясь Save. У
+# остальных состав задан столом, и спрашивают о нём Get-ModeMembers — того же, кто
+# отвечает на этот вопрос при переключении. Разбирать ключ самим нельзя: у двух
+# одинаковых моделей в соло-ключе стоит короткий ID или «#2», а не имя монитора.
 function Get-EditorDisplayNames {
     param($Editor)
 
     if ($Editor.Kind -eq 'combo') {
         return @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
     }
-    return @(Get-ModeDisplayNames -ModeKey ([string]$Editor.ModeKey) -State $Editor.State -Combos @())
+    if (-not $Editor.Mode) { return @() }
+    return @(Get-ModeMembers -Mode $Editor.Mode -State $Editor.State | ForEach-Object { [string]$_.Label })
 }
 
 # Список форм записи — в редактор. Порядок пунктов и есть порядок
@@ -1662,6 +1708,17 @@ function Invoke-LevelProbe {
 # яркостью. Трёх карточек на это больше нет: человек ищет настройки режима там,
 # где нажал Edit.
 
+# Снять с ключа всё, что это окно держит у себя. Одним местом на все три случая
+# (переименование, удаление комбинации, снятая строка-сирота): настроек, живущих
+# в окне под ключом режима, уже две, и разъехавшиеся копии оставили бы
+# настройку-призрак — ту самую, которую не видно ни в одном окне.
+function Remove-UiModeKey {
+    param($Ui, [string]$Key)
+
+    if ($Ui.Hotkeys.Contains($Key)) { $Ui.Hotkeys.Remove($Key) }
+    if ($Ui.Levels.Contains($Key))  { $Ui.Levels.Remove($Key) }
+}
+
 # Применить ответ редактора к рабочему состоянию окна. Отдельно от обработчиков
 # кликов: это и есть проверяемая часть правки, обработчики только зовут редактор
 # и передают его ответ сюда.
@@ -1698,19 +1755,25 @@ function Set-UiMode {
     # бы настройка-призрак, которой не видно ни в одном окне. То же самое для
     # звука и команд делает Read-SettingsFromUi — там ключ известен только на Save.
     if ($oldKey -and $newKey -and $oldKey -ne $newKey) {
-        if ($Ui.Hotkeys.Contains($oldKey)) { $Ui.Hotkeys.Remove($oldKey) }
-        if ($Ui.Levels.Contains($oldKey))  { $Ui.Levels.Remove($oldKey) }
+        Remove-UiModeKey -Ui $Ui -Key $oldKey
     }
 
+    # Что показал редактор, то и сохраняем — включая пустое. Пустая клавиша
+    # честно означает «клавиши нет»: человек мог её и снять. Поэтому редактору и
+    # показывают настройки, оставшиеся под этим ключом от прежней жизни имени
+    # (см. Sync-EditorInheritance): иначе пустое поле стирало бы то, чего человек
+    # не видел.
     if ($newKey) {
-        # Пустая клавиша честно означает «клавиши нет»: человек мог её и снять.
         if ($null -ne $Edited.PSObject.Properties['Hotkey']) {
             $parsed = ConvertFrom-HotkeyString ([string]$Edited.Hotkey)
             if ($parsed) { $Ui.Hotkeys[$newKey] = $parsed.Text }
             elseif ($Ui.Hotkeys.Contains($newKey)) { $Ui.Hotkeys.Remove($newKey) }
         }
+        # Модель без яркости — не настройка: ключа с ней в карте быть не должно
+        # (см. Import-LevelSettings).
         if ($null -ne $Edited.PSObject.Properties['Level']) {
-            $Ui.Levels[$newKey] = $Edited.Level
+            if ($null -ne (ConvertFrom-LevelModel $Edited.Level)) { $Ui.Levels[$newKey] = $Edited.Level }
+            elseif ($Ui.Levels.Contains($newKey)) { $Ui.Levels.Remove($newKey) }
         }
     }
 
@@ -1726,10 +1789,7 @@ function Remove-UiCombo {
     if ($Combo.OriginalName) { $keys += ('combo:' + $Combo.OriginalName) }
     $Ui.DeletedComboKeys = @($Ui.DeletedComboKeys) + $keys
     $Ui.Combos.Remove($Combo)
-    foreach ($key in $keys) {
-        if ($Ui.Hotkeys.Contains($key)) { $Ui.Hotkeys.Remove($key) }
-        if ($Ui.Levels.Contains($key))  { $Ui.Levels.Remove($key) }
-    }
+    foreach ($key in $keys) { Remove-UiModeKey -Ui $Ui -Key $key }
     Update-ModesPanel -Ui $Ui
 }
 
@@ -1739,9 +1799,19 @@ function Remove-UiCombo {
 function Remove-UiOrphan {
     param($Ui, [string]$Key)
 
-    if ($Ui.Hotkeys.Contains($Key)) { $Ui.Hotkeys.Remove($Key) }
-    if ($Ui.Levels.Contains($Key))  { $Ui.Levels.Remove($Key) }
+    Remove-UiModeKey -Ui $Ui -Key $Key
     Update-ModesPanel -Ui $Ui
+}
+
+# Рабочая запись комбинации по ключу режима. Имя комбинации и есть её ключ без
+# префикса, а разбирает ключи Get-ModeTitleFromKey — одно место на весь код, и
+# ширина префикса не прибита гвоздём по четырём файлам.
+function Get-UiCombo {
+    param($Ui, [string]$Key)
+
+    if ($Key -notlike 'combo:*') { return $null }
+    $name = Get-ModeTitleFromKey $Key
+    return @($Ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
 }
 
 # Редактор режима: сборка отдельно от показа, по той же причине, что и у
@@ -1839,6 +1909,64 @@ function Add-ComboMemberChecks {
     return $checks
 }
 
+# Ключ режима, который правит редактор ПРЯМО СЕЙЧАС. У комбинации он собран из
+# имени в поле, а не взят с входа: имя и есть ключ, поэтому «завести комбинацию
+# Movie» и «переименовать комбинацию в Movie» ведут к одному и тому же ключу
+# `combo:Movie` — со всем, что под ним лежит.
+function Get-EditorModeKey {
+    param($Editor)
+
+    if ($Editor.Kind -ne 'combo') { return [string]$Editor.ModeKey }
+    $name = $Editor.NameBox.Text.Trim()
+    if (-not $name) { return '' }
+    return 'combo:' + $name
+}
+
+# Модель яркости в том виде, в каком она уедет в файл, — строкой, чтобы две
+# модели можно было сравнить. Пусто означает «яркость не задана».
+function Get-LevelFingerprint {
+    param($Model)
+
+    $value = ConvertFrom-LevelModel $Model
+    if ($null -eq $value) { return '' }
+    return (ConvertTo-Json $value -Compress -Depth 4)
+}
+
+# Настройки, оставшиеся под набранным именем, — в поля редактора.
+#
+# Комбинацию можно стереть из файла рукой, а её клавишу, яркость, звук и команды
+# оставить: они лежат под ключом `combo:<имя>`, и окно показывает их строкой-
+# сиротой. Завести комбинацию с тем же именем — значит занять тот самый ключ:
+# звук и команды достанутся ей в любом случае (их переносит Read-SettingsFromUi,
+# ключ там известен только на Save). Значит и клавиша с яркостью обязаны
+# достаться — и обязаны быть ВИДНЫ, иначе пустые поля молча стёрли бы две
+# настройки из четырёх, а человек так и не узнал бы, что унаследовал остальные две.
+#
+# Подставляем только в пустое поле или поверх того, что подставили сами: своё
+# человек правит руками, и затирать его правку набранным именем нельзя.
+function Sync-EditorInheritance {
+    param($Editor)
+
+    $key = Get-EditorModeKey -Editor $Editor
+    if ($key -eq $Editor.ShownKey) { return }
+    $Editor.ShownKey = $key
+
+    $inherited = ConvertFrom-HotkeyString $(if ($key -and $Editor.Hotkeys.Contains($key)) { [string]$Editor.Hotkeys[$key] } else { '' })
+    $shown = ConvertFrom-HotkeyString $Editor.HotkeyBox.Text
+    if (-not $shown -or ($Editor.AutoHotkey -and $shown.Text -eq $Editor.AutoHotkey)) {
+        $Editor.AutoHotkey = $(if ($inherited) { $inherited.Text } else { '' })
+        $Editor.HotkeyBox.Text = $(if ($inherited) { $inherited.Text } else { $script:NoHotkeyText })
+    }
+
+    $level = $(if ($key -and $Editor.Levels.Contains($key)) { $Editor.Levels[$key] } else { $null })
+    $shownLevel = Get-LevelFingerprint $Editor.Level
+    if (-not $shownLevel -or $shownLevel -eq $Editor.AutoLevel) {
+        $Editor.Level = Copy-LevelModel $level
+        $Editor.AutoLevel = Get-LevelFingerprint $Editor.Level
+        Update-EditorLevel -Editor $Editor
+    }
+}
+
 function New-ModeEditorWindow {
     param(
         # Режим, который правим. $null — создаём новую комбинацию.
@@ -1847,14 +1975,14 @@ function New-ModeEditorWindow {
         # либо комбинация ещё не заведена.
         $Combo,
         $State,
-        # Модель яркости режима. Правится КОПИЯ: Cancel обязан оставить окно с
-        # тем, что было.
-        $Level,
+        # Клавиши и яркость ВСЕХ режимов окна, парами «ключ режима -> значение».
+        # Не два готовых значения: у комбинации ключ следует за именем в поле, и
+        # пока имя набирают, редактор обязан сам находить и то, что достанется
+        # этому имени, и то, что считать чужой клавишей. Яркость правится КОПИЕЙ:
+        # Cancel обязан оставить окно с тем, что было.
+        $Hotkeys,
+        $Levels,
         [string[]]$TakenNames = @(),
-        [string]$Hotkey = '',
-        # Комбинации, занятые другими режимами: назначить одну клавишу дважды
-        # нельзя, и сказать об этом надо сейчас, а не после закрытия редактора.
-        [string[]]$TakenHotkeys = @(),
         $Owner,
         [bool]$Dark
     )
@@ -1880,9 +2008,17 @@ function New-ModeEditorWindow {
 
     Set-ModeEditorHeader -Window $win -Kind $kind -Mode $Mode -Combo $Combo
 
+    # Ключ, под которым режим лежит на входе. У новой комбинации его ещё нет —
+    # он появится из имени, которое наберут в поле.
+    $key = $(if ($Mode) { [string]$Mode.Key } else { '' })
+    if (-not $Hotkeys) { $Hotkeys = [ordered]@{} }
+    if (-not $Levels)  { $Levels  = [ordered]@{} }
+    $hotkeyText = $(if ($key -and $Hotkeys.Contains($key)) { [string]$Hotkeys[$key] } else { '' })
+    $level = $(if ($key -and $Levels.Contains($key)) { $Levels[$key] } else { $null })
+
     $hotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
     Register-HotkeyCapture -Box $hotkeyBox
-    $parsedHotkey = ConvertFrom-HotkeyString $Hotkey
+    $parsedHotkey = ConvertFrom-HotkeyString $hotkeyText
     $hotkeyBox.Text = $(if ($parsedHotkey) { $parsedHotkey.Text } else { $script:NoHotkeyText })
 
     $clearHotkey = $win.FindName('ClearHotkeyBtn')
@@ -1898,7 +2034,10 @@ function New-ModeEditorWindow {
     $ed = [pscustomobject]@{
         Window         = $win
         Kind           = $kind
-        ModeKey        = $(if ($Mode) { [string]$Mode.Key } else { '' })
+        # Сам режим, а не только его ключ: состав режима спрашивают у
+        # Get-ModeMembers, и по ключу его не восстановить.
+        Mode           = $Mode
+        ModeKey        = $key
         NameBox        = $nameBox
         Checks         = $checks
         PrimaryBox     = $primaryBox
@@ -1913,10 +2052,16 @@ function New-ModeEditorWindow {
         # Пока панель перестраивается, обработчики ползунков молчат: иначе
         # программная установка значения тут же считалась бы правкой человека.
         LevelBusy      = $false
-        Level          = (Copy-LevelModel $Level)
+        Level          = (Copy-LevelModel $level)
         State          = @($State)
         TakenNames     = @($TakenNames)
-        TakenHotkeys   = @($TakenHotkeys)
+        Hotkeys        = $Hotkeys
+        Levels         = $Levels
+        # Чей ключ сейчас в полях и что подставили в них мы сами: правку человека
+        # именем не затираем (см. Sync-EditorInheritance).
+        ShownKey       = $key
+        AutoHotkey     = ''
+        AutoLevel      = ''
         Result         = $null
     }
     # Обработчики находят редактор здесь, а не в замыкании: см. комментарий об
@@ -1924,6 +2069,14 @@ function New-ModeEditorWindow {
     $script:ActiveEditor = $ed
 
     Initialize-EditorLevel -Editor $ed
+
+    # За именем следим, а не спрашиваем его на OK: имя — это ключ режима, и от
+    # него зависит, чьи настройки редактор показывает и что считает чужой клавишей.
+    $nameBox.add_TextChanged({
+        $ed = $script:ActiveEditor
+        if (-not $ed) { return }
+        Sync-EditorInheritance -Editor $ed
+    })
 
     $ed.LevelKindBox.add_SelectionChanged({
         $ed = $script:ActiveEditor
@@ -1993,10 +2146,20 @@ function Read-ModeFromUi {
     $parsed = ConvertFrom-HotkeyString $Editor.HotkeyBox.Text
     if ($parsed) { $hk = $parsed.Text }
 
-    if ($hk -and @($Editor.TakenHotkeys) -contains $hk) {
-        return [pscustomobject]@{
-            Ok = $false; Mode = $null
-            Problem = "$hk already drives another mode. Each combination of keys can only drive one."
+    # Чужая клавиша — та, что стоит у ДРУГОГО ключа. Своим ключ делает имя в поле
+    # (см. Get-EditorModeKey): иначе комбинация, названная именем строки-сироты,
+    # спорила бы за клавишу сама с собой — и человеку показали бы режим, которого
+    # он не видит и открыть не может.
+    if ($hk) {
+        $selfKey = Get-EditorModeKey -Editor $Editor
+        foreach ($key in @($Editor.Hotkeys.Keys)) {
+            if ([string]$key -eq $selfKey) { continue }
+            $other = ConvertFrom-HotkeyString ([string]$Editor.Hotkeys[$key])
+            if (-not $other -or $other.Text -ne $hk) { continue }
+            return [pscustomobject]@{
+                Ok = $false; Mode = $null
+                Problem = "$hk already drives '$(Get-ModeTitleFromKey ([string]$key))'. Each combination of keys can only drive one mode."
+            }
         }
     }
 
@@ -2039,16 +2202,15 @@ function Show-ModeEditor {
         $Mode,
         $Combo,
         $State,
-        $Level,
+        $Hotkeys,
+        $Levels,
         [string[]]$TakenNames = @(),
-        [string]$Hotkey = '',
-        [string[]]$TakenHotkeys = @(),
         $Owner,
         [bool]$Dark
     )
 
-    $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State -Level $Level `
-                               -TakenNames $TakenNames -Hotkey $Hotkey -TakenHotkeys $TakenHotkeys `
+    $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State `
+                               -Hotkeys $Hotkeys -Levels $Levels -TakenNames $TakenNames `
                                -Owner $Owner -Dark $Dark
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
@@ -2066,30 +2228,14 @@ function Show-ModeEditor {
 function Invoke-ModeEditor {
     param($Ui, $Mode, $Combo)
 
-    $key = $(if ($Mode) { [string]$Mode.Key } else { '' })
+    # Клавиши и яркость отдаём картами целиком: свою запись редактор находит по
+    # ключу сам, и ключ этот меняется вместе с именем, пока окно открыто.
     $taken = @($Ui.Combos | Where-Object { -not $Combo -or $_ -ne $Combo } | ForEach-Object { [string]$_.Name })
-    $hotkey = $(if ($key -and $Ui.Hotkeys.Contains($key)) { [string]$Ui.Hotkeys[$key] } else { '' })
-    $level = $(if ($key -and $Ui.Levels.Contains($key)) { $Ui.Levels[$key] } else { $null })
 
-    $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State -Level $level `
-                            -TakenNames $taken -Hotkey $hotkey `
-                            -TakenHotkeys (Get-TakenHotkeys -Ui $Ui -ExceptKey $key) `
+    $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State `
+                            -Hotkeys $Ui.Hotkeys -Levels $Ui.Levels -TakenNames $taken `
                             -Owner $Ui.Window -Dark $Ui.Dark
     if ($made) { Set-UiMode -Ui $Ui -Mode $Mode -Combo $Combo -Edited $made }
-}
-
-# Комбинации клавиш, занятые всеми режимами, КРОМЕ одного (того, что сейчас в
-# редакторе): его собственная клавиша — не конфликт.
-function Get-TakenHotkeys {
-    param($Ui, [string]$ExceptKey = '')
-
-    $taken = @()
-    foreach ($key in @($Ui.Hotkeys.Keys)) {
-        if ($ExceptKey -and $key -eq $ExceptKey) { continue }
-        $parsed = ConvertFrom-HotkeyString ([string]$Ui.Hotkeys[$key])
-        if ($parsed) { $taken += $parsed.Text }
-    }
-    return $taken
 }
 
 # --- список режимов ---------------------------------------------------------
@@ -2152,16 +2298,13 @@ function Resolve-PanelModes {
     # Настройки без режима — своей строкой. Клавиша занята глобально
     # (RegisterHotKey работает независимо от наличия монитора), а яркость висит
     # на ключе, которого больше нет; увидеть и снять то и другое можно только
-    # отсюда. Пустая модель яркости строки не держит: она заводится от одного
-    # захода в редактор и ничего не значит.
+    # отсюда. В картах окна лежат только настоящие настройки (см.
+    # Import-LevelSettings), поэтому любой незнакомый ключ здесь — это строка.
     $known = @($modes | ForEach-Object { [string]$_.Key })
     $strays = @()
     foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys))) {
         $key = [string]$key
         if (-not $key -or $known -contains $key -or $strays -contains $key) { continue }
-        if (-not $Ui.Hotkeys.Contains($key)) {
-            if ($null -eq (ConvertFrom-LevelModel $Ui.Levels[$key])) { continue }
-        }
         $strays += $key
     }
     foreach ($key in $strays) {
@@ -2269,12 +2412,7 @@ function Update-ModesPanel {
                 $ui = $script:ActiveUi
                 $mode = $this.Tag
                 if (-not $ui -or -not $mode) { return }
-                $combo = $null
-                if ([string]$mode.Kind -eq 'combo') {
-                    $name = ([string]$mode.Key).Substring(6)
-                    $combo = @($ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
-                }
-                Invoke-ModeEditor -Ui $ui -Mode $mode -Combo $combo
+                Invoke-ModeEditor -Ui $ui -Mode $mode -Combo (Get-UiCombo -Ui $ui -Key ([string]$mode.Key))
             })
         }
 
@@ -2297,8 +2435,7 @@ function Update-ModesPanel {
                     Remove-UiOrphan -Ui $ui -Key ([string]$mode.Key)
                     return
                 }
-                $name = ([string]$mode.Key).Substring(6)
-                $combo = @($ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
+                $combo = Get-UiCombo -Ui $ui -Key ([string]$mode.Key)
                 if ($combo) { Remove-UiCombo -Ui $ui -Combo $combo }
             })
         }
@@ -2588,5 +2725,309 @@ function Show-SettingsDialog {
     finally {
         $ui.Window.Close()
         $script:ActiveUi = $null
+    }
+}
+
+# --- окно таймера -----------------------------------------------------------
+# «Выключи через сколько-то». Готовые величины лежат в меню трея; это окно — про
+# всё остальное, и значение в нём можно ВЗЯТЬ, а не только описать словами:
+# ползунок по неровным ступеням (Get-TimerSteps), таблетки на ходовые величины,
+# колесо и стрелки на пять минут. И всё это время видно время на часах, в которое
+# оно произойдёт: «через 340 минут» не говорит ничего, «в 06:20 завтра» говорит
+# всё. Поле ввода при этом никуда не делось — набрать «1h30» иногда быстрее.
+#
+# Окно без рамки и закрывается, когда с него уходят: это всплывашка у курсора, а
+# не форма. Собирается отдельно от показа (New-TimerWindow / Show-TimerDialog) —
+# как и остальные окна здесь, ради тестов.
+
+$script:TimerWindowXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ScreenDeck - Timer"
+        Width="330" Height="236"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen" Topmost="True"
+        Background="%%BG%%" Foreground="%%TEXT%%"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        UseLayoutRounding="True">
+    <Window.Resources>
+%%RES%%
+    </Window.Resources>
+    <!-- Рамка заметная (InputBorderBrush, не CardBorderBrush): окно без заголовка
+         висит над чужими окнами, и край ему нужен настоящий. -->
+    <Border BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1" Padding="18,12,18,14">
+        <StackPanel>
+            <TextBlock x:Name="CaptionText" Style="{StaticResource RowSub}" FontSize="11" Margin="0,0,0,2"/>
+            <TextBox x:Name="ValueBox" Style="{StaticResource Big}"/>
+            <TextBlock x:Name="TargetText" Style="{StaticResource RowSub}" FontSize="12.5" Margin="0,3,0,0"/>
+            <Slider x:Name="Dial" Style="{StaticResource Level}" Margin="0,10,0,0"/>
+            <StackPanel x:Name="ChipRow" Orientation="Horizontal" Margin="0,6,0,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84" IsCancel="True"/>
+                <Button x:Name="StartBtn" Style="{StaticResource BtnAccent}" Width="124" Margin="8,0,0,0" IsDefault="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
+'@
+
+# Окно, с которым идёт работа прямо сейчас (см. комментарий об обработчиках
+# выше: замыканий здесь нет, состояние обработчики берут отсюда).
+$script:ActiveTimerUi = $null
+
+# Куда положить всплывашку: над курсором и по нему по центру, но целиком внутри
+# отданной области. Чистая функция, все размеры — в единицах WPF.
+function Get-PopupPlacement {
+    param([double]$X, [double]$Y, [double]$Width, [double]$Height,
+          [double]$Left, [double]$Top, [double]$Right, [double]$Bottom, [double]$Gap = 12)
+
+    # Имена не $x/$y: у переменных PowerShell нет регистра, и такая пара молча
+    # оказалась бы теми же $X/$Y, что приехали в параметрах.
+    $px = $X - $Width / 2
+    # Над курсором: меню трея открывается снизу справа, и окно, выпадающее ВНИЗ,
+    # уехало бы под панель задач. Не помещается сверху — уходим под курсор.
+    $py = $Y - $Height - $Gap
+    if ($py -lt $Top) { $py = $Y + $Gap }
+
+    if ($py + $Height -gt $Bottom) { $py = $Bottom - $Height }
+    if ($py -lt $Top) { $py = $Top }
+    if ($px + $Width -gt $Right) { $px = $Right - $Width }
+    if ($px -lt $Left) { $px = $Left }
+    return [pscustomobject]@{ X = $px; Y = $py }
+}
+
+# То же, но для настоящего экрана: курсор и рабочая область берутся у Windows.
+# Не вышло — окно останется там, где его поставит WindowStartupLocation.
+function Set-PopupPlace {
+    param($Window)
+
+    try {
+        $pt = [System.Windows.Forms.Control]::MousePosition
+        $area = [System.Windows.Forms.Screen]::FromPoint($pt).WorkingArea
+
+        # Пиксели -> единицы WPF. На мониторе с масштабом 150% это разные числа,
+        # и окно, поставленное по пикселям, уехало бы на треть экрана.
+        $sx = 1.0; $sy = 1.0
+        $src = [System.Windows.PresentationSource]::FromVisual($Window)
+        if ($src -and $src.CompositionTarget) {
+            $t = $src.CompositionTarget.TransformFromDevice
+            $sx = $t.M11; $sy = $t.M22
+        }
+
+        $place = Get-PopupPlacement -X ($pt.X * $sx) -Y ($pt.Y * $sy) `
+                                    -Width $Window.Width -Height $Window.Height `
+                                    -Left ($area.Left * $sx)  -Top ($area.Top * $sy) `
+                                    -Right ($area.Right * $sx) -Bottom ($area.Bottom * $sy)
+        $Window.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+        $Window.Left = $place.X
+        $Window.Top  = $place.Y
+    }
+    catch { }   # не вышло — окно встанет по центру экрана
+}
+
+# Единственное место, где значение окна становится видимым: и поле, и ползунок,
+# и подпись «во сколько», и кнопка обновляются отсюда. -KeepText — когда значение
+# приехало из самого поля: переписывать текст под пальцами набирающего нельзя.
+function Set-TimerValue {
+    param($Ui, [int]$Minutes, [switch]$KeepText)
+
+    if ($Minutes -lt 1) { $Minutes = 1 }
+    if ($Minutes -gt $script:TimerMaxMinutes) { $Minutes = $script:TimerMaxMinutes }
+    $Ui.Minutes = $Minutes
+
+    # Пока идёт синхронизация, обработчики поля и ползунка молчат: иначе они
+    # переставляли бы друг друга по кругу.
+    $Ui.Syncing = $true
+    try {
+        if (-not $KeepText) {
+            $Ui.ValueBox.Text = Format-DurationShort $Minutes
+            $Ui.ValueBox.CaretIndex = $Ui.ValueBox.Text.Length
+        }
+        $Ui.Dial.Value = Get-TimerStepIndex -Minutes $Minutes
+    }
+    finally { $Ui.Syncing = $false }
+
+    $Ui.TargetText.Text = Get-TimerTargetText -Minutes $Minutes
+    $Ui.StartBtn.IsEnabled = $true
+}
+
+# Набрано то, чего мы не понимаем. Кнопку гасим и говорим, что понимаем: молча
+# отказываться заводить таймер — худшее из возможного.
+function Clear-TimerValue {
+    param($Ui)
+
+    $Ui.Minutes = 0
+    $Ui.TargetText.Text = 'minutes, or 1h30 - up to {0}' -f (Format-DurationShort $script:TimerMaxMinutes)
+    $Ui.StartBtn.IsEnabled = $false
+}
+
+function New-TimerWindow {
+    param(
+        [ValidateSet('shutdown', 'sleep')][string]$Action = 'sleep',
+        # С чего начать: остаток уже заведённого таймера либо ходовые сорок пять
+        # минут (см. Get-PowerPrefill в Displays.ps1).
+        [int]$Minutes = 45
+    )
+
+    Initialize-WpfRuntime
+
+    $dark = Test-DarkTheme
+    $palette = Get-UiPalette -Dark $dark
+    $win = Convert-UiXaml -Xaml $script:TimerWindowXaml -Palette $palette
+    Register-WindowTheme -Window $win -Dark $dark
+
+    $ui = [pscustomobject]@{
+        Window     = $win
+        Dark       = $dark
+        Action     = $Action
+        ValueBox   = $win.FindName('ValueBox')
+        TargetText = $win.FindName('TargetText')
+        Dial       = $win.FindName('Dial')
+        StartBtn   = $win.FindName('StartBtn')
+        CancelBtn  = $win.FindName('CancelBtn')
+        # Минуты, которые уедут наружу. Ноль означает «набрано непонятное».
+        Minutes    = 0
+        Syncing    = $false
+        # Окно хоть раз получало фокус. До этого уход фокуса не считается: окно
+        # открывается из меню трея, и первые кадры его жизни фокуса нет.
+        Seen       = $false
+        Result     = 0
+    }
+
+    $win.FindName('CaptionText').Text = $(if ($Action -eq 'sleep') { 'SLEEP IN' } else { 'SHUT DOWN IN' })
+    $ui.StartBtn.Content = $(if ($Action -eq 'sleep') { 'Sleep' } else { 'Shut down' })
+
+    # Ползунок ходит по НОМЕРУ ступени, а не по минутам: ступени неровные (см.
+    # Get-TimerSteps), и ровный ход ручки — единственный способ дать и «через
+    # пять минут», и «через двенадцать часов» на одной дорожке.
+    $ui.Dial.Minimum = 0
+    $ui.Dial.Maximum = (Get-TimerSteps).Count - 1
+    $ui.Dial.SmallChange = 1
+    $ui.Dial.LargeChange = 3
+    $ui.Dial.TickFrequency = 1
+    $ui.Dial.IsSnapToTickEnabled = $true
+
+    # Окно собрано — с этого момента обработчики находят его здесь.
+    $script:ActiveTimerUi = $ui
+
+    foreach ($chip in 15, 30, 60, 120) {
+        $btn = New-Object System.Windows.Controls.Button
+        $btn.Style = $win.FindResource('Chip')
+        $btn.Content = Format-DurationShort $chip
+        $btn.Tag = $chip
+        $btn.add_Click({
+            param($sender, $e)
+            $ui = $script:ActiveTimerUi
+            if ($ui) { Set-TimerValue -Ui $ui -Minutes ([int]$sender.Tag) }
+        })
+        [void]$win.FindName('ChipRow').Children.Add($btn)
+    }
+
+    $ui.ValueBox.add_TextChanged({
+        param($sender, $e)
+        $ui = $script:ActiveTimerUi
+        if (-not $ui -or $ui.Syncing) { return }
+        $minutes = ConvertFrom-DurationText $sender.Text
+        if ($minutes -le 0 -or $minutes -gt $script:TimerMaxMinutes) { Clear-TimerValue -Ui $ui; return }
+        Set-TimerValue -Ui $ui -Minutes $minutes -KeepText
+    })
+
+    # Стрелки — на пять минут по сетке. В поле со значением они полезнее, чем
+    # ход каретки по буквам: «45 min» правят не по буквам.
+    $ui.ValueBox.add_PreviewKeyDown({
+        param($sender, $e)
+        $ui = $script:ActiveTimerUi
+        if (-not $ui) { return }
+        $step = 0
+        if ($e.Key -eq [System.Windows.Input.Key]::Up)   { $step = 5 }
+        if ($e.Key -eq [System.Windows.Input.Key]::Down) { $step = -5 }
+        if ($step -eq 0) { return }
+        $e.Handled = $true
+        $from = $(if ($ui.Minutes -gt 0) { $ui.Minutes } else { 45 })
+        Set-TimerValue -Ui $ui -Minutes (Get-TimerNudge -Minutes $from -Step $step)
+    })
+
+    $ui.Dial.add_ValueChanged({
+        param($sender, $e)
+        $ui = $script:ActiveTimerUi
+        if (-not $ui -or $ui.Syncing) { return }
+        Set-TimerValue -Ui $ui -Minutes (Get-TimerStepMinutes -Index ([int]$sender.Value))
+    })
+
+    # Колесо — над всем окном, а не только над ползунком: крутить хочется там,
+    # где сейчас курсор, и попадать при этом в дорожку шириной в четыре пикселя
+    # никто не должен.
+    $win.add_PreviewMouseWheel({
+        param($sender, $e)
+        $ui = $script:ActiveTimerUi
+        if (-not $ui) { return }
+        $e.Handled = $true
+        $from = $(if ($ui.Minutes -gt 0) { $ui.Minutes } else { 45 })
+        $step = $(if ($e.Delta -gt 0) { 5 } else { -5 })
+        Set-TimerValue -Ui $ui -Minutes (Get-TimerNudge -Minutes $from -Step $step)
+    })
+
+    $ui.StartBtn.add_Click({
+        param($sender, $e)
+        $ui = $script:ActiveTimerUi
+        if (-not $ui -or $ui.Minutes -le 0) { return }
+        $ui.Result = $ui.Minutes
+        $ui.Window.DialogResult = $true
+    })
+
+    # Окно без рамки: перетащить его можно за любое пустое место.
+    $win.add_MouseLeftButtonDown({
+        param($sender, $e)
+        try { $sender.DragMove() } catch { }   # кнопку успели отпустить — тащить нечего
+    })
+
+    Set-TimerValue -Ui $ui -Minutes $Minutes
+    return $ui
+}
+
+# Показать и вернуть минуты. Ноль — отменили: то же, что и у
+# ConvertFrom-DurationText, и вызывающему хватает одной проверки.
+function Show-TimerDialog {
+    param(
+        [ValidateSet('shutdown', 'sleep')][string]$Action = 'sleep',
+        [int]$Minutes = 45
+    )
+
+    $ui = New-TimerWindow -Action $Action -Minutes $Minutes
+
+    # Место и уход фокуса — только у настоящего показа. В New-TimerWindow им не
+    # место: тем же окном пользуются тесты и render-preview.ps1, а они его не
+    # показывают (и уж точно не должны ловить окно, которое ставит себя к курсору
+    # и закрывается от первого же чужого щелчка).
+    $ui.Window.add_SourceInitialized({ Set-PopupPlace -Window $this })
+    # Фокус окно забирает само: открывают его щелчком по меню трея, и без этого
+    # набирать в поле было бы некуда. Значение при этом выделено целиком — первая
+    # же цифра заменяет его, а не дописывается к нему.
+    $ui.Window.add_Loaded({
+        $ui = $script:ActiveTimerUi
+        if (-not $ui) { return }
+        [void]$ui.Window.Activate()
+        [void]$ui.ValueBox.Focus()
+        $ui.ValueBox.SelectAll()
+    })
+    $ui.Window.add_Activated({
+        $ui = $script:ActiveTimerUi
+        if ($ui) { $ui.Seen = $true }
+    })
+    # Ушли с окна — оно закрывается, ничего не заведя. Всплывашка у курсора живёт
+    # ровно столько, сколько на неё смотрят; крестика у неё поэтому нет.
+    $ui.Window.add_Deactivated({
+        $ui = $script:ActiveTimerUi
+        if (-not $ui -or -not $ui.Seen) { return }
+        try { $ui.Window.DialogResult = $false } catch { }   # окно уже закрывается
+    })
+
+    try {
+        if ($ui.Window.ShowDialog()) { return [int]$ui.Result }
+        return 0
+    }
+    finally {
+        $ui.Window.Close()
+        $script:ActiveTimerUi = $null
     }
 }

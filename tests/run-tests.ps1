@@ -922,7 +922,7 @@ Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shor
     $combo = [pscustomobject]@{ Name = 'Movie'; Patterns = @('ULTRAGEAR', 'GONE PANEL'); Primary = 'ULTRAGEAR'; OriginalName = 'Movie' }
     $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -TakenNames @() `
-                               -Hotkey 'Ctrl+Alt+F9' -Dark $false
+                               -Hotkeys ([ordered]@{ 'combo:Movie' = 'Ctrl+Alt+F9' }) -Dark $false
     try {
         Assert-Equal 'Movie' $ed.NameBox.Text 'name prefilled'
         Assert-Equal 3 @($ed.Checks).Count 'two live displays plus the leftover pattern'
@@ -939,8 +939,9 @@ Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shor
 }
 
 Test-Case 'dialog: the editor shows no-shortcut for rubbish instead of pretending it is one' {
-    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -TakenNames @() `
-                               -Hotkey 'needs Ctrl / Alt / Shift' -Dark $false
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -TakenNames @() `
+                               -Hotkeys ([ordered]@{ 'all' = 'needs Ctrl / Alt / Shift' }) -Dark $false
     try {
         Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'hint text did not survive as a binding'
     }
@@ -1053,8 +1054,9 @@ Test-Case 'dialog: every mode is set up in one place, and only combinations can 
 Test-Case 'dialog: the cross clears a shortcut and greys itself out when there is nothing to clear' {
     # Кнопка и поле находят друг друга через .Tag — без этого крестик молча не
     # работал бы (замыкания в обработчиках теряют и функции, и $script:).
-    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -TakenNames @() `
-                               -Hotkey 'Ctrl+Alt+F5' -Dark $false
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -TakenNames @() `
+                               -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
     try {
         $box = $ed.HotkeyBox
         $clear = $box.Tag
@@ -1074,7 +1076,7 @@ Test-Case 'dialog: the cross clears a shortcut and greys itself out when there i
 
 Test-Case 'mode editor: what it reads, and every refusal' {
     $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState `
-                               -TakenNames @('Movie') -TakenHotkeys @('Ctrl+Alt+F5') -Dark $false
+                               -TakenNames @('Movie') -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
     try {
         # Пустое имя.
         $got = Read-ModeFromUi -Editor $ed
@@ -1098,7 +1100,7 @@ Test-Case 'mode editor: what it reads, and every refusal' {
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'a shortcut owned by another mode is refused'
-        Assert-True ($got.Problem -like '*already drives another mode*') 'and says so'
+        Assert-True ($got.Problem -like "*already drives 'All displays'*") 'and names the mode holding it'
 
         # Всё в порядке.
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F6'
@@ -1125,16 +1127,26 @@ Test-Case 'combo editor: the taskbar display must be one of the ticked ones' {
     finally { $ed.Window.Close() }
 }
 
-Test-Case 'dialog: taken shortcuts are gathered minus the mode being edited' {
+Test-Case 'dialog: a mode keeping its own shortcut is not a conflict with itself' {
     $settings = Get-DefaultSettings
     $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
     $settings.combos['Movie'] = [ordered]@{ displays = @('ULTRAGEAR'); primary = '' }
     $settings.hotkeys['combo:Movie'] = 'Ctrl+Alt+F9'
     $ui = New-DialogUi -Settings $settings
     try {
-        $taken = @(Get-TakenHotkeys -Ui $ui -ExceptKey 'combo:Movie')
-        Assert-True ($taken -contains 'Ctrl+Alt+F5') 'other bindings count as taken'
-        Assert-True (-not ($taken -contains 'Ctrl+Alt+F9')) 'its own binding is not a conflict'
+        $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $ui.Combos[0] -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'its own binding, left alone, goes through'
+            Assert-Equal 'Ctrl+Alt+F9' $got.Mode.Hotkey 'and comes back as it was'
+
+            $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True (-not $got.Ok) "another mode's binding is refused"
+        }
+        finally { $ed.Window.Close() }
     }
     finally { $ui.Window.Close() }
 }
@@ -1712,7 +1724,7 @@ Write-Host ''
 Write-Host 'restoring the mode when the tray starts' -ForegroundColor White
 
 $trayAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'Displays.ps1'), [ref]$null, [ref]$null)
-foreach ($name in 'Get-AvailableMode', 'Test-DeskMatchesMode', 'Invoke-StartupRestore') {
+foreach ($name in 'Get-AvailableMode', 'Invoke-StartupRestore') {
     $found = $trayAst.FindAll({ param($n)
         $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }.GetNewClosure(), $true)
     if ($found.Count -ne 1) { throw "expected exactly one $name in Displays.ps1, found $($found.Count)" }
@@ -2289,6 +2301,138 @@ Test-Case 'duration: reads back as a human would say it' {
     Assert-Equal '0 s' (Format-Duration -5)
 }
 
+Test-Case 'duration: the short form drops the empty zero' {
+    Assert-Equal '45 min' (Format-DurationShort 45)
+    Assert-Equal '1 h' (Format-DurationShort 60)
+    Assert-Equal '1 h 30 min' (Format-DurationShort 90)
+    Assert-Equal '12 h' (Format-DurationShort 720)
+}
+
+Test-Case 'duration: what the timer window shows, it can read back' {
+    # Поле в окне таймера — одно и то же и на запись, и на чтение: ползунок пишет
+    # в него Format-DurationShort, а разбирает написанное ConvertFrom-DurationText.
+    # Разойдись эти двое — и ползунок сбрасывал бы собственное значение.
+    foreach ($minutes in (Get-TimerSteps)) {
+        Assert-Equal $minutes (ConvertFrom-DurationText (Format-DurationShort $minutes)) "round trip of $minutes"
+    }
+}
+
+Test-Case 'timer steps: the slider lands on the nearest one, not the one below' {
+    $steps = Get-TimerSteps
+    Assert-Equal 5 $steps[0] 'the shortest step'
+    Assert-Equal 720 $steps[$steps.Count - 1] 'the longest step'
+    Assert-Equal 5 (Get-TimerStepMinutes -Index (Get-TimerStepIndex -Minutes 6))
+    Assert-Equal 90 (Get-TimerStepMinutes -Index (Get-TimerStepIndex -Minutes 89))
+    Assert-Equal 720 (Get-TimerStepMinutes -Index (Get-TimerStepIndex -Minutes 5000)) 'beyond the last step'
+    Assert-Equal 5 (Get-TimerStepMinutes -Index -3) 'below the first index'
+    Assert-Equal 720 (Get-TimerStepMinutes -Index 999) 'above the last index'
+}
+
+Test-Case 'timer nudge: five minutes, on the five-minute grid' {
+    Assert-Equal 50 (Get-TimerNudge -Minutes 45 -Step 5)
+    Assert-Equal 40 (Get-TimerNudge -Minutes 45 -Step -5)
+    # С неровного значения первый щелчок притягивает к сетке, а не половинит шаг.
+    Assert-Equal 50 (Get-TimerNudge -Minutes 47 -Step 5)
+    Assert-Equal 45 (Get-TimerNudge -Minutes 47 -Step -5)
+    Assert-Equal 5 (Get-TimerNudge -Minutes 5 -Step -5) 'no shorter than five minutes'
+    Assert-Equal 720 (Get-TimerNudge -Minutes 720 -Step 5) 'no longer than twelve hours'
+}
+
+Test-Case 'timer target: says when it happens, and when that is tomorrow' {
+    $now = [datetime]'2026-08-25 21:00:00'
+    Assert-Equal 'at 22:30' (Get-TimerTargetText -Minutes 90 -Now $now)
+    Assert-Equal 'at 00:30 tomorrow' (Get-TimerTargetText -Minutes 210 -Now $now)
+    # Полночь ровно — уже завтра: «в 00:00» без пометки читалось бы как «сегодня».
+    Assert-Equal 'at 00:00 tomorrow' (Get-TimerTargetText -Minutes 180 -Now $now)
+}
+
+Test-Case 'popup: opens above the cursor and stays on the screen' {
+    # Значок в трее — правый нижний угол: окно обязано уйти вверх и влево, целиком.
+    $p = Get-PopupPlacement -X 1900 -Y 1030 -Width 330 -Height 236 `
+                            -Left 0 -Top 0 -Right 1920 -Bottom 1040
+    Assert-Equal 1590 $p.X 'pushed back from the right edge'
+    Assert-Equal 782 $p.Y 'above the cursor'
+
+    # Панель задач сверху — идти вверх некуда, окно уходит вниз.
+    $p = Get-PopupPlacement -X 900 -Y 60 -Width 330 -Height 236 `
+                            -Left 0 -Top 48 -Right 1920 -Bottom 1080
+    Assert-Equal 735 $p.X 'centred under the cursor'
+    Assert-Equal 72 $p.Y 'below the cursor'
+}
+
+# --- окно таймера -----------------------------------------------------------
+# Собирается без показа, как и окно настроек: обработчики поля и ползунка — это и
+# есть вся работа окна, и они срабатывают от простого присваивания.
+
+Write-Host ''
+Write-Host 'the timer window' -ForegroundColor White
+
+Test-Case 'timer window: opens on the value it was given' {
+    $ui = New-TimerWindow -Action 'sleep' -Minutes 90
+    try {
+        Assert-Equal 90 $ui.Minutes 'the value it opened with'
+        Assert-Equal '1 h 30 min' $ui.ValueBox.Text 'the field'
+        Assert-Equal 90 (Get-TimerStepMinutes -Index ([int]$ui.Dial.Value)) 'the slider'
+        Assert-True $ui.StartBtn.IsEnabled 'the button is ready'
+        Assert-True ($ui.TargetText.Text -like 'at *') 'it says when that is'
+    }
+    finally { $ui.Window.Close(); $script:ActiveTimerUi = $null }
+}
+
+Test-Case 'timer window: typing moves the slider, the slider rewrites the field' {
+    $ui = New-TimerWindow -Action 'shutdown' -Minutes 45
+    try {
+        $ui.ValueBox.Text = '1h30'
+        Assert-Equal 90 $ui.Minutes 'what was typed'
+        Assert-Equal '1h30' $ui.ValueBox.Text 'the text is left as typed'
+        Assert-Equal 90 (Get-TimerStepMinutes -Index ([int]$ui.Dial.Value)) 'the slider followed'
+
+        $ui.Dial.Value = Get-TimerStepIndex -Minutes 120
+        Assert-Equal 120 $ui.Minutes 'what the slider says'
+        Assert-Equal '2 h' $ui.ValueBox.Text 'and the field says the same'
+    }
+    finally { $ui.Window.Close(); $script:ActiveTimerUi = $null }
+}
+
+Test-Case 'timer window: the button hands the value back, Enter and Esc reach it' {
+    $ui = New-TimerWindow -Action 'sleep' -Minutes 45
+    try {
+        # Клавиатурный уговор окна: Enter — на кнопку, Esc — на отмену. Проверяем
+        # его на самих кнопках: нажатия в непоказанном окне взять негде.
+        Assert-True $ui.StartBtn.IsDefault 'Enter goes to the button'
+        Assert-True $ui.CancelBtn.IsCancel 'Esc cancels'
+
+        $ui.ValueBox.Text = '2h'
+        # Обработчик кнопки кладёт значение и закрывает окно. Закрыть непоказанное
+        # окно нельзя (WPF отвечает отказом на DialogResult) — значение к этому
+        # моменту уже отдано, и проверяем именно его.
+        try { $ui.StartBtn.RaiseEvent(
+                (New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
+        catch { }
+        Assert-Equal 120 $ui.Result 'the minutes it hands back'
+    }
+    finally { $ui.Window.Close(); $script:ActiveTimerUi = $null }
+}
+
+Test-Case 'timer window: nothing is armed on what we cannot read' {
+    $ui = New-TimerWindow -Action 'sleep' -Minutes 45
+    try {
+        $ui.ValueBox.Text = 'soon'
+        Assert-Equal 0 $ui.Minutes 'no value'
+        Assert-True (-not $ui.StartBtn.IsEnabled) 'the button is off'
+        Assert-True ($ui.TargetText.Text -like '*1h30*') 'and it says what we do read'
+
+        # Потолок — те же двенадцать часов, что и последняя ступень ползунка.
+        $ui.ValueBox.Text = '20h'
+        Assert-Equal 0 $ui.Minutes 'beyond the ceiling is not a value either'
+
+        $ui.ValueBox.Text = '20'
+        Assert-Equal 20 $ui.Minutes 'and it comes back to life'
+        Assert-True $ui.StartBtn.IsEnabled 'with the button back on'
+    }
+    finally { $ui.Window.Close(); $script:ActiveTimerUi = $null }
+}
+
 # --- дневник ----------------------------------------------------------------
 
 Write-Host ''
@@ -2807,16 +2951,41 @@ Test-Case 'level settings: modes without brightness stay out of the file' {
 }
 
 Test-Case 'level rows: "all displays" lists what is connected' {
-    $names = @(Get-ModeDisplayNames -ModeKey 'all' -State $script:DlgState -Combos @())
-    Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') $names 'both connected displays'
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false
+    try {
+        Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') @(Get-EditorDisplayNames -Editor $ed) 'both connected displays'
+    }
+    finally { $ed.Window.Close() }
 }
 
 Test-Case 'level rows: a combination lists its displays by their real names' {
     # В файле шаблон, а в строке должно стоять полное название монитора: обе
     # записи совпадают, но точнее — то, что видит человек.
-    $combos = @([pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = ''; OriginalName = 'Work' })
-    $names = @(Get-ModeDisplayNames -ModeKey 'combo:Work' -State $script:DlgState -Combos $combos)
-    Assert-Equal @('LG ULTRAFINE') $names 'resolved to the display name'
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false
+    try {
+        Assert-Equal @('LG ULTRAFINE') @(Get-EditorDisplayNames -Editor $ed) 'resolved to the display name'
+    }
+    finally { $ed.Window.Close() }
+}
+
+Test-Case 'level rows: a display mode names the display, not its key' {
+    # У двух одинаковых моделей в ключе стоит короткий ID («solo:DELL U2723 ABC123»),
+    # и разбор ключа дал бы строку ползунка с именем, которого нет ни на одном
+    # мониторе. Состав режима знает Get-ModeMembers — он и отвечает.
+    $state = @(
+        (New-FakeMonitor 'DELL U2723' 'ABC123' 'path-1')
+        (New-FakeMonitor 'DELL U2723' 'ABC124' 'path-2')
+    )
+    $mode = @(Get-DisplayModes -State $state | Where-Object { $_.Id -eq 'path-1' })[0]
+    Assert-Equal 'solo:DELL U2723 ABC123' ([string]$mode.Key) 'the key carries the short id, as it must'
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $state -Dark $false
+    try {
+        Assert-Equal @('DELL U2723') @(Get-EditorDisplayNames -Editor $ed) 'but the row is named after the display'
+    }
+    finally { $ed.Window.Close() }
 }
 
 Test-Case 'level rows: a level for a display that is gone is still shown' {
@@ -2835,7 +3004,7 @@ Test-Case 'mode editor: brightness is offered for every kind of mode' {
         [pscustomobject]@{ Key = 'solo:LG ULTRAGEAR'; Title = 'Only LG ULTRAGEAR'; Kind = 'solo'; Available = $true }
         [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     )) {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Level $null -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false
         try {
             Assert-Equal 3 $ed.LevelKindBox.Items.Count "leave alone / one level / each display for $($mode.Key)"
             Assert-Equal 'none' ([string]$ed.Level.Kind) 'nothing set until asked'
@@ -2846,7 +3015,7 @@ Test-Case 'mode editor: brightness is offered for every kind of mode' {
 
 Test-Case 'mode editor: a display mode has no name, members or taskbar to argue about' {
     $mode = [pscustomobject]@{ Key = 'solo:LG ULTRAGEAR'; Title = 'Only LG ULTRAGEAR'; Kind = 'solo'; Available = $true }
-    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Level $null -Dark $false
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false
     try {
         Assert-Equal 'Collapsed' ([string]$ed.Window.FindName('ComboPart').Visibility) 'the combination part is out of the way'
         Assert-Equal 'Only LG ULTRAGEAR' ([string]$ed.Window.FindName('HeadTitle').Text) 'the mode names itself'
@@ -2899,7 +3068,7 @@ Test-Case 'mode editor: moving the one-level slider is what gets saved' {
     $ui = New-DialogUi -Settings $settings
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $null -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Dark $false
         try {
             # Как это делает человек: выбрать форму, подвинуть ползунок, Save.
             $ed.LevelKindBox.SelectedIndex = 1
@@ -2925,7 +3094,7 @@ Test-Case 'mode editor: Cancel leaves the brightness the window already had' {
     $ui = New-DialogUi -Settings $settings
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
             $ed.LevelOneSlider.Value = 20
             Assert-Equal 20 ([int]$ed.Level.Value) 'the editor moved'
@@ -2955,7 +3124,7 @@ Test-Case 'mode editor: switching to per-display seeds it from the level it had'
     $ui = New-DialogUi -Settings $settings
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
             Assert-Equal 'one' ([string]$ed.Level.Kind) 'started as one level'
             # Человек видел 70 и должен править от семидесяти, а не от пустого списка.
@@ -2982,7 +3151,7 @@ Test-Case 'mode editor: the per-display rows are really built' {
     $ui = New-DialogUi -Settings $settings
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
             Assert-Equal 'Collapsed' ([string]$ed.LevelOnePanel.Visibility) 'the single slider is out of the way'
             Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'a row per display'
@@ -3003,7 +3172,7 @@ Test-Case 'mode editor: a display with no level gets an unticked, disabled row' 
     $ui = New-DialogUi -Settings $settings
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     try {
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Level $ui.Levels['all'] -Dark $false
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
             $rows = @($ed.LevelRowsPanel.Children)
             $off = @($rows | Where-Object { [string]$_.Children[0].Content -eq 'LG ULTRAFINE' })
@@ -3022,7 +3191,8 @@ Test-Case 'mode editor: unticking a display drops its brightness row with it' {
     $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $level = ConvertTo-LevelModel ([ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 })
-    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Level $level -Dark $false
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState `
+                               -Levels ([ordered]@{ 'combo:Work' = $level }) -Dark $false
     try {
         Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'both displays have a row'
         $uf = @($ed.Checks | Where-Object { [string]$_.Tag -eq 'LG ULTRAFINE' })[0]
@@ -3078,6 +3248,141 @@ Test-Case 'dialog: a new combination taking a freed name keeps its own brightnes
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 30 $updated.brightness['combo:Play'] 'the renamed one kept its level'
         Assert-Equal 70 $updated.brightness['combo:Work'] 'and the new one kept its own'
+    }
+    finally { $ui.Window.Close() }
+}
+
+# --- имя комбинации — это её ключ -------------------------------------------
+# Комбинацию можно стереть из файла рукой, а её клавишу, яркость, звук и команды
+# оставить: они лежат под ключом `combo:<имя>`, и окно показывает их строкой-
+# сиротой. Завести комбинацию с тем же именем — значит занять тот самый ключ.
+# Звук и команды достаются ей в любом случае, поэтому клавиша с яркостью обязаны
+# и достаться, и БЫТЬ ВИДНЫ: пустые поля редактора молча стирали две настройки из
+# четырёх, а сохранённая клавиша сироты вдобавок считалась чужой.
+
+Write-Host ''
+Write-Host 'a name that was already used once' -ForegroundColor White
+
+# Настройки-сироты: комбинации Movie нет, а всё, что к ней было привязано, есть.
+function New-OrphanSettings {
+    $s = Get-DefaultSettings
+    $s.brightness['combo:Movie'] = 55
+    $s.hotkeys['combo:Movie'] = 'Ctrl+Alt+F4'
+    $s.audio['combo:Movie'] = 'ROG'
+    return $s
+}
+
+Test-Case 'orphan: a new combination with that name is shown what it inherits' {
+    $settings = New-OrphanSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'nothing to inherit until there is a name'
+            Assert-Equal 'none' ([string]$ed.Level.Kind) 'and no brightness either'
+
+            $ed.NameBox.Text = 'Movie'
+            Assert-Equal 'Ctrl+Alt+F4' $ed.HotkeyBox.Text 'the shortcut left under that name is shown, not hidden'
+            Assert-Equal 55 ([int]$ed.Level.Value) 'and so is the brightness'
+            Assert-Equal 'one' ([string]$ed.Level.Kind) 'in the shape it was written in'
+        }
+        finally { $ed.Window.Close() }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'orphan: its own shortcut is not somebody else - the editor takes it' {
+    # Так это и ломалось: клавиша сироты считалась занятой, и редактор ссылался на
+    # режим, которого в окне нет и открыть который нельзя. Выйти можно было только
+    # удалив строку-сироту.
+    $settings = New-OrphanSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            $ed.NameBox.Text = 'Movie'
+            $ed.Checks[0].IsChecked = $true
+            $ed.HotkeyBox.Text = 'Ctrl+Alt+F4'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'the shortcut of the name it takes over is its own'
+            Assert-Equal 'Ctrl+Alt+F4' $got.Mode.Hotkey 'and comes back as the mode shortcut'
+        }
+        finally { $ed.Window.Close() }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'orphan: all four settings come back, none of them quietly killed' {
+    $settings = New-OrphanSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            $ed.NameBox.Text = 'Movie'
+            $ed.Checks[0].IsChecked = $true
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'accepted'
+            Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited $got.Mode
+        }
+        finally { $ed.Window.Close() }
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'Ctrl+Alt+F4' $updated.hotkeys['combo:Movie'] 'the shortcut survived'
+        Assert-Equal 55 $updated.brightness['combo:Movie'] 'the brightness survived'
+        Assert-Equal 'ROG' $updated.audio['combo:Movie'] 'the sound was never in danger'
+        Assert-True ($updated.combos.Contains('Movie')) 'and the combination itself is there'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'orphan: what the person set himself beats what the name would bring' {
+    $settings = New-OrphanSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            # Сначала своя клавиша и своя яркость, и только потом имя.
+            $ed.HotkeyBox.Text = 'Ctrl+Alt+F7'
+            $ed.LevelKindBox.SelectedIndex = 1
+            $ed.LevelOneSlider.Value = 20
+            $ed.NameBox.Text = 'Movie'
+            Assert-Equal 'Ctrl+Alt+F7' $ed.HotkeyBox.Text 'his shortcut stayed'
+            Assert-Equal 20 ([int]$ed.Level.Value) 'and his brightness too'
+        }
+        finally { $ed.Window.Close() }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'orphan: renaming a combination onto that name does not wipe the shortcut' {
+    # Тот же путь с другой стороны: у комбинации своей клавиши нет, а у имени, в
+    # которое её переименовали, — есть. Пустое поле редактора не должно её снять.
+    $settings = New-OrphanSettings
+    $settings.hotkeys.Remove('combo:Movie')
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.hotkeys['combo:Movie'] = 'Ctrl+Alt+F4'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $ui.Combos[0] -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+        try {
+            Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'Work has no shortcut of its own'
+            $ed.NameBox.Text = 'Movie'
+            Assert-Equal 'Ctrl+Alt+F4' $ed.HotkeyBox.Text 'the shortcut of the name it moves into is shown'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'accepted'
+            Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited $got.Mode
+        }
+        finally { $ed.Window.Close() }
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'Ctrl+Alt+F4' $updated.hotkeys['combo:Movie'] 'and it is still there after Save'
+        Assert-True (-not $updated.hotkeys.Contains('combo:Work')) 'nothing left under the old name'
     }
     finally { $ui.Window.Close() }
 }

@@ -1,21 +1,21 @@
 ﻿<#
 .SYNOPSIS
-    Renders the Settings window and a mode editor to PNG without showing them.
+    Renders the Settings window, a mode editor and the timer popup to PNG.
 
 .DESCRIPTION
-    A development tool: it builds the windows with the same New-SettingsWindow and
-    New-ModeEditorWindow the tray uses, lays them out in memory and draws them to
-    files. So the interface can be looked at without starting the app, opening
-    Settings by hand and having a real desk in front of you - and with -Fake, for a
-    desk that is not here at all.
+    A development tool: it builds the windows with the same New-SettingsWindow,
+    New-ModeEditorWindow and New-TimerWindow the tray uses, lays them out in memory
+    and draws them to files. So the interface can be looked at without starting the
+    app, opening Settings by hand and having a real desk in front of you - and with
+    -Fake, for a desk that is not here at all.
 
     Theme and accent colour come from the system, exactly as in the real window.
-    Two files are written: the Settings window, and "<name>-mode.png" for the
-    editor.
+    Three files are written: the Settings window, "<name>-mode.png" for the editor
+    and "<name>-timer.png" for the timer popup.
 
 .PARAMETER Out
-    Where to write the Settings window. The mode editor goes next to it with a
-    "-mode" suffix. Defaults to preview-settings.png beside the scripts.
+    Where to write the Settings window. The other two go next to it with "-mode"
+    and "-timer" suffixes. Defaults to preview-settings.png beside the scripts.
 
 .PARAMETER Fake
     Invent a three-display desk with combinations, shortcuts and brightness set,
@@ -29,7 +29,7 @@
 
 .EXAMPLE
     .\render-preview.ps1 -Fake
-    Both windows for an invented desk, written beside the scripts.
+    All three windows for an invented desk, written beside the scripts.
 
 .EXAMPLE
     .\render-preview.ps1 -Fake -EditorMode all -Out C:\tmp\ui.png
@@ -101,7 +101,7 @@ if ($Fake) {
     }
 }
 else {
-    $state = @(Get-DisplayState -Settings $settings)
+    $state = @(Get-DisplayState)
 }
 
 function Save-WindowSnapshot {
@@ -164,18 +164,10 @@ try {
     if ($pick.Count -eq 0) { $pick = @($modes | Select-Object -First 1) }
     if ($pick.Count -gt 0) {
         $mode = $pick[0]
-        $combo = $null
-        if ([string]$mode.Kind -eq 'combo') {
-            $name = ([string]$mode.Key).Substring(6)
-            $combo = @($ui.Combos | Where-Object { $_.Name -eq $name } | Select-Object -First 1)[0]
-        }
-        $level = $null
-        if ($ui.Levels.Contains([string]$mode.Key)) { $level = $ui.Levels[[string]$mode.Key] }
-        $hotkey = ''
-        if ($ui.Hotkeys.Contains([string]$mode.Key)) { $hotkey = [string]$ui.Hotkeys[[string]$mode.Key] }
+        $combo = Get-UiCombo -Ui $ui -Key ([string]$mode.Key)
 
-        $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state -Level $level `
-                                   -Hotkey $hotkey -Dark (Test-DarkTheme)
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark (Test-DarkTheme)
         try {
             # Рядом с первым снимком, с суффиксом. ChangeExtension($Out, $null) здесь
             # не годится: PowerShell отдаёт вместо $null пустую строку, и точка от
@@ -192,6 +184,15 @@ try {
         }
         finally { $ed.Window.Close() }
     }
+
+    # Третье окно — таймер. Оно маленькое, но своё: ползунок, таблетки и время на
+    # часах видно только на снимке, а не в разметке.
+    $timerDir = Split-Path -Parent $Out
+    if (-not $timerDir) { $timerDir = '.' }
+    $timerOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-timer.png')
+    $timer = New-TimerWindow -Action 'sleep' -Minutes 90
+    try { Save-WindowSnapshot -Window $timer.Window -Path $timerOut }
+    finally { $timer.Window.Close(); $script:ActiveTimerUi = $null }
 }
 finally {
     $ui.Window.Close()

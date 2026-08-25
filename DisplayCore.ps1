@@ -3044,16 +3044,10 @@ function Get-PrimaryOutput {
 # Id — путь устройства из CCD. Он есть и у выключенного монитора, поэтому по нему
 # можно и опознать монитор, и снова его включить.
 #
-# $Settings нужны ради состава комбинаций. Параметр необязательный: кто настройки
-# уже прочитал (Switch-DisplayMode, трей) — передаёт их и не платит вторым
-# чтением диска. Читать их здесь безусловно нельзя: Switch-DisplayMode намеренно
-# читает файл РОВНО один раз за переключение, чтобы внутри одного перехода не
-# оказалось двух его версий.
+# Настройки здесь не нужны и не читаются: состояние — это то, что говорит о столе
+# Windows, а не то, что человек про него написал. Состав комбинаций разбирает
+# Get-DisplayModes, ему настройки и передают.
 function Get-DisplayState {
-    param($Settings)
-
-    if (-not $Settings) { $Settings = Get-DisplaySettings }
-
     $targets = @(Get-CcdTargets)
     if ($targets.Count -eq 0) { throw 'Windows returned no displays at all' }
 
@@ -3302,17 +3296,31 @@ function Get-ModeMembers {
     return @()
 }
 
+# Стоит ли на столе уже ровно этот набор экранов. Сравниваем НАБОРЫ, а не ключи
+# режимов: пока один монитор не воткнут, «все» и «рабочие» — это один и тот же
+# стол, и сравнение ключей объявило бы переключением то, чего не происходит.
+# Отсюда же трей узнаёт, что чинить придётся разве что раскладку и всплывашка не
+# нужна. Одно определение «стол равен режиму» на всё приложение: два разошлись бы.
+function Test-DeskMatchesMode {
+    param($Mode, $State)
+
+    $wanted = @(Get-ModeMembers -Mode $Mode -State $State | ForEach-Object { $_.Id } | Sort-Object)
+    $on = @($State | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
+    return ($wanted.Count -eq $on.Count -and -not (Compare-Object $wanted $on))
+}
+
 # Какой режим соответствует тому, что включено прямо сейчас. Нужно, чтобы в меню
 # отметить галочкой текущее состояние.
 function Get-ActiveModeKey {
     param($State, $Modes)
 
-    $activeIds = @($State | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
-    if ($activeIds.Count -eq 0) { return $null }
+    # Погасший стол не равен никакому режиму, и проверить это надо ДО перебора:
+    # у режима, ни один монитор которого не подключён, набор тоже пуст, и
+    # сравнение наборов объявило бы его текущим.
+    if (@($State | Where-Object { $_.Active }).Count -eq 0) { return $null }
 
     foreach ($mode in $Modes) {
-        $memberIds = @(Get-ModeMembers -Mode $mode -State $State | ForEach-Object { $_.Id } | Sort-Object)
-        if ($memberIds.Count -eq $activeIds.Count -and -not (Compare-Object $memberIds $activeIds)) {
+        if (Test-DeskMatchesMode -Mode $mode -State $State) {
             return $mode.Key
         }
     }
@@ -3663,9 +3671,9 @@ function Switch-DisplayMode {
         # настроек прямо сейчас.
         $settings = Get-DisplaySettings
 
-        # Настройки уже прочитаны — отдаём их состоянию и режимам, чтобы они не
-        # шли на диск сами.
-        $monitors = @(Get-DisplayState -Settings $settings)
+        # Настройки уже прочитаны — отдаём их режимам, чтобы они не шли на диск
+        # сами.
+        $monitors = @(Get-DisplayState)
         $modes = Get-DisplayModes -State $monitors -Settings $settings
         $mode = $modes | Where-Object { $_.Key -eq $ModeKey } | Select-Object -First 1
         if (-not $mode) {
@@ -3961,10 +3969,7 @@ function Restore-BestModes {
         # иногда не застаёт; сбор состояния занимает секунду, и повторная
         # проверка ниже попадает уже по открытому полному экрану.
         $todo = @()
-        # Роли сторожу не нужны — он смотрит только на частоту, — поэтому за
-        # настройками на диск не ходим: событие о смене режима приходит пачками,
-        # и лишний ввод-вывод в его обработчике здесь ни к чему.
-        foreach ($m in @(Get-DisplayState -Settings (Get-DefaultSettings))) {
+        foreach ($m in @(Get-DisplayState)) {
             if (-not $m.Active -or -not $m.BestMode) { continue }
             $cur = Get-CurrentMode $m.Output
             if (-not $cur) { continue }
@@ -4466,6 +4471,91 @@ function Format-Duration {
     $minutes = [int][math]::Floor($Seconds / 60)
     if ($minutes -lt 60) { return ('{0} min' -f $minutes) }
     return ('{0} h {1:00} min' -f [int][math]::Floor($minutes / 60), ($minutes % 60))
+}
+
+# Та же длительность, но как её пишут на кнопке: «45 min», «1 h», «1 h 30 min».
+# Format-Duration ставит «1 h 00 min» — в обратном отсчёте это правильно (ширина
+# строки не скачет каждую минуту), а на таблетке и в пункте меню лишний ноль
+# только мешает. Обратно читается тем же ConvertFrom-DurationText.
+function Format-DurationShort {
+    param([int]$Minutes)
+
+    if ($Minutes -lt 0) { $Minutes = 0 }
+    if ($Minutes -lt 60) { return ('{0} min' -f $Minutes) }
+    $hours = [int][math]::Floor($Minutes / 60)
+    $rest = $Minutes % 60
+    if ($rest -eq 0) { return ('{0} h' -f $hours) }
+    return ('{0} h {1} min' -f $hours, $rest)
+}
+
+# Ступени ползунка в окне таймера. Не ровный шаг: у «через пять минут» и «через
+# восемь часов» разная цена ошибки, и одинаковый шаг делает мелкий конец
+# неуправляемым, а крупный — бесконечным. Вблизи шаг в пять минут, дальше он
+# растёт, и весь диапазон укладывается в три десятка положений.
+$script:TimerSteps = @(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
+                       70, 80, 90, 100, 110, 120,
+                       150, 180, 210, 240, 300, 360, 420, 480, 600, 720)
+
+# Потолок — те же двенадцать часов, что и последняя ступень. Таймер сна дальше
+# полусуток — это уже не «выключи, когда досмотрю»: столько отложенного
+# выключения человек не удержит в голове, а компьютер выключится всё равно.
+$script:TimerMaxMinutes = 720
+
+function Get-TimerSteps { return $script:TimerSteps }
+
+# Минуты -> ближайшая ступень ползунка. Ближайшая, а не следующая снизу: набрано
+# «1h29», ползунок обязан встать на полтора часа, а не на час двадцать.
+function Get-TimerStepIndex {
+    param([int]$Minutes)
+
+    $steps = $script:TimerSteps
+    $best = 0
+    $bestGap = [int]::MaxValue
+    for ($i = 0; $i -lt $steps.Count; $i++) {
+        $gap = [math]::Abs($steps[$i] - $Minutes)
+        if ($gap -lt $bestGap) { $bestGap = $gap; $best = $i }
+    }
+    return $best
+}
+
+function Get-TimerStepMinutes {
+    param([int]$Index)
+
+    $steps = $script:TimerSteps
+    if ($Index -lt 0) { $Index = 0 }
+    if ($Index -ge $steps.Count) { $Index = $steps.Count - 1 }
+    return [int]$steps[$Index]
+}
+
+# Подтолкнуть значение на шаг колесом или стрелками: пять минут, но по сетке
+# пятиминуток, а не «47 -> 52». Ниже пяти минут и выше потолка не уходим.
+function Get-TimerNudge {
+    param([int]$Minutes, [int]$Step = 5)
+
+    if ($Step -eq 0) { return $Minutes }
+    $grid = [int][math]::Round($Minutes / [double]$Step) * $Step
+    # Уже на сетке — шагаем; между узлами — притягиваемся к ближайшему в сторону
+    # движения, иначе первое движение колеса ощущалось бы как половина шага.
+    if ($grid -eq $Minutes) { $next = $Minutes + $Step }
+    elseif ($Step -gt 0)    { $next = $(if ($grid -gt $Minutes) { $grid } else { $grid + $Step }) }
+    else                    { $next = $(if ($grid -lt $Minutes) { $grid } else { $grid + $Step }) }
+
+    if ($next -lt 5) { $next = 5 }
+    if ($next -gt $script:TimerMaxMinutes) { $next = $script:TimerMaxMinutes }
+    return [int]$next
+}
+
+# «в 03:45» и «в 03:45 завтра» — когда именно это случится. Час на часах человек
+# сверяет с собственными планами быстрее, чем остаток в минутах: «через 340 мин»
+# не говорит ничего, «в 06:20 завтра» говорит всё. Время — через инвариантную
+# культуру: журнал и интерфейс у нас не зависят от языка системы.
+function Get-TimerTargetText {
+    param([int]$Minutes, [datetime]$Now = (Get-Date))
+
+    $at = $Now.AddMinutes($Minutes)
+    $text = 'at ' + $at.ToString('HH:mm', [cultureinfo]::InvariantCulture)
+    if ($at.Date -gt $Now.Date) { $text += ' tomorrow' }
+    return $text
 }
 
 # Само выключение. shutdown.exe, а не API: он один умеет и попросить программы
