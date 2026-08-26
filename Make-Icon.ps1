@@ -1,4 +1,6 @@
-﻿<#
+﻿#Requires -Version 5.1
+
+<#
 .SYNOPSIS
     Draws the ScreenDeck icon: white monitors on a blue tile.
 

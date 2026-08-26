@@ -1,4 +1,6 @@
-﻿<#
+﻿#Requires -Version 5.1
+
+<#
 .SYNOPSIS
     Switches the displays on your desk from the command line.
 
@@ -99,6 +101,10 @@ $settings = Get-DisplaySettings
 $state = @(Get-DisplayState)
 
 if ($Mode -eq 'status') {
+    Write-Host ''
+    # Версия первой строкой: status — это то, что человек копирует в отчёт об
+    # ошибке, и без неё отчёт приходится доспрашивать.
+    Write-Host (Get-VersionLine) -ForegroundColor DarkGray
     Write-Host ''
     Write-Host 'Displays:' -ForegroundColor Cyan
     $state |

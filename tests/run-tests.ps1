@@ -1,4 +1,6 @@
-﻿<#
+﻿#Requires -Version 5.1
+
+<#
     tests\run-tests.ps1 — точка входа набора тестов. Своя, без Pester.
 
     Почему без Pester: в PowerShell 5.1 предустановлен древний 3.4, а ставить

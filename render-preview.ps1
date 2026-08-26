@@ -1,4 +1,6 @@
-﻿<#
+﻿#Requires -Version 5.1
+
+<#
 .SYNOPSIS
     Renders the Settings window, a mode editor and the timer popup to PNG.
 

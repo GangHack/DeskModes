@@ -1,4 +1,6 @@
-﻿<#
+﻿#Requires -Version 5.1
+
+<#
 .SYNOPSIS
     ScreenDeck: the tray icon that switches the displays on your desk.
 
@@ -946,6 +948,14 @@ $menu.add_Opening({
     $folderItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
+
+    # Версия — через всплывашку, а не через MessageBox: модальное окно из трея
+    # останавливает цикл сообщений, а вместе с ним и сторожа частоты, и таймер
+    # выключения.
+    $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem 'About ScreenDeck'
+    $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $aboutItem.add_Click({ Show-Balloon 'ScreenDeck' (Get-VersionLine) })
+    [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 

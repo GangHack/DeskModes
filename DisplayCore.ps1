@@ -21,6 +21,21 @@ $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
 
+# Версия — то, с чего человек начинает баг-репорт: без неё «у меня не гаснет
+# монитор» невозможно сопоставить ни с журналом, ни с коммитом. Строку собирает
+# одна функция на всех: рассинхронизировать её между командной строкой и меню
+# трея иначе вышло бы в первый же выпуск.
+#
+# Сюда же сборка Windows и версия PowerShell: почти все отказы в этом коде — это
+# отказы конкретной пары «драйвер + сборка системы», и без них вопрос «а у тебя
+# что?» задаётся отдельным письмом.
+$script:Version = '1.0.0'
+
+function Get-VersionLine {
+    return 'ScreenDeck {0} - Windows {1}, PowerShell {2}' -f $script:Version,
+           [System.Environment]::OSVersion.Version, $PSVersionTable.PSVersion
+}
+
 # Дата и время для журнала и для файлов — одни и те же на любой локали. И
 # `-Format`, и ToString без указания культуры берут у текущей не только
 # разделитель времени, но и КАЛЕНДАРЬ: на тайской локали 'yyyy' — это 2569-й год
