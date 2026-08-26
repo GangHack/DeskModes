@@ -144,7 +144,8 @@ function Get-DefaultSettings {
         # раскладка разъезжается, панель задач уезжает, частота падает.
         #   onResume  выход из сна: вернуть последний выбранный режим;
         #   onUnplug  монитор пропал: перестроить то, что осталось;
-        #   onPlug    монитор появился: ключ режима, в который уйти. Пусто —
+        #   onPlug    монитор появился: ключ режима, в который уйти, и только
+        #             если появившийся монитор в этот режим входит. Пусто —
         #             ничего не делать. Пустое по умолчанию намеренно: гасить
         #             монитор, который человек только что включил кнопкой, —
         #             это война с человеком, и решение тут за ним.
@@ -4528,7 +4529,10 @@ function Format-RuleReason {
 # меняем мы сами на каждом переключении, и реагировать на собственную работу
 # значило бы уйти в бесконечный круг.
 function Get-ReapplyDecision {
-    param($Reapply, $Before, $Now, [string]$LastMode)
+    # $PlugModeMembers — пути мониторов, входящих в режим из onPlug. Считает их
+    # вызывающий: состав режима зависит от того, что сейчас на столе, а эта
+    # функция состояния не знает и знать не должна. $null означает «не сказали».
+    param($Reapply, $Before, $Now, [string]$LastMode, $PlugModeMembers = $null)
 
     $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = '' }
     if (-not $Reapply) { return $none }
@@ -4544,9 +4548,22 @@ function Get-ReapplyDecision {
     # Монитор появился. По умолчанию не делаем ничего: человек только что включил
     # его кнопкой, и погасить его в ответ — это война с человеком. Режим для этого
     # случая называют явно (reapply.onPlug).
+    #
+    # Но и названный режим применяем только тогда, когда появившийся монитор в
+    # него ВХОДИТ. Иначе «собирай стол сам» означало бы «гаси всё, что я включил
+    # не по плану»: в combo:Work нет ASUS, и включённый кнопкой ASUS гаснул бы
+    # через секунду — та же война, только теперь по настройке. У 'all' участники —
+    # всё подключённое, поэтому там проверка не меняет ничего.
     if ($appeared.Count -gt 0 -and [string]$Reapply.onPlug) {
-        return [pscustomobject]@{ Action = 'mode'; Mode = [string]$Reapply.onPlug
-                                  Reason = 'a display was plugged in' }
+        $ours = $true
+        if ($null -ne $PlugModeMembers) {
+            $members = @($PlugModeMembers | Where-Object { $_ })
+            $ours = (@($appeared | Where-Object { $members -contains $_ }).Count -gt 0)
+        }
+        if ($ours) {
+            return [pscustomobject]@{ Action = 'mode'; Mode = [string]$Reapply.onPlug
+                                      Reason = 'a display was plugged in' }
+        }
     }
 
     # Монитор пропал. Возвращаем последний выбранный режим: Switch-DisplayMode

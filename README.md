@@ -204,9 +204,15 @@ its decision is not the one you made.
 - **`onUnplug`** — a display went away (cable out, or switched off with its own button), so
   the last chosen mode is applied to what is left: the arrangement and the taskbar are put
   back on the remaining screens. Nothing new is ever switched on by this.
-- **`onPlug`** — a display appeared. Empty by default, and that is deliberate: switching off
-  the monitor somebody just switched on by hand is a war with a human. Name a mode here
-  (`"all"`, `"combo:Movie night"`) and it will be applied when a display shows up.
+- **`onPlug`** — a display appeared. Empty by default, so nothing happens: after a monitor
+  comes back, Windows puts up whatever arrangement it remembers, and the desk is whatever it
+  decided. Name a mode here (`"all"`, `"combo:Work"`) and the desk is assembled by the
+  switcher instead.
+
+  It fires **only when the display that appeared belongs to that mode**. Switching off the
+  monitor somebody just switched on by hand is a war with a human, and without this it would
+  be exactly what `"combo:Work"` did to a display the combination does not include. With
+  `"all"` every connected display belongs to it, so the desk is always assembled.
 
 Only **connected** displays are compared, never the ones that are on. The switcher turns
 displays on and off constantly; reacting to its own work would be an endless loop.

@@ -478,8 +478,26 @@ function Invoke-PlugCheck {
 
     $settings = Get-ActiveSettings
     $last = Get-LastMode
+
+    # Состав режима из onPlug: решает чистая функция, а знать, кто в режим входит,
+    # может только тот, у кого на руках стол. Кэш состояния обновлён строкой
+    # выше нас (см. $script:DisplayChanged), так что появившийся монитор здесь
+    # уже виден.
+    $plugMembers = $null
+    $plugKey = [string]$settings.reapply.onPlug
+    if ($plugKey) {
+        $state = Get-CachedState
+        $plugMode = @(Get-DisplayModes -State $state -Settings $settings) |
+                        Where-Object { $_.Key -eq $plugKey } | Select-Object -First 1
+        if ($plugMode) {
+            $plugMembers = @(Get-ModeMembers -Mode $plugMode -State $state |
+                             ForEach-Object { [string]$_.Id })
+        }
+    }
+
     $decision = Get-ReapplyDecision -Reapply $settings.reapply -Before $Before -Now $script:PresentIds `
-                                    -LastMode $(if ($last) { [string]$last.Key } else { '' })
+                                    -LastMode $(if ($last) { [string]$last.Key } else { '' }) `
+                                    -PlugModeMembers $plugMembers
     if ($decision.Action -ne 'mode') { return }
     Invoke-ReapplyMode -Key $decision.Mode -Reason $decision.Reason
 }
