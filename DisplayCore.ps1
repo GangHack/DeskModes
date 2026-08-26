@@ -3916,6 +3916,25 @@ $script:RestorePending = $false
 # Чтобы «разрешение не наше» не писалось в лог на каждой проверке: монитор -> WxH.
 $script:LastResNote = @{}
 
+# Почему сторож решил, что идёт полный экран. Пишет Test-FullscreenApp при каждом
+# вызове, читает тот, кто из-за этого отложил работу.
+#
+# Строка нужна потому, что «postponed» само по себе неразличимо: за ним стоят две
+# совершенно разные проверки, и полторы сотни записей в журнале не отвечали, какая
+# из них сработала и на чём. А ложные срабатывания там настоящие: TextInputHost
+# (системное окно ввода) по размеру ровно равен монитору и проверку проходит, а
+# NVIDIA Overlay не дотягивает до неё ОДИН пиксель — то есть завтра пройдёт и он.
+# Пока не известно, какая ветвь виновата, правка логики была бы стрельбой наугад.
+$script:FullscreenWhy = ''
+
+# Имена значений QUERY_USER_NOTIFICATION_STATE — только для журнала: «2» в отчёте
+# об ошибке не говорит ничего, «QUNS_BUSY» говорит всё.
+$script:NotificationStateNames = @{
+    1 = 'QUNS_NOT_PRESENT'; 2 = 'QUNS_BUSY'; 3 = 'QUNS_RUNNING_D3D_FULL_SCREEN'
+    4 = 'QUNS_PRESENTATION_MODE'; 5 = 'QUNS_ACCEPTS_NOTIFICATIONS'
+    6 = 'QUNS_QUIET_TIME'; 7 = 'QUNS_APP'
+}
+
 # Игра ставит себе режим сама, и трогать его в этот момент нельзя: смена режима
 # извне роняет полноэкранное устройство D3D — картинка моргает, окно сворачивается.
 # Ровно это и происходило при запуске Counter-Strike.
@@ -3925,12 +3944,18 @@ $script:LastResNote = @{}
 # честный полный экран, но не ловит безрамочное окно, поэтому вторым шагом
 # смотрим, не закрывает ли активное окно свой монитор целиком.
 function Test-FullscreenApp {
+    $script:FullscreenWhy = ''
     try {
         $state = 0
         if ([NativeForeground]::SHQueryUserNotificationState([ref]$state) -eq 0) {
             # 2 — полноэкранное окно, 3 — D3D во весь экран, 4 — режим презентации,
             # 7 — приложение Store во весь экран. 5 и 6 нам не мешают.
-            if ($state -eq 2 -or $state -eq 3 -or $state -eq 4 -or $state -eq 7) { return $true }
+            if ($state -eq 2 -or $state -eq 3 -or $state -eq 4 -or $state -eq 7) {
+                $name = $script:NotificationStateNames[[int]$state]
+                if (-not $name) { $name = 'unknown' }
+                $script:FullscreenWhy = 'the shell says {0} ({1})' -f $state, $name
+                return $true
+            }
         }
     }
     catch { }   # система не ответила — считаем, что полного экрана нет
@@ -3952,10 +3977,19 @@ function Test-FullscreenApp {
         $mi.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($mi)
         if (-not [NativeForeground]::GetMonitorInfo($mon, [ref]$mi)) { return $false }
 
-        # Развёрнутое окно закрывает рабочую область, но не панель задач, поэтому
-        # сюда попадает только по-настоящему безрамочный полный экран.
-        return ($rect.Left -le $mi.rcMonitor.Left -and $rect.Top -le $mi.rcMonitor.Top -and
-                $rect.Right -ge $mi.rcMonitor.Right -and $rect.Bottom -ge $mi.rcMonitor.Bottom)
+        # Задумано так: развёрнутое окно закрывает рабочую область, но не панель
+        # задач, поэтому сюда попадает только по-настоящему безрамочный полный
+        # экран. Запас на деле в считаные пиксели, поэтому в журнал уходят ОБА
+        # прямоугольника и класс окна: по ним видно, это настоящая игра или
+        # очередное окно, дотянувшееся до края монитора.
+        $covers = ($rect.Left -le $mi.rcMonitor.Left -and $rect.Top -le $mi.rcMonitor.Top -and
+                   $rect.Right -ge $mi.rcMonitor.Right -and $rect.Bottom -ge $mi.rcMonitor.Bottom)
+        if ($covers) {
+            $script:FullscreenWhy = ('{0} covers its monitor: window {1},{2}..{3},{4}, monitor {5},{6}..{7},{8}' -f
+                $cls.ToString(), $rect.Left, $rect.Top, $rect.Right, $rect.Bottom,
+                $mi.rcMonitor.Left, $mi.rcMonitor.Top, $mi.rcMonitor.Right, $mi.rcMonitor.Bottom)
+        }
+        return $covers
     }
     catch { return $false }
 }
@@ -3968,7 +4002,7 @@ function Restore-BestModes {
 
     if (Test-FullscreenApp) {
         if (-not $script:RestorePending) {
-            Write-DisplayLog 'watch: postponed - a full-screen app is running, it sets the mode itself'
+            Write-DisplayLog ('watch: postponed - full screen: {0}' -f $script:FullscreenWhy)
         }
         $script:RestorePending = $true
         return @()
@@ -4011,7 +4045,7 @@ function Restore-BestModes {
 
         if ($todo.Count -gt 0 -and (Test-FullscreenApp)) {
             if (-not $script:RestorePending) {
-                Write-DisplayLog 'watch: postponed - a full-screen app is running, it sets the mode itself'
+                Write-DisplayLog ('watch: postponed - full screen: {0}' -f $script:FullscreenWhy)
             }
             $script:RestorePending = $true
             return @()
