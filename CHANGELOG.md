@@ -59,4 +59,4 @@ list of changes against something earlier.
   your system. Deleting the folder uninstalls it.
 - One `Add-Type` for all the embedded C#, cached as `native-*.dll` next to the
   scripts and rebuilt automatically when the source changes.
-- 275 test cases and one command that runs every gate: `.\tools\check.ps1`.
+- 282 test cases and one command that runs every gate: `.\tools\check.ps1`.

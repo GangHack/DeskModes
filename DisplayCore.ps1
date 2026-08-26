@@ -908,6 +908,41 @@ public class NativeForeground {
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    // Признаки окна, которого на столе нет. Те же самые, что уже отсеивает
+    // NativeWindows.Enumerate() для снимков позиций окон: правило одно, а знали
+    // о нём в одном месте из двух.
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int value, int size);
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int DWMWA_CLOAKED = 14;
+
+    // DWM «прячет» окно, не закрывая его: IsWindowVisible всё ещё говорит «да», а
+    // на экране его нет. Именно так выглядит TextInputHost — системное окно ввода
+    // размером ровно в монитор.
+    public static bool IsCloaked(IntPtr hWnd) {
+        int cloaked = 0;
+        try { if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out cloaked, sizeof(int)) == 0) return cloaked != 0; }
+        catch { }   // атрибута нет на старых сборках — считаем окно видимым
+        return false;
+    }
+
+    // Без кнопки на панели задач и без Alt-Tab. Игра такого себе не ставит, а
+    // накладки вроде NVIDIA Overlay — ставят.
+    public static bool IsToolWindow(IntPtr hWnd) {
+        return (GetWindowLong(hWnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0;
+    }
 }
 
 // Яркость и контраст — по DDC/CI, служебному каналу внутри кабеля. Это тот же
@@ -3916,6 +3951,33 @@ $script:RestorePending = $false
 # Чтобы «разрешение не наше» не писалось в лог на каждой проверке: монитор -> WxH.
 $script:LastResNote = @{}
 
+# Окно, которого на столе нет: полного экрана оно не занимает, чем бы ни был его
+# прямоугольник.
+#
+# Правило не новое — ровно это уже отсеивает NativeWindows.Enumerate(), когда
+# снимает позиции окон. Test-FullscreenApp про него не знал, и на этом ловился
+# TextInputHost: системное окно ввода размером РОВНО в монитор, видимое по
+# IsWindowVisible и при этом закрытое DWM. Замерено 2026-08-26 — единственное
+# окно на столе, проходившее проверку целиком; NVIDIA Overlay не дотягивал до неё
+# один пиксель и прошёл бы завтра, но он tool-window.
+#
+# Пустой заголовок в признаки НЕ берём, хотя перебор окон его учитывает:
+# безрамочная игра вполне может не иметь заголовка, и отсеять её было бы хуже
+# ложного срабатывания.
+#
+# Функция чистая и потому проверяемая: у настоящей проверки все входы приходят от
+# Windows, а [NativeForeground] — тип, а не функция, и подменить его в тесте нечем.
+# Возвращает причину, по которой окно не в счёт, или пустую строку.
+function Get-GhostWindowReason {
+    param([bool]$Visible, [bool]$Cloaked, [bool]$Minimised, [bool]$ToolWindow)
+
+    if (-not $Visible) { return 'the window is not visible' }
+    if ($Cloaked) { return 'the window is cloaked by DWM' }
+    if ($Minimised) { return 'the window is minimised' }
+    if ($ToolWindow) { return 'the window is a tool window' }
+    return ''
+}
+
 # Почему сторож решил, что идёт полный экран. Пишет Test-FullscreenApp при каждом
 # вызове, читает тот, кто из-за этого отложил работу.
 #
@@ -3968,6 +4030,14 @@ function Test-FullscreenApp {
         $cls = New-Object System.Text.StringBuilder 256
         [void][NativeForeground]::GetClassName($hwnd, $cls, 256)
         if (@('Progman', 'WorkerW', 'Shell_TrayWnd') -contains $cls.ToString()) { return $false }
+
+        # Призрака отсеиваем ДО геометрии: она у него бывает какая угодно, вплоть
+        # до точного размера монитора.
+        $ghost = Get-GhostWindowReason -Visible ([NativeForeground]::IsWindowVisible($hwnd)) `
+                                       -Cloaked ([NativeForeground]::IsCloaked($hwnd)) `
+                                       -Minimised ([NativeForeground]::IsIconic($hwnd)) `
+                                       -ToolWindow ([NativeForeground]::IsToolWindow($hwnd))
+        if ($ghost) { return $false }
 
         $rect = New-Object NativeForeground+RECT
         if (-not [NativeForeground]::GetWindowRect($hwnd, [ref]$rect)) { return $false }
