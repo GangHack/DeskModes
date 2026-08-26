@@ -695,10 +695,10 @@ Test-Case 'menu: a disabled display row is drawn in our bright colour, not syste
         $g.Clear([System.Drawing.Color]::FromArgb(0x2C, 0x2C, 0x2C))
         $rect = New-Object System.Drawing.Rectangle 0, 0, 320, 20
         $font = New-Object System.Drawing.Font 'Segoe UI', 9.75
-        $args = New-Object System.Windows.Forms.ToolStripItemTextRenderEventArgs (
+        $ev = New-Object System.Windows.Forms.ToolStripItemTextRenderEventArgs (
             $g, $item, $item.Text, $rect, [System.Drawing.Color]::Red, $font,
             [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
-        $renderer.DrawItemText($args)
+        $renderer.DrawItemText($ev)
 
         $seen = Measure-Bitmap $bmp
         # SystemColors.GrayText, которым рисует base, даёт яркость около 110.
@@ -722,9 +722,9 @@ Test-Case 'menu: a status dot keeps its colour on a disabled row' {
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     try {
         $g.Clear([System.Drawing.Color]::FromArgb(0x2C, 0x2C, 0x2C))
-        $args = New-Object System.Windows.Forms.ToolStripItemImageRenderEventArgs (
+        $ev = New-Object System.Windows.Forms.ToolStripItemImageRenderEventArgs (
             $g, $item, $dot, (New-Object System.Drawing.Rectangle 0, 0, 16, 16))
-        $renderer.DrawItemImage($args)
+        $renderer.DrawItemImage($ev)
 
         $seen = Measure-Bitmap $bmp
         # DrawImageDisabled, которым рисует base, отдаёт серое: зелень уходит в 0.
@@ -747,10 +747,10 @@ Test-Case 'menu: an unavailable mode stays readable too, just quieter' {
     try {
         $g.Clear([System.Drawing.Color]::FromArgb(0x2C, 0x2C, 0x2C))
         $font = New-Object System.Drawing.Font 'Segoe UI', 9.75
-        $args = New-Object System.Windows.Forms.ToolStripItemTextRenderEventArgs (
+        $ev = New-Object System.Windows.Forms.ToolStripItemTextRenderEventArgs (
             $g, $item, $item.Text, (New-Object System.Drawing.Rectangle 0, 0, 320, 20),
             [System.Drawing.Color]::Red, $font, [System.Windows.Forms.TextFormatFlags]::VerticalCenter)
-        $renderer.DrawItemText($args)
+        $renderer.DrawItemText($ev)
         $seen = Measure-Bitmap $bmp
         Assert-True ($seen.MaxLuminance -gt 130) "dim but legible (saw $($seen.MaxLuminance))"
         Assert-True ($seen.MaxLuminance -lt 200) 'and quieter than a live row'
