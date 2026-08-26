@@ -22,7 +22,7 @@ Displays.ps1 also dot-sources       SettingsDialog.ps1
 
 `DisplayCore.ps1` holds definitions only and does nothing on load beyond compiling its
 types. It must keep working when `WindowLayout.ps1` was not dot-sourced, so it calls
-into that file through a presence check rather than blind (`DisplayCore.ps1:3765`):
+into that file through a presence check rather than blind (`DisplayCore.ps1:3780`):
 
 ```powershell
 $doWindows = ((Test-Path Function:\Save-WindowLayout) -and ...)
@@ -50,16 +50,17 @@ survives until somebody runs them by hand. That is what gate one is for.
 
 | File | Lines | Go here for |
 | --- | --- | --- |
-| `DisplayCore.ps1` | 4611 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 708-1826, the compiled-assembly cache 1828-1945, `Switch-DisplayMode` at 3619 |
+| `DisplayCore.ps1` | 4626 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 723-1841, the compiled-assembly cache 1843-1953, `Switch-DisplayMode` at 3634 |
 | `SettingsDialog.ps1` | 3033 | all WPF: the Settings window, the mode editor, the timer popup. Building a window is separated from showing it so tests can build one and never show it |
-| `Displays.ps1` | 1105 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
+| `Displays.ps1` | 1115 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
 | `Activity.ps1` | 549 | the diary and its HTML report |
-| `Set-Display.ps1` | 201 | the command line: argument parsing and printing, no logic |
+| `Set-Display.ps1` | 207 | the command line: argument parsing and printing, no logic |
 | `WindowLayout.ps1` | 188 | window-position snapshots per display set |
-| `render-preview.ps1` | 199 | dev tool: renders windows to PNG without showing them |
-| `Make-Icon.ps1` | 148 | dev tool: regenerates `app.ico` |
-| `tests/` | — | the runner, the framework, the fakes and the cases |
-| `docs/notes.ru.md` | 1264 | the engineering diary, in Russian: what Windows actually does, measured, day by day |
+| `render-preview.ps1` | 201 | dev tool: renders windows to PNG without showing them |
+| `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
+| `tools/check.ps1` | 221 | the four gates, and the only answer to "am I done" |
+| `tests/` | — | the runner (108), the framework (80), the fakes (58), 30 files of cases (3642) and `live.ps1` (223) |
+| `docs/notes.ru.md` | 1353 | the engineering diary, in Russian: what Windows actually does, measured, day by day |
 
 Line counts are signposts, not contracts — they drift. `docs/notes.ru.md` is the place
 to look when a decision here looks arbitrary; it usually records the evening that
@@ -90,6 +91,11 @@ produced it.
   `(Settings, State)`; positionally, those get swapped sooner or later.
 - **Settings are read and written only through `Get-ActiveSettings` /
   `Set-ActiveSettings`** — never `$script:Settings` from inside an event handler.
+- **The version lives in one place** — `$script:Version` in `DisplayCore.ps1`, formatted
+  by `Get-VersionLine` for both `Set-Display.ps1 status` and the tray's About item. Bump
+  it with a `CHANGELOG.md` entry, never on its own.
+- **Every script run directly starts with `#Requires -Version 5.1`.** It is a comment, so
+  it goes on line one and the comment-based help below it still resolves.
 
 ## Traps
 
@@ -123,7 +129,7 @@ them.
   text — that text is localised.
 - **`DisplayCore.ps1` deliberately does not set `$ErrorActionPreference`,** and has to
   survive a caller that set it to `Stop`. Both entry points do. See the comments at
-  `DisplayCore.ps1:40` and `:290`: that is why `Add-Content` carries an explicit
+  `DisplayCore.ps1:55` and `:305`: that is why `Add-Content` carries an explicit
   `-ErrorAction Stop`, and why settings parsing sits under one `try`.
 - **`DISPLAY1` / `DISPLAY2` / `DISPLAY3` are not a monitor's identity.** Windows hands
   those names out by position, and they move between monitors across a reboot or a

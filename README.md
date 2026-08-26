@@ -450,9 +450,17 @@ costs tenths of a second rather than seconds.
 ## Tests
 
 ```powershell
-.\tests\run-tests.ps1               all of them, about two seconds
+.\tools\check.ps1                    everything below, and three gates more
+.\tests\run-tests.ps1               just the tests, about two seconds
 .\tests\run-tests.ps1 -Only combos  only tests whose name contains the string
+.\tests\run-tests.ps1 -File 14      only that file of cases
 ```
+
+`tools\check.ps1` is the one command that answers "did I break anything": every script
+parses, every `.ps1` is UTF-8 with BOM and CRLF, PSScriptAnalyzer is clean if you have it,
+and the tests pass. Non-zero exit on any failure. The parse gate is there because two
+scripts here are dot-sourced by nothing, so a typo in them would otherwise survive until
+somebody ran them by hand.
 
 Pure functions only: hotkey parsing, mode keys, display-name matching, combinations, the
 hotkey-key migration, the primary-display ladder, every spelling `settings.json` accepts and
@@ -467,6 +475,17 @@ diary — sums, report, streaks and the page it produces. **No test touches your
 `settings.json`, your log or your diary** — those are redirected to temporary files. Non-zero
 exit on failure.
 
+The switch itself is covered too, and without touching a monitor: `Switch-DisplayMode`
+reaches hardware and disk only through named functions, and a test declares its own
+stand-ins for them. So it can check *what* was called and *in what order*: that the desk
+was built in one transition and not three, that a refusal is reported as a refusal, that
+the before-command never runs for a switch that cannot happen.
+
+`tests\live.ps1` is the opposite of all that: it drives your real desk, by hand only. It
+switches through every mode, checks the set, the taskbar, the positions and the refresh
+rates after each one, then puts the desk back. `-ReadOnly` runs only the command-line
+smoke checks and leaves your displays alone.
+
 No Pester on purpose: PowerShell 5.1 ships an ancient 3.4, and installing a newer one would
 break the "nothing is installed on your system" promise.
 
@@ -480,7 +499,9 @@ break the "nothing is installed on your system" promise.
 | `WindowLayout.ps1` | window-position snapshots per display set |
 | `Activity.ps1` | the diary and its report |
 | `Set-Display.ps1` | the command line |
-| `tests\run-tests.ps1` | the test runner |
+| `tests\run-tests.ps1` | the test runner: `framework.ps1`, `fakes.ps1`, and one file per group in `cases\` |
+| `tests\live.ps1` | the same questions asked of your real desk, by hand (`-ReadOnly` changes nothing) |
+| `tools\check.ps1` | every gate in one command - run this before calling a change done |
 | `Make-Icon.ps1` | regenerates `app.ico` |
 | `render-preview.ps1` | renders the Settings window, a mode editor and the timer popup to PNGs without showing them, for checking the UI (`-Fake` invents a desk, `-EditorMode` picks whose editor) |
 | `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
