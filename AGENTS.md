@@ -136,9 +136,13 @@ them.
   hotplug. Identity is the device path (`Id`) or the short Monitor ID.
 - **`Set-StrictMode` was tried on 2026-08-24 and rejected.** Both `2.0` and `Latest`
   break settings parsing, which is built on "the key may be missing". Do not try again.
-- **`Switch-DisplayMode` takes a real named mutex, `Local\ScreenDeckSwitch`.** If the
-  running tray switches the desk while the tests run, the orchestrator tests land in the
-  "skip" branch. Unlikely, but when a red result makes no sense, check that first.
+- **`Local\ScreenDeckSwitch` is taken by two things, not one.** `Switch-DisplayMode` holds
+  it for a whole switch, and the refresh-rate watchdog `Restore-BestModes` holds it for
+  about a second while it collects state — and what starts the watchdog is
+  `DisplaySettingsChanged`, i.e. *our own* switch. So a running tray makes the mutex busy
+  for roughly a second after every switch. Anything that switches back to back must expect
+  a `Skipped` result and retry (`tests/live.ps1` does); anything that reads a red result
+  should check this first, because the failure surfaces far from its cause.
 
 ## Tests
 

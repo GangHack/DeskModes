@@ -19,6 +19,10 @@
         .\tests\live.ps1                 полный прогон, со подтверждением
         .\tests\live.ps1 -Yes            полный прогон без вопросов
 
+    Трей гасить не нужно: его сторож частоты берёт тот же мьютекс, что и
+    переключение, и держит его около секунды после каждого шага — поэтому
+    переключения здесь идут с повтором, а не в один заход.
+
     Журнал НЕ уводится в сторону: строки done: в last-run.log — это и есть замер
     скорости, и сравнивать их надо с прошлыми неделями, а не с пустым файлом.
 
@@ -67,6 +71,42 @@ function Get-LastDoneLine {
     }
     catch { }   # журнала может не быть вовсе — это не повод рушить прогон
     return ''
+}
+
+# Переключение с повтором, и повтор здесь не перестраховка.
+#
+# Сторож частоты в живом трее (Restore-BestModes) берёт ТОТ ЖЕ именованный
+# мьютекс Local\ScreenDeckSwitch и держит его, пока собирает состояние — по его
+# собственному комментарию, около секунды. Событие DisplaySettingsChanged он
+# получает от НАШЕГО переключения, так что окно занятости открывается сразу
+# после каждого успешного шага. Прогон, который бьёт режимами без паузы,
+# попадает в это окно гарантированно: первый шаг проходит, все остальные
+# получают skip. Проверено 2026-08-26 — именно так и вышло.
+#
+# Гасить трей ради прогона неправильно: трей запущен — это НОРМАЛЬНОЕ состояние
+# машины, и проверять надо его. Человек, нажимающий хоткеи, попадает в ту же
+# секунду и просто нажимает снова.
+function Invoke-LiveSwitch {
+    param([Parameter(Mandatory)][string]$Key, [int]$Attempts = 5, [int]$WaitMs = 1500)
+
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try { $r = Switch-DisplayMode -ModeKey $Key -Quiet }
+        catch {
+            Write-LiveCheck $false 'the switch itself went through' $_.Exception.Message
+            return $null
+        }
+        if (-not $r.Skipped) {
+            if ($i -gt 1) {
+                Write-Host ("       took {0} attempts - the tray watchdog held the mutex" -f $i) -ForegroundColor DarkGray
+            }
+            return $r
+        }
+        Start-Sleep -Milliseconds $WaitMs
+    }
+
+    Write-LiveCheck $false 'the switch got its turn' `
+        ("skipped $Attempts times - something holds Local\ScreenDeckSwitch far longer than the watchdog does")
+    return $null
 }
 
 function Invoke-Cli {
@@ -144,11 +184,8 @@ foreach ($mode in $available) {
     Write-Host ''
     Write-Host $mode.Title -ForegroundColor White
 
-    try { [void](Switch-DisplayMode -ModeKey $mode.Key -Quiet) }
-    catch {
-        Write-LiveCheck $false ("the switch itself went through") $_.Exception.Message
-        continue
-    }
+    $switched = Invoke-LiveSwitch -Key $mode.Key
+    if (-not $switched) { continue }
 
     $now = @(Get-DisplayState)
     $nowModes = @(Get-DisplayModes -State $now -Settings $settings)
@@ -206,11 +243,7 @@ Write-Host ''
 Write-Host 'putting the desk back' -ForegroundColor White
 
 $backTo = $(if ($wasKey) { $wasKey } else { 'all' })
-try {
-    [void](Switch-DisplayMode -ModeKey $backTo -Quiet)
-    Write-LiveCheck $true ("back to $backTo")
-}
-catch { Write-LiveCheck $false ("back to $backTo") $_.Exception.Message }
+if (Invoke-LiveSwitch -Key $backTo) { Write-LiveCheck $true "back to $backTo" }
 
 Write-Host ''
 if ($script:Bad -eq 0) {
