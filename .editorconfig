@@ -1,0 +1,32 @@
+# One convention for the whole repository, enforced by tools\check.ps1.
+#
+# Without this file an editor "helpfully" normalising on save rewrites a file
+# whole, and the one real change hides among a thousand touched lines. Worse for
+# .ps1: dropping the BOM makes PowerShell 5.1 read the file as Windows-1251 and
+# every Russian comment turns to mush.
+root = true
+
+[*]
+charset = utf-8-bom
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Markdown: two trailing spaces are a line break, so they must survive.
+[*.md]
+trim_trailing_whitespace = false
+
+# JSON is read by things other than PowerShell, and a BOM is not universally
+# welcome there. settings.example.json has never had one.
+[*.json]
+charset = utf-8
+
+# Dot-files and YAML follow their own crowd: no BOM, two-space indent.
+[{.gitattributes,.gitignore,.editorconfig}]
+charset = utf-8
+
+[*.{yml,yaml}]
+charset = utf-8
+indent_size = 2
