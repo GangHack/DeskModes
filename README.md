@@ -233,8 +233,19 @@ its decision is not the one you made.
   be exactly what `"combo:Work"` did to a display the combination does not include. With
   `"all"` every connected display belongs to it, so the desk is always assembled.
 
+  And it stays quiet for ten seconds after **a different** display went away. When one
+  monitor drops off the bus, Windows lights up whatever is left, and those screens arrive as
+  a plug of their own a second or two later — which is not a hand on a cable, and used to
+  walk the desk over to a mode the display you were working on is not part of. A display
+  coming back from its own nap is still a plug, and so is a cable swapped in one go.
+
 Only **connected** displays are compared, never the ones that are on. The switcher turns
 displays on and off constantly; reacting to its own work would be an endless loop.
+
+None of this ever overwrites the mode **you** chose. `restoreLastMode` brings back your last
+choice, not the last thing the switcher did on its own — otherwise a monitor that fell asleep
+at the wrong moment would quietly become your new default, and every event afterwards would
+confirm it.
 
 ## Rules
 

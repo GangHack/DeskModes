@@ -397,7 +397,10 @@ function Invoke-Mode {
     $switched = $false
     try {
         $keep = -not $script:Settings.maximizeRefresh
-        $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet
+        # -Automatic ходит вместе с -Auto: выбранный режим переписывает только
+        # человек. Все автоматические пути (правила, startup, reapply) зовут нас
+        # с -Auto, значит перечислять их здесь по одному не нужно.
+        $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet -Automatic:$Auto
         $switched = -not $result.Skipped
         if ($result.Skipped) {
             Show-Balloon 'Skipped' $result.Message 'Warning'
@@ -513,6 +516,31 @@ function Invoke-ReapplyMode {
     Invoke-Mode $Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 }
 
+# Стол целиком — в журнал, но только когда он ДРУГОЙ. Событие о смене
+# конфигурации приходит и на наши собственные переключения, по нескольку раз
+# подряд, и повторять одну и ту же строку значило бы утопить в ней всё остальное.
+#
+# Простой идёт той же строкой: если монитор уходит с шины ровно через N минут
+# тишины, это гашение экрана по таймауту питания, а не поломка, и увидеть это
+# можно только рядом с фактом.
+function Write-DeskSnapshot {
+    $state = Get-CachedState
+
+    # Имена запоминаем ВСЕГДА, даже когда строка не изменилась и в журнал не
+    # пойдёт: следующая пропажа будет называть монитор именно отсюда.
+    foreach ($m in @($state)) {
+        if ($m.Id) { $script:KnownLabels[[string]$m.Id] = [string]$m.Label }
+    }
+
+    $now = Format-DeskSnapshot -State $state
+    if ($now -eq $script:LastDeskLine) { return }
+    $script:LastDeskLine = $now
+
+    $idle = $(try { [int][NativeActivity]::IdleSeconds() } catch { -1 })
+    if ($idle -ge 0) { Write-DisplayLog ('desk: {0} (idle {1} s)' -f $now, $idle) }
+    else             { Write-DisplayLog ('desk: {0}' -f $now) }
+}
+
 # Событие о смене конфигурации приходит и на наши собственные переключения,
 # поэтому сравниваются ПОДКЛЮЧЁННЫЕ мониторы: их набор меняется только когда
 # кабель воткнули или выдернули (или монитор погасили его собственной кнопкой).
@@ -521,15 +549,15 @@ function Invoke-PlugCheck {
 
     $settings = Get-ActiveSettings
     $last = Get-LastMode
+    # Кэш состояния обновлён строкой выше нас (см. $script:DisplayChanged), так
+    # что и появившийся монитор, и пропавший здесь уже видны.
+    $state = Get-CachedState
 
     # Состав режима из onPlug: решает чистая функция, а знать, кто в режим входит,
-    # может только тот, у кого на руках стол. Кэш состояния обновлён строкой
-    # выше нас (см. $script:DisplayChanged), так что появившийся монитор здесь
-    # уже виден.
+    # может только тот, у кого на руках стол.
     $plugMembers = $null
     $plugKey = [string]$settings.reapply.onPlug
     if ($plugKey) {
-        $state = Get-CachedState
         $plugMode = @(Get-DisplayModes -State $state -Settings $settings) |
                         Where-Object { $_.Key -eq $plugKey } | Select-Object -First 1
         if ($plugMode) {
@@ -538,10 +566,39 @@ function Invoke-PlugCheck {
         }
     }
 
+    # Часы для карантина держим здесь: решение принимает чистая функция, а
+    # «сколько прошло» и «кто тогда пропал» — это состояние трея.
+    $since = $null
+    if ($script:LastVanishAt) { $since = ((Get-Date) - $script:LastVanishAt).TotalSeconds }
+
     $decision = Get-ReapplyDecision -Reapply $settings.reapply -Before $Before -Now $script:PresentIds `
                                     -LastMode $(if ($last) { [string]$last.Key } else { '' }) `
-                                    -PlugModeMembers $plugMembers
-    if ($decision.Action -ne 'mode') { return }
+                                    -PlugModeMembers $plugMembers `
+                                    -VanishedRecently $script:LastVanishIds -SecondsSinceVanish $since
+
+    # Имена — в журнал, и до всякого решения. Без них видно, какая ветка
+    # сработала, но не видно, кто её вызвал: разбор случая 28 августа целиком
+    # ушёл на то, чтобы вывести это косвенно.
+    foreach ($id in @($decision.Vanished)) {
+        Write-DisplayLog ('plug: {0} went away' -f (Get-DisplayLabelById -Id $id -State $state -Known $script:KnownLabels))
+    }
+    foreach ($id in @($decision.Appeared)) {
+        Write-DisplayLog ('plug: {0} came up' -f (Get-DisplayLabelById -Id $id -State $state -Known $script:KnownLabels))
+    }
+
+    if (@($decision.Vanished).Count -gt 0) {
+        $script:LastVanishAt = Get-Date
+        $script:LastVanishIds = @($decision.Vanished)
+    }
+
+    if ($decision.Action -ne 'mode') {
+        # Причина у «ничего не делаем» бывает только одна — карантин, и молчать
+        # о ней нельзя: иначе настройка onPlug выглядит сломанной.
+        if ($decision.Reason) {
+            Write-DisplayLog ('reapply: {0} - leaving the displays alone' -f $decision.Reason)
+        }
+        return
+    }
     Invoke-ReapplyMode -Key $decision.Mode -Reason $decision.Reason
 }
 
@@ -1041,6 +1098,22 @@ $menu.add_Opening({
 # подключение монитора за запуск проходило бы незамеченным.
 $script:PresentIds = @()
 
+# Когда и кто пропал с шины в прошлый раз. Нужно карантину в Invoke-PlugCheck:
+# монитор, появившийся через секунду после чужой пропажи, — это Windows
+# перекладывает стол, а не человек воткнул кабель. На диск не пишется намеренно:
+# после перезапуска трея карантина нет, и это правильно — пропажа, о которой
+# помнят со вчера, запрещала бы настоящее подключение.
+$script:LastVanishAt = $null
+$script:LastVanishIds = @()
+
+# Последняя записанная строка стола — чтобы не повторять её на каждом событии.
+$script:LastDeskLine = ''
+
+# Путь устройства -> имя, всё, что видели за этот запуск. Нужно, чтобы назвать
+# монитор, которого в состоянии УЖЕ НЕТ: убранный драйвером с шины исчезает из
+# перечисления целиком, и спрашивать его имя в момент пропажи поздно.
+$script:KnownLabels = @{}
+
 Update-StateCache   # чтобы первое открытие меню было таким же быстрым, как остальные
 
 # Кэш обновляем по событию системы: монитор могли включить, выключить или
@@ -1053,6 +1126,10 @@ Update-StateCache   # чтобы первое открытие меню было
 $script:DisplayChanged = {
     $before = @($script:PresentIds)
     Update-StateCache
+    # Первым делом — снимок стола: всё остальное в этом обработчике его меняет,
+    # и записанный после него снимок отвечал бы уже на другой вопрос.
+    try { Write-DeskSnapshot }
+    catch { Write-DisplayLog "desk: snapshot failed - $($_.Exception.Message)" }
     Invoke-ModeWatch
     try { Invoke-PlugCheck -Before $before }
     catch { Write-DisplayLog "reapply: plug check failed - $($_.Exception.Message)" }

@@ -155,6 +155,21 @@ Test-Case 'switch: the set is already right, so the topology is not rebuilt' {
     Assert-Equal 'hook:before,layout,lastMode,applied,hook:after' ($script:SwCalls -join ',') 'and that is the whole of it'
 }
 
+Test-Case 'switch: an automatic switch does not overwrite the mode the human chose' {
+    # 2026-08-28: reapply по появлению монитора записал combo:Work поверх
+    # выбранного solo:XG27AQDMGR, и дальше уже и onUnplug, и восстановление при
+    # старте вели мимо монитора, за которым человек сидел.
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet -Automatic
+
+    Assert-True $r.Ok 'the switch itself still happens'
+    Assert-True (-not ($script:SwCalls -contains 'lastMode')) 'but the choice is left alone'
+    Assert-True ($script:SwCalls -contains 'applied') 'what the monitors actually show is still remembered'
+}
+
 Test-Case 'switch: a changing set is one whole-desk call, not three transitions' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false

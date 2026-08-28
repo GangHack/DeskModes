@@ -3347,6 +3347,52 @@ function Get-ModeMembers {
     return @()
 }
 
+# Имя монитора по пути устройства — для журнала.
+#
+# Заведено ради строк «plug:»: без имён в журнале видно, какая ветка сработала,
+# но не видно, кто её вызвал, и разбор упирается в догадки.
+#
+# Две дороги, и вторая обязательна. Уснувший монитор в состоянии обычно ещё есть,
+# помеченный Disconnected. Но когда драйвер убирает его с шины совсем — а именно
+# так и выглядит «монитор погас сам», Windows пишет про это «surprise removed as
+# it is reported as missing on the bus» — его нет и в перечислении. Спрашивать
+# имя у состояния в этот момент уже поздно, поэтому $Known — то, что видели
+# раньше: путь -> имя. Без него строка про пропажу называла бы «a display» ровно
+# в том случае, ради которого её и писали.
+function Get-DisplayLabelById {
+    param([string]$Id, $State, $Known = $null)
+
+    $one = @($State | Where-Object { $_.Id -eq $Id }) | Select-Object -First 1
+    if ($one -and $one.Label) { return [string]$one.Label }
+    if ($Known -and $Known.Contains($Id) -and $Known[$Id]) { return [string]$Known[$Id] }
+    return 'a display'
+}
+
+# Весь стол одной строкой — для журнала, на каждое изменение конфигурации.
+#
+# 28 августа журнал говорил «a display went away» и не говорил, КАКОЙ, а про
+# остальных не говорил ничего. Разбор ушёл на то, чтобы вывести это косвенно — по
+# тому, какая ветка сработала. Эта строка отвечает сразу и целиком.
+#
+# Три состояния, и они не об одном и том же:
+#   gone — монитора нет на шине: уснул своей кнопкой, выдернули кабель, или
+#          драйвер убрал его как «missing on the bus»;
+#   off  — подключён, но картинки не показывает (так его выключаем мы);
+#   on   — показывает, и в каком режиме.
+function Format-DeskSnapshot {
+    param($State)
+
+    $parts = @()
+    foreach ($m in @($State)) {
+        $label = [string]$m.Label
+        if ($m.Disconnected)  { $parts += ('{0} gone' -f $label); continue }
+        if (-not $m.Active)   { $parts += ('{0} off' -f $label); continue }
+        $parts += ('{0} on {1}x{2}@{3}' -f $label, [int]$m.Width, [int]$m.Height, [int]$m.Hz)
+    }
+    if ($parts.Count -eq 0) { return 'nothing at all' }
+    return ($parts -join ', ')
+}
+
 # Стоит ли на столе уже ровно этот набор экранов. Сравниваем НАБОРЫ, а не ключи
 # режимов: пока один монитор не воткнут, «все» и «рабочие» — это один и тот же
 # стол, и сравнение ключей объявило бы переключением то, чего не происходит.
@@ -3674,7 +3720,12 @@ function Switch-DisplayMode {
         [string]$PrimaryMatch,
         [switch]$KeepMode,
         [switch]$DryRun,
-        [switch]$Quiet
+        [switch]$Quiet,
+        # Переключение затеяли мы сами, а не человек: сторож, правило, сборка
+        # стола после сна или пропажи монитора. Отличается ровно одним — таким
+        # переключением не перезаписывается выбранный режим (см. Save-LastMode
+        # ниже).
+        [switch]$Automatic
     )
 
     # Один переключатель за раз. Без этого два быстрых нажатия запускали два
@@ -3910,7 +3961,14 @@ function Switch-DisplayMode {
         # человек просил именно этот режим, и после включения компьютера
         # возвращать надо его. Провал переключения сюда не доходит — он уходит
         # исключением выше.
-        Save-LastMode -Key $ModeKey
+        #
+        # И только выбор человека. Автоматическое переключение выбором не
+        # является, и 28 августа это стоило вечера: reapply по появлению монитора
+        # записал combo:Work поверх выбранного solo:XG27AQDMGR, после чего и
+        # onUnplug, и восстановление при старте вели уже в Work — то есть мимо
+        # монитора, за которым человек сидел. Каждое пробуждение соседнего экрана
+        # утверждало ловушку заново, и выйти из неё было нечем.
+        if (-not $Automatic) { Save-LastMode -Key $ModeKey }
 
         # А здесь наоборот — только факт: что монитор показал, то и запомнили.
         Save-AppliedModes -Applied $step.Applied
@@ -4532,9 +4590,14 @@ function Get-ReapplyDecision {
     # $PlugModeMembers — пути мониторов, входящих в режим из onPlug. Считает их
     # вызывающий: состав режима зависит от того, что сейчас на столе, а эта
     # функция состояния не знает и знать не должна. $null означает «не сказали».
-    param($Reapply, $Before, $Now, [string]$LastMode, $PlugModeMembers = $null)
+    #
+    # $VanishedRecently и $SecondsSinceVanish — кто пропал в ПРОШЛЫЙ раз и как
+    # давно (см. карантин ниже). Время передают снаружи, а не смотрят на часы
+    # здесь: за часы функцию было бы не проверить.
+    param($Reapply, $Before, $Now, [string]$LastMode, $PlugModeMembers = $null,
+          $VanishedRecently = $null, $SecondsSinceVanish = $null, [int]$QuietSeconds = 10)
 
-    $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = '' }
+    $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = ''; Appeared = @(); Vanished = @() }
     if (-not $Reapply) { return $none }
 
     $before = @($Before | Where-Object { $_ })
@@ -4545,6 +4608,11 @@ function Get-ReapplyDecision {
     $appeared = @($now | Where-Object { $before -notcontains $_ })
     $vanished = @($before | Where-Object { $now -notcontains $_ })
 
+    # Дальше «ничего не делаем» уже про конкретные мониторы: их имена нужны
+    # журналу, а список пропавших — тому, кто засечёт время для карантина.
+    $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = ''
+                               Appeared = $appeared; Vanished = $vanished }
+
     # Монитор появился. По умолчанию не делаем ничего: человек только что включил
     # его кнопкой, и погасить его в ответ — это война с человеком. Режим для этого
     # случая называют явно (reapply.onPlug).
@@ -4554,15 +4622,39 @@ function Get-ReapplyDecision {
     # не по плану»: в combo:Work нет ASUS, и включённый кнопкой ASUS гаснул бы
     # через секунду — та же война, только теперь по настройке. У 'all' участники —
     # всё подключённое, поэтому там проверка не меняет ничего.
+    $echoReason = ''
     if ($appeared.Count -gt 0 -and [string]$Reapply.onPlug) {
         $ours = $true
         if ($null -ne $PlugModeMembers) {
             $members = @($PlugModeMembers | Where-Object { $_ })
             $ours = (@($appeared | Where-Object { $members -contains $_ }).Count -gt 0)
         }
-        if ($ours) {
+
+        # Карантин: появление вскоре после ЧУЖОЙ пропажи — это не рука на кабеле,
+        # а эхо. Когда монитор уходит с шины, Windows тут же зажигает то, что
+        # осталось, и разбуженные экраны приходят ОТДЕЛЬНЫМ событием через
+        # секунду-две. Замерено 2026-08-28: ASUS пропал в 21:06:43, «появился
+        # монитор» пришло в 21:06:45, и стол уехал в combo:Work, где ASUS'а нет.
+        #
+        # Проверка членства (выше) на этом не спасает: проснувшийся ULTRAGEAR в
+        # combo:Work входит честно. Вопрос не в том, чей монитор, а в том, кто
+        # его включил.
+        #
+        # Два случая карантин НЕ трогает, оба намеренно. Свой же монитор,
+        # вернувшийся после собственной пропажи, — это «выключил кнопкой и включил
+        # обратно», ровно то, ради чего настройку заводили. И пропажа с появлением
+        # в ОДНОМ событии — это переткнутый кабель, там новый монитор и есть
+        # новость (см. случай про cable swapped ниже по файлу тестов).
+        $recent = @($VanishedRecently | Where-Object { $_ })
+        $echo = ($null -ne $SecondsSinceVanish -and $recent.Count -gt 0 -and
+                 [double]$SecondsSinceVanish -lt $QuietSeconds -and
+                 (@($appeared | Where-Object { $recent -contains $_ }).Count -eq 0))
+
+        if ($ours -and $echo) { $echoReason = 'a display came up right after another went away' }
+        elseif ($ours) {
             return [pscustomobject]@{ Action = 'mode'; Mode = [string]$Reapply.onPlug
-                                      Reason = 'a display was plugged in' }
+                                      Reason = 'a display was plugged in'
+                                      Appeared = $appeared; Vanished = $vanished }
         }
     }
 
@@ -4571,7 +4663,13 @@ function Get-ReapplyDecision {
     # числе. Ничего нового при этом не включается.
     if ($vanished.Count -gt 0 -and $Reapply.onUnplug -and $LastMode) {
         return [pscustomobject]@{ Action = 'mode'; Mode = [string]$LastMode
-                                  Reason = 'a display went away' }
+                                  Reason = 'a display went away'
+                                  Appeared = $appeared; Vanished = $vanished }
+    }
+
+    if ($echoReason) {
+        return [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = $echoReason
+                                  Appeared = $appeared; Vanished = $vanished }
     }
     return $none
 }

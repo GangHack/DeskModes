@@ -80,6 +80,7 @@ new file of the program ships by itself, a new file for us has to be named there
 | `render-preview.ps1` | 201 | dev tool: renders windows to PNG without showing them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
 | `tools/check.ps1` | 221 | the four gates, and the only answer to "am I done" |
+| `tools/trace-displays.ps1` | 103 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
 | `tools/pack.ps1` | 165 | the release archive: what the user downloads, built from `git ls-files` |
 | `tests/` | — | the runner (108), the framework (80), the fakes (58), 30 files of cases (3642) and `live.ps1` (223) |
 | `docs/notes.ru.md` | 1353 | the engineering diary, in Russian: what Windows actually does, measured, day by day |
