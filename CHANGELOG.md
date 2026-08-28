@@ -49,7 +49,13 @@ list of changes against something earlier.
 - A tray icon with a menu that shows the real state of every display, themed
   after the system.
 - A Settings window (WPF) for combinations, order, shortcuts, brightness, rules
-  and commands, with a preview of the desk.
+  and commands, with a preview of the desk. The first time the tray starts it opens
+  by itself, and a balloon says the menu is on the right click — a folder of scripts
+  gives no other hint that anything happened.
+- Clears the Mark-of-the-Web from its own scripts when it finds it, so Explorer stops
+  asking about `Displays.cmd` and your own console will run `Set-Display.ps1`
+  instead of refusing it as unsigned. Anything else in the folder keeps its mark:
+  there it is what SmartScreen and Protected View go by.
 - A command line — `Set-Display.ps1` — with exit codes a `.cmd` wrapper can act
   on: 0 done, 1 failed, 2 another switch was already running.
 
@@ -59,4 +65,4 @@ list of changes against something earlier.
   your system. Deleting the folder uninstalls it.
 - One `Add-Type` for all the embedded C#, cached as `native-*.dll` next to the
   scripts and rebuilt automatically when the source changes.
-- 282 test cases and one command that runs every gate: `.\tools\check.ps1`.
+- 297 test cases and one command that runs every gate: `.\tools\check.ps1`.

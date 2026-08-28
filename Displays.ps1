@@ -50,6 +50,46 @@ $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
+# Метка зоны. Всё скачанное Windows помечает потоком Zone.Identifier. Запуск это
+# само по себе не ломает — .cmd зовёт powershell с -ExecutionPolicy Bypass, а
+# Bypass на зону не смотрит, — но метка остаётся на файлах и мешает дальше:
+# диспетчер вложений спрашивает про Displays.cmd при каждом запуске, а тот, кто
+# позовёт .\Set-Display.ps1 из своей консоли, упрётся в «not digitally signed» уже
+# по своей политике. Проверка стоит обращение к потоку и в обычной жизни ложна;
+# когда истинна — снимаем метку со всех своих скриптов разом.
+#
+# Признак — не один файл, а любой из своих: кому Windows пожаловалась именно на
+# Displays.ps1, тот снимает метку с него одного (Свойства → Разблокировать), и
+# папка так и осталась бы помеченной — а признака уже нет. И Unblock-File с
+# -ErrorAction Continue: под $ErrorActionPreference = 'Stop' один упрямый файл
+# оборвал бы конвейер, а второго раза не будет.
+try {
+    $marked = $false
+    foreach ($name in 'Displays.ps1', 'Displays.cmd', 'DisplayCore.ps1', 'Set-Display.ps1', 'SettingsDialog.ps1') {
+        if (Get-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue) {
+            $marked = $true
+            break
+        }
+    }
+    if ($marked) {
+        # Только свои .ps1 и .cmd. Unblock-File снимает метку с ЛЮБОГО типа файла,
+        # и на .exe, .docx или .xlsm она — это SmartScreen, диспетчер вложений и
+        # Protected View: сняв её со всей папки, инструмент молча разоружил бы
+        # чужое скачанное, окажись оно рядом (папку кладут и в общую Tools\, и
+        # распаковывают обновление поверх). Мешает же метка ровно двум видам:
+        # .ps1 упирается в политику подписи, .cmd — в диспетчер вложений; app.ico
+        # и README в разблокировке не нуждались никогда.
+        #
+        # Where-Object, а не -Include: с -LiteralPath тот молча игнорируется и
+        # разблокирует всё подряд — проверено, ошибка беззвучная.
+        Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File |
+            Where-Object { $_.Extension -eq '.ps1' -or $_.Extension -eq '.cmd' } |
+            Unblock-File -ErrorAction Continue
+        Write-DisplayLog 'startup: removed Mark-of-the-Web from the scripts'
+    }
+}
+catch { Write-DisplayLog "startup: could not remove Mark-of-the-Web - $($_.Exception.Message)" }
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -324,8 +364,11 @@ $menu.add_Opened({
 })
 
 function Show-Balloon {
-    param([string]$Title, [string]$Text, [string]$Kind = 'Info')
-    if (-not $script:Settings.notifications -and $Kind -eq 'Info') { return }
+    # Always — для ответа на явное действие человека. Выключенные уведомления
+    # глушат Info, и «About ScreenDeck» из-за этого молчал: пункт меню нажат, а не
+    # происходит ничего. Нажатие обязано отвечать всегда; фоновые сообщения — нет.
+    param([string]$Title, [string]$Text, [string]$Kind = 'Info', [switch]$Always)
+    if (-not $Always -and -not $script:Settings.notifications -and $Kind -eq 'Info') { return }
     $tray.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::$Kind
     $tray.BalloonTipTitle = $Title
     $tray.BalloonTipText = $Text
@@ -562,7 +605,7 @@ function Start-PowerTimer {
     Write-DisplayLog ("power: {0} scheduled in {1} min" -f $Action, $Minutes)
     Update-TrayText
     Show-Balloon 'Timer set' ('The computer will {0} in {1}, {2}. Cancel it from this menu.' -f $Action,
-                              (Format-DurationShort $Minutes), (Get-TimerTargetText -Minutes $Minutes))
+                              (Format-DurationShort $Minutes), (Get-TimerTargetText -Minutes $Minutes)) -Always
 }
 
 function Stop-PowerTimer {
@@ -573,7 +616,7 @@ function Stop-PowerTimer {
     $script:PowerTicker.Stop()
     Write-DisplayLog 'power: timer cancelled'
     Update-TrayText
-    if (-not $Quiet) { Show-Balloon 'Timer cancelled' 'The computer stays on.' }
+    if (-not $Quiet) { Show-Balloon 'Timer cancelled' 'The computer stays on.' -Always }
 }
 
 # Подвинуть заведённый таймер, не заводя его заново: «ещё пятнадцать минут» — это
@@ -599,7 +642,7 @@ function Add-PowerTime {
     Write-DisplayLog ("power: {0} moved by {1} min, {2} left" -f $script:PowerAction, $Minutes, (Format-Duration $left))
     Update-TrayText
     Show-Balloon 'Timer moved' ('The computer will {0} in {1}, {2}.' -f $script:PowerAction,
-                                (Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))))
+                                (Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0)))) -Always
 }
 
 # С чего открывать окно выбора: с остатка, если этот таймер уже заведён (человек
@@ -732,6 +775,31 @@ function Register-Hotkeys {
         Show-Balloon 'Some shortcuts are taken' (($failed -join ', ') + " - another program already holds these. Those modes still work from the tray menu.") 'Warning'
     }
     Write-DisplayLog ('tray: shortcuts registered: ' + $script:HotkeyMap.Count)
+}
+
+# Окно настроек открывают двое: пункт меню и первый запуск. Тело живёт здесь, а не
+# в обработчике, ровно поэтому: функция исполняется в области скрипта, откуда бы её
+# ни позвали, и $script:AppName в ней разрешается. Внутри .GetNewClosure() он
+# разрешился бы в пустоту — раньше имя ради этого копировали в локальную.
+function Open-SettingsWindow {
+    # Ошибку в построении окна WinForms показывает безымянным системным окном,
+    # без подробностей. Ловим сами и пишем в журнал — иначе такое не отладить.
+    try {
+        $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings)
+        if ($updated) {
+            Set-ActiveSettings $updated
+            Register-Hotkeys
+            Show-Balloon 'Settings saved' 'Shortcuts reloaded.'
+        }
+    }
+    catch {
+        Write-DisplayLog "settings dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Could not open Settings:`n`n$($_.Exception.Message)`n`nDetails are in the log.",
+            $script:AppName, 'OK', 'Error') | Out-Null
+    }
+    # Окно настроек — WPF, и после него остаётся больше всего мусора.
+    Optimize-TrayMemory
 }
 
 # --- меню -------------------------------------------------------------------
@@ -928,37 +996,14 @@ $menu.add_Opening({
 
     $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
     $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
-    # Имя приложения кладём в локальную переменную: замыкание её захватит, а вот
-    # $script:AppName внутри .GetNewClosure() разрешается в пустоту, и заголовок окна
-    # с ошибкой оказался бы пустым.
-    $appName = $script:AppName
-    $settingsItem.add_Click({
-        # Ошибку в построении окна WinForms показывает безымянным системным окном,
-        # без подробностей. Ловим сами и пишем в журнал — иначе такое не отладить.
-        try {
-            $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings)
-            if ($updated) {
-                Set-ActiveSettings $updated
-                Register-Hotkeys
-                Show-Balloon 'Settings saved' 'Shortcuts reloaded.'
-            }
-        }
-        catch {
-            Write-DisplayLog "settings dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
-            [System.Windows.Forms.MessageBox]::Show(
-                "Could not open Settings:`n`n$($_.Exception.Message)`n`nDetails are in the log.",
-                $appName, 'OK', 'Error') | Out-Null
-        }
-        # Окно настроек — WPF, и после него остаётся больше всего мусора.
-        Optimize-TrayMemory
-    }.GetNewClosure())
+    $settingsItem.add_Click({ Open-SettingsWindow })
     [void]$menu.Items.Add($settingsItem)
 
     $logItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open log'
     $logItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
     $logItem.add_Click({
         if (Test-Path $script:LogFile) { Start-Process notepad.exe $script:LogFile }
-        else { Show-Balloon 'No log yet' 'It appears after the first switch.' }
+        else { Show-Balloon 'No log yet' 'It appears after the first switch.' -Always }
     })
     [void]$menu.Items.Add($logItem)
 
@@ -972,7 +1017,7 @@ $menu.add_Opening({
     # выключения.
     $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem 'About ScreenDeck'
     $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
-    $aboutItem.add_Click({ Show-Balloon 'ScreenDeck' (Get-VersionLine) })
+    $aboutItem.add_Click({ Show-Balloon 'ScreenDeck' (Get-VersionLine) -Always })
     [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -1074,7 +1119,9 @@ if (Update-HotkeyKeys -Settings $script:Settings -State (Get-CachedState)) {
 # Пустой список — законный выбор: человек снял все привязки в окне настроек, и
 # возвращать их на следующем старте нельзя. По ключу «файл есть» испорченный
 # settings.json тоже не затирается значениями по умолчанию.
+$script:FirstRun = $false
 if (-not (Test-Path $script:SettingsFile)) {
+    $script:FirstRun = $true
     $state = Get-CachedState
     $i = 1
     foreach ($mode in @(Get-DisplayModes -State $state -Settings (Get-ActiveSettings))) {
@@ -1102,6 +1149,19 @@ $script:StartupTimer.add_Tick({
     $script:StartupTimer.Stop()
     try { Invoke-StartupRestore }
     catch { Write-DisplayLog "startup: could not restore the last mode - $($_.Exception.Message)" }
+
+    # Первый запуск — единственный, когда человек ещё не знает, что значок вообще
+    # появился и что меню у него правое. Здесь, а не сразу после создания настроек:
+    # к этому моменту цикл сообщений крутится, а до него всплывашка не показывается,
+    # а окно настроек встало бы поперёк старта.
+    if ($script:FirstRun) {
+        try {
+            Show-Balloon $script:AppName 'Right-click the icon for your displays and Settings.'
+            Open-SettingsWindow
+        }
+        catch { Write-DisplayLog "startup: first-run welcome failed - $($_.Exception.Message)" }
+    }
+
     # Старт закончился — вернуть системе то, что было нужно только на старте.
     Optimize-TrayMemory
 })
