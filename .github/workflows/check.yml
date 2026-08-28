@@ -30,11 +30,15 @@ jobs:
 
       # В систему пользователя инструмент ничего не ставит — а раннер одноразовый,
       # и здесь анализатор нужен, иначе третьи ворота молча пропускались бы.
+      #
+      # Версия та же, что в release.yml, и закреплена там же по той же причине:
+      # «последняя» меняет содержимое шага сама по себе, и ворота краснеют без
+      # единой правки в коде. Поднимать — сразу в обоих файлах.
       - name: Install PSScriptAnalyzer
         shell: powershell
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -AllowClobber
           (Get-Module -ListAvailable PSScriptAnalyzer | Select-Object -First 1).Version.ToString()
 
       - name: Check

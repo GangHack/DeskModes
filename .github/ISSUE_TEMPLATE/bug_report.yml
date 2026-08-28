@@ -1,0 +1,66 @@
+name: Bug report
+description: Something the tool gets wrong on a real desk
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things make a display bug fixable by someone who cannot see your desk:
+        the `status` output, and the log around the moment it went wrong. Both are
+        asked for below — without them the answer is usually a guess.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+      placeholder: |
+        Pressed Ctrl+Alt+F3. Both work displays came up, but the taskbar stayed
+        on the 4K panel instead of moving to the left one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of the status command
+      description: >
+        Run `status.cmd`, or `.\Set-Display.ps1 status`, and paste all of it.
+        Its first line carries the version, the Windows build and the PowerShell
+        version — that is exactly what is needed here.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: The log around the failure
+      description: >
+        From `last-run.log` — **Open log** in the tray menu. The lines of the one
+        switch that went wrong are enough; the whole file is welcome too.
+
+
+        Worth a glance before you paste, because this issue is public: if you use
+        hooks, the log carries each command line exactly as you wrote it, and any
+        error line carries the full path the tool runs from — which usually spells
+        out your Windows user name. Redact what you would rather not publish.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: desk
+    attributes:
+      label: Your desk
+      description: >
+        Which monitors, how each is connected (HDMI, DisplayPort, USB-C), and to
+        what — one graphics card, two, or a laptop and a dock. Display bugs are
+        usually about the wiring, not the count.
+    validations:
+      required: true
+
+  - type: input
+    id: often
+    attributes:
+      label: How often it happens
+      placeholder: Every time / only after waking from sleep / once, and not since

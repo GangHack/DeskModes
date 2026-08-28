@@ -1,0 +1,33 @@
+name: Feature request
+description: Something the tool should do and does not
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A few things are deliberate non-goals and will be declined: an installer
+        or a service, any dependency, and translating the interface. The reasons
+        are in [AGENTS.md](https://github.com/GangHack/ScreenDeck/blob/main/AGENTS.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you were trying to do
+      description: >
+        The situation at your desk, not the feature. What the tool should do
+        instead is the next box — this one is what made you look for it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What the tool could do about it
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How you handle it today
+      description: A hook, a second combination, a hand-edited settings.json, or nothing.

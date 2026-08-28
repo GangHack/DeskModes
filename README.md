@@ -1,5 +1,8 @@
 ﻿# ScreenDeck
 
+[![check](https://github.com/GangHack/ScreenDeck/actions/workflows/check.yml/badge.svg)](https://github.com/GangHack/ScreenDeck/actions/workflows/check.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Turn the displays on your desk on and off in named sets, with one hotkey.
 
 `Ctrl+Alt+F1` — only the 4K panel. `Ctrl+Alt+F3` — both work displays. `Ctrl+Alt+F5` —
@@ -9,6 +12,8 @@ display you chose.
 
 No installer, no service, no dependencies — a folder of PowerShell scripts talking to the
 Windows display API. Delete the folder and it is gone.
+
+![The desk, as you arrange it in Settings](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/desk.png)
 
 ## What it actually does
 
@@ -57,6 +62,22 @@ Every one of these exists because the naive version broke on a real desk:
   happened, in English, with timings. Refused to turn a display off? Layout would not
   apply? It says so, in the log and in the notification.
 
+## What it looks like
+
+Everything is set up in one window, which follows the system theme — dark, light and your
+accent color. Each mode is a row, and **Edit** opens the one place that mode is configured:
+
+![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
+
+The mode editor holds everything one mode owns — which displays it turns on, where the
+taskbar goes, its shortcut, and the brightness of its monitors:
+
+![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-mode.png)
+
+And the shutdown timer, from the tray menu, when a ready length is not the one you want:
+
+![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-timer.png)
+
 ## Requirements
 
 Windows 10 or 11, and Windows PowerShell 5.1 — which ships with Windows. Nothing to
@@ -65,21 +86,19 @@ install, no admin rights, no change to your execution policy (the launchers pass
 
 ## Quickstart
 
+Download the ZIP from [Releases](https://github.com/GangHack/ScreenDeck/releases) and
+unpack it anywhere you like — your user folder is fine, no admin rights are needed. Or take
+the whole repository, which also gets you the tests and the engineering notes:
+
 ```bash
-git clone https://github.com/<you>/screendeck.git
-```
-
-Or download the ZIP and unblock it — Windows marks downloaded scripts, and PowerShell will
-refuse to run them until you do:
-
-```powershell
-Get-ChildItem *.ps1 | Unblock-File
+git clone https://github.com/GangHack/ScreenDeck.git
 ```
 
 Then:
 
-1. Run `Displays.cmd`. An icon appears in the notification area.
-2. Click the icon → **Settings…**
+1. Run `Displays.cmd`. An icon appears in the notification area, and the Settings window
+   opens by itself the first time.
+2. **Right-click** the icon for the menu — displays, modes, **Settings…**
 3. Arrange the display cards as they stand on your desk and star the one that keeps the
    taskbar. Add a **combination** for every set of displays you switch between. Every mode
    is a row under **Modes** with an **Edit** button: that one window holds its displays, its
@@ -402,13 +421,26 @@ switch; `topology set` instead of `full config applied` means the single call wa
 and the old three-step path ran; a `mode:` line means one display needed its rate corrected
 afterwards, which is a second rebuild.
 
-Two things worth knowing:
+Four things worth knowing:
 
 - **After editing the scripts, restart the tray.** It runs the code as it was when it
   launched, so a fix looks like it did nothing until you restart or reboot.
 - **A display that dropped its DisplayPort link needs the cable replugged.** The power
   button is not enough, and no software can fix it — the log will say the display did not
   come up.
+- **Downloaded scripts carry a mark.** Windows tags everything that came from the internet,
+  which is why Explorer asks about `Displays.cmd` and why your own console refuses to run
+  `.\Set-Display.ps1`. The tray clears the mark from its own `.ps1` and `.cmd` files the
+  first time it starts and writes `removed Mark-of-the-Web` in the log. Every other kind of
+  file it leaves marked on purpose: on a downloaded installer or document that same flag is
+  what SmartScreen and Office Protected View go by, and the tool has no business disarming
+  something that merely sits in the same folder. To do it by hand instead:
+  `Get-ChildItem -Recurse -File | Where-Object Extension -in '.ps1','.cmd' | Unblock-File`.
+- **If nothing happens at all when you run `Displays.cmd`,** your execution policy is
+  probably set by group policy — a work laptop, usually. The `-ExecutionPolicy Bypass` the
+  launchers pass is ignored in that case, and the hidden PowerShell dies before it can even
+  write a log. `Get-ExecutionPolicy -List` says whether `MachinePolicy` or `UserPolicy` is
+  the one deciding; if it is, this needs whoever administers the machine.
 
 ## Why not something else
 
@@ -515,10 +547,22 @@ break the "nothing is installed on your system" promise.
 | `last-run.log` | the log; rotates past 1 MB |
 | `settings.json`, `window-state.json`, `last-mode.json`, `display-modes.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
 
+The release ZIP holds the program only — the scripts, the launchers, this README. The
+tests, the gates, the screenshots and the engineering notes live in the repository,
+because that is where they are of any use.
+
 Code comments and the engineering notes are in Russian; the interface, the log and this
 README are in English. The notes are worth a look if you are here for the display API
 rather than the tool — they are a day-by-day account of what Windows actually does, with
-measurements: [`docs/notes.ru.md`](docs/notes.ru.md).
+measurements: [`docs/notes.ru.md`](https://github.com/GangHack/ScreenDeck/blob/main/docs/notes.ru.md).
+
+## Also here
+
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each version, and why you would care.
+- [CONTRIBUTING.md](https://github.com/GangHack/ScreenDeck/blob/main/CONTRIBUTING.md) — how to make a change stick, and the one command that
+  decides whether it is done.
+- [SECURITY.md](SECURITY.md) — what the tool touches, what it does not, and how to report a
+  hole privately.
 
 ## License
 

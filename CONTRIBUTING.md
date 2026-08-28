@@ -31,6 +31,32 @@ Nothing else counts as verification — in particular, "the tests passed" is not
 enough, because two scripts in this repository are dot-sourced by nothing and a
 typo in them survives until somebody runs them by hand.
 
+### If that command will not run at all
+
+A stock Windows refuses it with *"running scripts is disabled on this system"* —
+and not just it: `tests\run-tests.ps1`, `tools\pack.ps1`, `render-preview.ps1`
+and `Make-Icon.ps1` are all `.ps1` and all equally blocked. That is the execution
+policy, not the tool, and it is a different thing from the Mark-of-the-Web
+(*"not digitally signed"*) that `Displays.ps1` clears for itself.
+
+The `.cmd` launchers a user gets pass `-ExecutionPolicy Bypass`, which is why
+nobody has to change a setting to switch monitors. That promise is to the user,
+not to the workbench: here you are running scripts all day, so set it once.
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+No admin rights needed, and `RemoteSigned` still holds *downloaded* scripts to a
+signature — which is what keeps the zone mark worth clearing at all. If you would
+rather change nothing on your machine, `Set-ExecutionPolicy -Scope Process Bypass`
+lasts for that one window and dies with it.
+
+`Get-ExecutionPolicy -List` names the scope that is deciding. If that scope is
+`MachinePolicy` or `UserPolicy`, group policy holds it — a work laptop, usually —
+and no command of yours will override it; that one needs whoever administers the
+machine.
+
 PSScriptAnalyzer is used *if you have it* and is never installed by the tool:
 
 ```powershell
@@ -38,7 +64,8 @@ Install-Module PSScriptAnalyzer -Scope CurrentUser
 ```
 
 CI runs the same command with `-RequireAnalyzer`, so a missing analyzer is a
-failure there and a warning here.
+failure there and a warning here. Leave that switch to CI: typed locally without
+the module installed, it turns the warning into a red gate and nothing else.
 
 ## Pull requests
 
@@ -55,6 +82,37 @@ failure there and a warning here.
   promise to the user, and it is why there is no build step.
 - Commit subjects in this repository are Russian and say what changed in meaning.
   A pull request description in English is fine and welcome.
+
+## Screenshots for the README
+
+The windows are rendered, not photographed. `render-preview.ps1 -Fake` builds them
+off-screen at 192 dpi against an invented three-display desk, so what lands in the
+README does not depend on which monitors happen to be plugged in that day:
+
+```powershell
+.\render-preview.ps1 -Fake -Out docs\images\settings.png
+```
+
+That writes `settings.png`, `settings-mode.png` and `settings-timer.png` in one go.
+`docs/images/desk.png` is the top of the first one, cropped to 1280×920 — a wide
+picture works better at the head of the README than a very tall one. The rendered
+files go under `docs/images/`, never the ignored `preview-*.png` names.
+
+The theme comes from the system, so switch Windows to the theme you want *before*
+rendering; the script has no switch for it.
+
+**In the README they are linked absolutely**, as
+`https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/…`, and that is
+not a style choice. `README.md` ships inside the release ZIP and `docs/` does not, so a
+relative `docs/images/desk.png` is four broken pictures for everyone who reads the README
+from the unpacked folder instead of on GitHub. The same goes for the links to
+`CONTRIBUTING.md` and `docs/notes.ru.md`. Only files that `tools/pack.ps1` actually
+ships — `CHANGELOG.md`, `SECURITY.md`, `LICENSE`, `settings.example.json` — may be
+linked relatively.
+
+The tray menu is the one picture that cannot be rendered — it is a WinForms
+`ContextMenuStrip` and only exists on a real screen. Capture it by hand
+(Win+Shift+S) at 100 % scaling, in the same theme as the rest.
 
 ## If it involves your hardware
 

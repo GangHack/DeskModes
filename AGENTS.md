@@ -46,6 +46,27 @@ Nothing else counts as verification. In particular, "the tests passed" is not en
 `render-preview.ps1` and `Make-Icon.ps1` are dot-sourced by nothing, so a typo in them
 survives until somebody runs them by hand. That is what gate one is for.
 
+## Cutting a release
+
+Three things by hand, the rest by machine:
+
+1. Bump `$script:Version` in `DisplayCore.ps1`.
+2. Date the version's heading in `CHANGELOG.md` — `## 1.1.0 — 2026-09-14`. The heading
+   is what `tools/pack.ps1 -NotesOut` reads for the release page, so a version with no
+   section there fails the build rather than shipping empty notes.
+3. Tag `vX.Y.Z` and push the tag.
+
+`.github/workflows/release.yml` takes it from there: gates first, then `tools/pack.ps1`,
+then a GitHub Release with the ZIP and its `.sha256` attached. The tag is checked against
+`$script:Version` (`-ExpectVersion`), so a tag without a bump fails instead of shipping an
+archive that disagrees with its own About box.
+
+The archive holds the program only — no `tests/`, `tools/`, `docs/` or this file. That is
+why README links its screenshots and everything under `docs/` absolutely: relative paths
+would be broken pictures for whoever reads it from the unpacked folder. The list
+of what stays behind is in `tools/pack.ps1`, and it is an *excluding* list on purpose: a
+new file of the program ships by itself, a new file for us has to be named there.
+
 ## Where things live
 
 | File | Lines | Go here for |
@@ -59,6 +80,7 @@ survives until somebody runs them by hand. That is what gate one is for.
 | `render-preview.ps1` | 201 | dev tool: renders windows to PNG without showing them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
 | `tools/check.ps1` | 221 | the four gates, and the only answer to "am I done" |
+| `tools/pack.ps1` | 165 | the release archive: what the user downloads, built from `git ls-files` |
 | `tests/` | — | the runner (108), the framework (80), the fakes (58), 30 files of cases (3642) and `live.ps1` (223) |
 | `docs/notes.ru.md` | 1353 | the engineering diary, in Russian: what Windows actually does, measured, day by day |
 
@@ -213,4 +235,8 @@ value of this project, and no fake reproduces them.
   last.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
   `display-modes.json`, `window-state.json`, `activity.json`, `stats.html` and
-  `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`.
+  `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
+  `ScreenDeck-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
+  three out of what is already committed. The screenshots under `docs/images/` are the
+  exception that is *not* generated-and-ignored: they are committed, because README needs
+  them and GitHub cannot run a renderer.
