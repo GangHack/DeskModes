@@ -104,26 +104,41 @@ $script:UiResourcesXaml = @'
         <SolidColorBrush x:Key="AccentBrush" Color="%%ACCENT%%"/>
         <SolidColorBrush x:Key="AccentTextBrush" Color="%%ACCENTTEXT%%"/>
 
+        <!-- Кегли — шкала Windows: body 14, caption 12. Больше двух ступеней в
+             окне нет, иерархию держат насыщенность и цвет, а не пятый размер.
+             Заголовок секции — 16, а не 20 из шкалы: 20 рассчитан на страницу
+             параметров во весь экран, а здесь в 640 точках ширины четыре секции
+             подряд, и 20 читалось бы как заголовок окна. Отступление одно и
+             сознательное; всё остальное берётся из шкалы буквально. -->
         <Style x:Key="H2" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,0,2"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <!-- Заголовок редактора режима — те самые 20 из шкалы, ровно ступенью
+             выше H2. На одном кегле с подписями секций имя режима читалось как
+             ещё одна секция, и окно выглядело списком равных частей вместо
+             «вот этот режим, а вот из чего он состоит». -->
+        <Style x:Key="H1" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
         <Style x:Key="Hint" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{StaticResource DimBrush}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
-            <Setter Property="Margin" Value="0,2,0,12"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
         <Style x:Key="RowTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
         <Style x:Key="RowSub" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{StaticResource DimBrush}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
-            <Setter Property="Margin" Value="0,1,0,0"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
         </Style>
 
         <!-- Ползунок уровня. Свой шаблон, потому что системный Slider не знает
@@ -188,13 +203,17 @@ $script:UiResourcesXaml = @'
             </Setter>
         </Style>
 
+        <!-- Радиус 4, а не 8: карточка — поверхность внутри страницы, восьмёрка в
+             Windows принадлежит тому, что всплывает над ней (диалоги, выпадашки).
+             Карточка здесь только режет страницу на секции, тени и второго слоя
+             под ней нет. -->
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="16,14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="16,16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
 
         <Style x:Key="Btn" TargetType="Button">
@@ -323,12 +342,12 @@ $script:UiResourcesXaml = @'
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="Margin" Value="0,4"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
                         <StackPanel Orientation="Horizontal" Background="Transparent">
-                            <Border x:Name="Box" Width="18" Height="18" CornerRadius="3"
+                            <Border x:Name="Box" Width="18" Height="18" CornerRadius="4"
                                     Background="{StaticResource InputBrush}"
                                     BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1"
                                     VerticalAlignment="Center">
@@ -359,7 +378,7 @@ $script:UiResourcesXaml = @'
             <Setter Property="CaretBrush" Value="{StaticResource TextBrush}"/>
             <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}"/>
             <Setter Property="Background" Value="{StaticResource InputBrush}"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -392,7 +411,7 @@ $script:UiResourcesXaml = @'
                                 <Path x:Name="Star" Width="12" Height="12" Stretch="Uniform"
                                       Fill="{StaticResource DimBrush}" VerticalAlignment="Center"
                                       Data="M 6,0 L 7.6,4.2 L 12,4.4 L 8.6,7.2 L 9.8,11.5 L 6,9 L 2.2,11.5 L 3.4,7.2 L 0,4.4 L 4.4,4.2 Z"/>
-                                <TextBlock x:Name="Lbl" Text="Taskbar" FontSize="11"
+                                <TextBlock x:Name="Lbl" Text="Taskbar" FontSize="12"
                                            Foreground="{StaticResource DimBrush}" Margin="5,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
@@ -417,7 +436,7 @@ $script:UiResourcesXaml = @'
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="Bd" CornerRadius="3" Padding="8,5" Margin="2,1" Background="Transparent">
+                        <Border x:Name="Bd" CornerRadius="4" Padding="8,5" Margin="2,1" Background="Transparent">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -465,7 +484,7 @@ $script:UiResourcesXaml = @'
                             <Popup x:Name="PART_Popup" Placement="Bottom"
                                    IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                    AllowsTransparency="True">
-                                <Border CornerRadius="6" Background="{StaticResource CardBrush}"
+                                <Border CornerRadius="8" Background="{StaticResource CardBrush}"
                                         BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1"
                                         Margin="0,4,0,0" MinWidth="{TemplateBinding ActualWidth}">
                                     <ScrollViewer MaxHeight="220">
@@ -567,12 +586,14 @@ $script:UiResourcesXaml = @'
 
         <!-- Таблетка быстрого значения: «15 min», «1 h». Обводка акцентом под
              курсором, а не заливка — их несколько в ряд, и заливка превратила бы
-             ряд в светофор. -->
+             ряд в светофор. Радиус здесь — половина высоты, а не четвёрка окна:
+             форма и есть подпись «нажми меня», и это то самое исключение, ради
+             которого контракт держит оговорку про signature-поверхности. -->
         <Style x:Key="Chip" TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Padding" Value="12,4"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -604,7 +625,7 @@ $script:SettingsWindowXaml = @'
         Width="640" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
-        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
         UseLayoutRounding="True">
     <Window.Resources>
 %%RES%%
@@ -617,7 +638,7 @@ $script:SettingsWindowXaml = @'
                 <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="96" Margin="8,0,0,0" IsCancel="True"/>
             </StackPanel>
         </Border>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,20,6">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,20,8">
             <StackPanel>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
@@ -625,7 +646,7 @@ $script:SettingsWindowXaml = @'
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Arrange the cards from left to right; the star marks the display that keeps the taskbar."/>
                         <WrapPanel x:Name="DeskPanel"/>
-                        <Border x:Name="PreviewBox" CornerRadius="6" Padding="12,10" Margin="0,4,0,0"
+                        <Border x:Name="PreviewBox" CornerRadius="4" Padding="12,12" Margin="0,4,0,0"
                                 Background="{StaticResource MiniBrush}"
                                 BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1">
                             <StackPanel>
@@ -644,7 +665,7 @@ $script:SettingsWindowXaml = @'
                                    Text="Everything you can switch to; Edit opens the one place each mode is set up."/>
                         <StackPanel x:Name="ModesPanel"/>
                         <Button x:Name="AddComboBtn" Style="{StaticResource Btn}" Content="Add a combination"
-                                HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                                HorizontalAlignment="Left" Margin="0,12,0,0"/>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
@@ -732,20 +753,20 @@ $script:ModeEditorXaml = @'
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
-        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
         UseLayoutRounding="True">
     <Window.Resources>
 %%RES%%
     </Window.Resources>
     <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
-                    Margin="20,14,20,16">
+                    Margin="20,16,20,16">
             <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="90" IsDefault="True"/>
             <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="90" Margin="8,0,0,0" IsCancel="True"/>
         </StackPanel>
         <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20,16,20,0" Width="400">
-                <TextBlock x:Name="HeadTitle" Style="{StaticResource H2}" Text="Mode"/>
+                <TextBlock x:Name="HeadTitle" Style="{StaticResource H1}" Text="Mode"/>
                 <TextBlock x:Name="HeadHint" Style="{StaticResource Hint}"/>
                 <StackPanel x:Name="ComboPart" Margin="0,12,0,0">
                     <TextBlock Style="{StaticResource H2}" Text="Name"/>
@@ -753,7 +774,7 @@ $script:ModeEditorXaml = @'
                     <TextBlock Style="{StaticResource H2}" Text="Displays" Margin="0,16,0,0"/>
                     <TextBlock Style="{StaticResource Hint}" Text="Tick every display this combination switches on."/>
                     <StackPanel x:Name="MembersPanel"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Taskbar" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Taskbar" Margin="0,16,0,0"/>
                     <TextBlock Style="{StaticResource Hint}" Text="Which display keeps the taskbar while this combination is on."/>
                     <ComboBox x:Name="PrimaryBox" Style="{StaticResource Select}" Height="30"/>
                 </StackPanel>
@@ -765,7 +786,7 @@ $script:ModeEditorXaml = @'
                             FontSize="15" Width="26" Margin="4,0,0,0" VerticalAlignment="Center"
                             ToolTip="Remove this shortcut"/>
                 </StackPanel>
-                <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,18,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,16,0,0"/>
                 <TextBlock Style="{StaticResource Hint}"
                            Text="Set brightness with this mode; &quot;Ask the monitors&quot; shows which of yours can be set."/>
                 <ComboBox x:Name="LevelKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
@@ -776,7 +797,7 @@ $script:ModeEditorXaml = @'
                     </Grid.ColumnDefinitions>
                     <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
                     <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
-                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                               VerticalAlignment="Center" Margin="12,0,0,0"/>
                 </Grid>
                 <StackPanel x:Name="LevelRowsPanel" Margin="0,8,0,0"/>
                 <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
@@ -1142,11 +1163,14 @@ function Add-DeskCard {
     $win = $Ui.Window
     $connected = ($null -ne $Display -and -not $Display.Disconnected)
 
+    # Ширина карточки — не вкус: подпись под мини-экраном («3840 x 2160 @ 60 Hz»)
+    # переносов не знает, и на кегле 12 из шкалы ей нужно 140 точек, иначе строка
+    # обрежется. Три карточки по 140 с отступами укладываются в 640 окна.
     $outer = New-Object System.Windows.Controls.Border
-    $outer.Width = 122
-    $outer.Margin = New-Object System.Windows.Thickness 0, 0, 10, 6
-    $outer.Padding = New-Object System.Windows.Thickness 6
-    $outer.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $outer.Width = 140
+    $outer.Margin = New-Object System.Windows.Thickness 0, 0, 12, 8
+    $outer.Padding = New-Object System.Windows.Thickness 8
+    $outer.CornerRadius = New-Object System.Windows.CornerRadius 4
 
     $stack = New-Object System.Windows.Controls.StackPanel
     $outer.Child = $stack
@@ -1160,7 +1184,7 @@ function Add-DeskCard {
     $mini.BorderThickness = New-Object System.Windows.Thickness 1
     $name = New-Object System.Windows.Controls.TextBlock
     $name.Text = $Label
-    $name.FontSize = 10.5
+    $name.FontSize = 12
     $name.TextWrapping = 'Wrap'
     $name.TextAlignment = 'Center'
     $name.VerticalAlignment = 'Center'
@@ -1169,7 +1193,7 @@ function Add-DeskCard {
     [void]$stack.Children.Add($mini)
 
     $sub = New-Object System.Windows.Controls.TextBlock
-    $sub.FontSize = 10.5
+    $sub.FontSize = 12
     $sub.TextAlignment = 'Center'
     $sub.Foreground = $win.FindResource('DimBrush')
     $sub.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
@@ -1182,7 +1206,7 @@ function Add-DeskCard {
     $radio.GroupName = 'taskbar'
     $radio.Style = $win.FindResource('TaskbarPick')
     $radio.HorizontalAlignment = 'Center'
-    $radio.Margin = New-Object System.Windows.Thickness 0, 3, 0, 0
+    $radio.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
     [void]$stack.Children.Add($radio)
 
     $arrows = New-Object System.Windows.Controls.StackPanel
@@ -1373,6 +1397,10 @@ function Update-DeskPreview {
         $box.ToolTip = '{0} - {1} x {2}{3}' -f $s.Label, $s.Width, $s.Height,
                         $(if ($s.Primary) { ', taskbar here' } else { '' })
 
+        # Единственный кегль мимо шкалы, и намеренно: подпись живёт внутри
+        # прямоугольника, нарисованного в масштабе стола, а он бывает и 24 точки
+        # шириной. Caption 12 в него не влезет, и это не текст для чтения — это
+        # метка на чертеже; то же самое говорит ToolTip строкой полностью.
         $text = New-Object System.Windows.Controls.TextBlock
         $text.Text = '{0}{1}{2} x {3}' -f $s.Label, [environment]::NewLine, $s.Width, $s.Height
         $text.FontSize = 9.5
@@ -1626,7 +1654,7 @@ function Add-LevelRow {
     $value.Width = 34
     $value.TextAlignment = 'Right'
     $value.VerticalAlignment = 'Center'
-    $value.Margin = New-Object System.Windows.Thickness 10, 0, 0, 0
+    $value.Margin = New-Object System.Windows.Thickness 12, 0, 0, 0
     $value.Text = $(if ($set) { [string][int]$Model.Map[$Name] } else { 'off' })
     if (-not $set) { $value.Foreground = $win.FindResource('DimBrush') }
     [System.Windows.Controls.Grid]::SetColumn($value, 2)
@@ -2351,7 +2379,7 @@ function Update-ModesPanel {
     foreach ($mode in $modes) {
         $key = [string]$mode.Key
         $row = New-Object System.Windows.Controls.Grid
-        $row.Margin = New-Object System.Windows.Thickness 0, 5, 0, 5
+        $row.Margin = New-Object System.Windows.Thickness 0, 4, 0, 4
         foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
                              [System.Windows.GridLength]::Auto,
                              [System.Windows.GridLength]::Auto,
@@ -2391,7 +2419,7 @@ function Update-ModesPanel {
         $keyText.MinWidth = 110
         $keyText.TextAlignment = 'Right'
         $keyText.VerticalAlignment = 'Center'
-        $keyText.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+        $keyText.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
         if ($shortcut) { $keyText.Foreground = $win.FindResource('TextBrush') }
         [System.Windows.Controls.Grid]::SetColumn($keyText, 1)
         [void]$row.Children.Add($keyText)
@@ -2423,7 +2451,7 @@ function Update-ModesPanel {
             $remove.Content = 'Remove'
             $remove.Style = $win.FindResource('BtnSmall')
             $remove.VerticalAlignment = 'Center'
-            $remove.Margin = New-Object System.Windows.Thickness 6, 0, 0, 0
+            $remove.Margin = New-Object System.Windows.Thickness 8, 0, 0, 0
             $remove.Tag = $mode
             [System.Windows.Controls.Grid]::SetColumn($remove, 3)
             [void]$row.Children.Add($remove)
@@ -2741,28 +2769,32 @@ function Show-SettingsDialog {
 # как и остальные окна здесь, ради тестов.
 
 $script:TimerWindowXaml = @'
+<!-- Размер задан числами и не растёт по содержимому: по Width и Height окно
+     ставят у курсора ДО показа (Set-PopupPlace), а у SizeToContent их ещё
+     нет. Значит, высота обязана идти с запасом впереди содержимого — иначе окно
+     не вырастет, а обрежет: сейчас просит 233, стоит 248. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ScreenDeck - Timer"
-        Width="330" Height="236"
+        Width="330" Height="248"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen" Topmost="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
-        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
         UseLayoutRounding="True">
     <Window.Resources>
 %%RES%%
     </Window.Resources>
     <!-- Рамка заметная (InputBorderBrush, не CardBorderBrush): окно без заголовка
          висит над чужими окнами, и край ему нужен настоящий. -->
-    <Border BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1" Padding="18,12,18,14">
+    <Border BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1" Padding="16,12,16,16">
         <StackPanel>
-            <TextBlock x:Name="CaptionText" Style="{StaticResource RowSub}" FontSize="11" Margin="0,0,0,2"/>
+            <TextBlock x:Name="CaptionText" Style="{StaticResource RowSub}" Margin="0,0,0,4"/>
             <TextBox x:Name="ValueBox" Style="{StaticResource Big}"/>
-            <TextBlock x:Name="TargetText" Style="{StaticResource RowSub}" FontSize="12.5" Margin="0,3,0,0"/>
-            <Slider x:Name="Dial" Style="{StaticResource Level}" Margin="0,10,0,0"/>
-            <StackPanel x:Name="ChipRow" Orientation="Horizontal" Margin="0,6,0,0"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <TextBlock x:Name="TargetText" Style="{StaticResource RowSub}" Margin="0,4,0,0"/>
+            <Slider x:Name="Dial" Style="{StaticResource Level}" Margin="0,12,0,0"/>
+            <StackPanel x:Name="ChipRow" Orientation="Horizontal" Margin="0,8,0,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84" IsCancel="True"/>
                 <Button x:Name="StartBtn" Style="{StaticResource BtnAccent}" Width="124" Margin="8,0,0,0" IsDefault="True"/>
             </StackPanel>
