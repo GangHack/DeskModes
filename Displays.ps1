@@ -299,9 +299,10 @@ $tray.Visible = $true
 $script:UiFonts = @{}
 
 function Get-UiFont {
-    param([single]$Size = 9.75, [switch]$Semibold)
+    param([single]$Size = 9.75, [double]$Scale = 1.0, [switch]$Semibold)
 
-    $key = '{0}|{1}' -f $Size, [bool]$Semibold
+    $effectiveSize = [single]($Size * $Scale)
+    $key = '{0}|{1}' -f $effectiveSize, [bool]$Semibold
     if ($script:UiFonts.Contains($key)) { return $script:UiFonts[$key] }
 
     $names = $(if ($Semibold) { @('Segoe UI Variable Text Semibold', 'Segoe UI Semibold') }
@@ -312,7 +313,7 @@ function Get-UiFont {
         if ($installed -contains $name) { $pick = $name; break }
     }
 
-    $font = New-Object System.Drawing.Font $pick, $Size
+    $font = New-Object System.Drawing.Font $pick, $effectiveSize
     $script:UiFonts[$key] = $font
     return $font
 }
@@ -324,28 +325,31 @@ function Get-UiFont {
 $script:StatusDots = @{}
 
 function Get-StatusDot {
-    param([string]$Kind)
+    param([string]$Kind, [double]$Scale = 1.0)
 
-    if ($script:StatusDots.Contains($Kind)) { return $script:StatusDots[$Kind] }
+    $px = [int][Math]::Round(16 * $Scale, [System.MidpointRounding]::AwayFromZero)
+    $key = '{0}|{1}' -f $Kind, $px
+    if ($script:StatusDots.Contains($key)) { return $script:StatusDots[$key] }
 
-    $bmp = New-Object System.Drawing.Bitmap 16, 16
+    $bmp = New-Object System.Drawing.Bitmap $px, $px
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     try {
+        $k = $px / 16.0
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         switch ($Kind) {
             'on'    { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(63, 185, 80))
-                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
+                      $g.FillEllipse($b, 4.5 * $k, 4.5 * $k, 7.0 * $k, 7.0 * $k); $b.Dispose() }
             'below' { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(210, 153, 34))
-                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
+                      $g.FillEllipse($b, 4.5 * $k, 4.5 * $k, 7.0 * $k, 7.0 * $k); $b.Dispose() }
             'off'   { $b = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(138, 138, 138))
-                      $g.FillEllipse($b, 4.5, 4.5, 7.0, 7.0); $b.Dispose() }
-            default { $p = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(138, 138, 138)), 1.4
-                      $g.DrawEllipse($p, 5.0, 5.0, 6.0, 6.0); $p.Dispose() }
+                      $g.FillEllipse($b, 4.5 * $k, 4.5 * $k, 7.0 * $k, 7.0 * $k); $b.Dispose() }
+            default { $p = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(138, 138, 138)), ([single](1.4 * $k))
+                      $g.DrawEllipse($p, 5.0 * $k, 5.0 * $k, 6.0 * $k, 6.0 * $k); $p.Dispose() }
         }
     }
     finally { $g.Dispose() }
 
-    $script:StatusDots[$Kind] = $bmp
+    $script:StatusDots[$key] = $bmp
     return $bmp
 }
 
@@ -864,19 +868,30 @@ function Open-SettingsWindow {
 # и пункт для выдернутого должен быть виден как недоступный, а не врать.
 
 function Add-MenuHeader {
-    param([string]$Text)
+    param([string]$Text, [double]$Scale = 1.0)
     $item = New-Object System.Windows.Forms.ToolStripMenuItem $Text
     $item.Enabled = $false
     # По Tag отрисовщик отличает заголовок раздела (приглушить) от информационной
     # строки (обычный цвет текста) — Enabled у обоих false, чтобы не ловить клики.
     $item.Tag = 'header'
-    $item.Font = Get-UiFont -Size 8.5 -Semibold
-    $item.Padding = New-Object System.Windows.Forms.Padding 0, 3, 0, 1
+    $item.Font = Get-UiFont -Size 8.5 -Scale $Scale -Semibold
+    $top = [int][Math]::Round(3 * $Scale, [System.MidpointRounding]::AwayFromZero)
+    $bottom = [int][Math]::Round(1 * $Scale, [System.MidpointRounding]::AwayFromZero)
+    $item.Padding = New-Object System.Windows.Forms.Padding 0, $top, 0, $bottom
     [void]$menu.Items.Add($item)
 }
 
 $menu.add_Opening({
+    $scale = Get-UiScale
+    $iconPx = [int][Math]::Round(16 * $scale, [System.MidpointRounding]::AwayFromZero)
+    $sidePad = [int][Math]::Round(4 * $scale, [System.MidpointRounding]::AwayFromZero)
+    $topPad = [int][Math]::Round(6 * $scale, [System.MidpointRounding]::AwayFromZero)
+    $itemPad = [int][Math]::Round(4 * $scale, [System.MidpointRounding]::AwayFromZero)
+
     $menu.Items.Clear()
+    $menu.Font = Get-UiFont -Scale $scale
+    $menu.ImageScalingSize = New-Object System.Drawing.Size $iconPx, $iconPx
+    $menu.Padding = New-Object System.Windows.Forms.Padding $sidePad, $topPad, $sidePad, $topPad
 
     # Отрисовщик пересоздаётся на каждое открытие: тема и акцент могли смениться,
     # пока трей жил, а объект дешёвый. Ошибка оформления меню не должна оставлять
@@ -884,7 +899,7 @@ $menu.add_Opening({
     try {
         $dark = Test-DarkTheme
         $accent = [System.Drawing.ColorTranslator]::FromHtml((Get-AccentColor -ForDarkTheme:$dark))
-        $menu.Renderer = New-Object ModernMenuRenderer $dark, $accent
+        $menu.Renderer = New-Object ModernMenuRenderer $dark, $accent, ([single]$scale)
     }
     catch {
         Write-DisplayLog "tray: menu renderer failed, using the system one - $($_.Exception.Message)"
@@ -894,7 +909,7 @@ $menu.add_Opening({
     $state = Get-CachedState
 
     if ($state) {
-        Add-MenuHeader 'CONNECTED DISPLAYS'
+        Add-MenuHeader -Text 'CONNECTED DISPLAYS' -Scale $scale
         foreach ($m in $state) {
             $dot = 'unplugged'
             if ($m.Disconnected)  { $what = 'not connected' }
@@ -906,14 +921,14 @@ $menu.add_Opening({
             $line = New-Object System.Windows.Forms.ToolStripMenuItem ('{0}    {1}{2}' -f $m.Label, $what, $suffix)
             $line.Enabled = $false
             $line.Tag = 'info'
-            $line.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+            $line.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
             # Расхождение с максимальным режимом стоит видеть сразу: обычно это
             # деградировавшая линия DisplayPort, а не настройка.
             if ($m.Active -and $m.BestMode -and $m.Hz -lt $m.BestMode.Hz) {
                 $line.Text += ('   (below {0} Hz)' -f $m.BestMode.Hz)
                 $dot = 'below'
             }
-            $line.Image = Get-StatusDot $dot
+            $line.Image = Get-StatusDot -Kind $dot -Scale $scale
             [void]$menu.Items.Add($line)
         }
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -925,12 +940,12 @@ $menu.add_Opening({
     $activeKey = $null
     if ($state) { $activeKey = Get-ActiveModeKey -State $state -Modes $modes }
 
-    Add-MenuHeader 'SWITCH TO'
+    Add-MenuHeader -Text 'SWITCH TO' -Scale $scale
     foreach ($mode in $modes) {
         $item = New-Object System.Windows.Forms.ToolStripMenuItem
         $item.Text = $mode.Title
         $item.Tag = $mode.Key
-        $item.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+        $item.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
 
         # Через функцию, а не $script:Settings: см. Get-ActiveSettings.
         $combo = (Get-ActiveSettings).hotkeys[$mode.Key]
@@ -942,7 +957,7 @@ $menu.add_Opening({
         }
         if ($mode.Key -eq $activeKey) {
             $item.Checked = $true
-            $item.Font = Get-UiFont -Semibold
+            $item.Font = Get-UiFont -Scale $scale -Semibold
         }
 
         $item.add_Click({ Invoke-Mode $this.Tag }.GetNewClosure())
@@ -962,10 +977,10 @@ $menu.add_Opening({
         $parent = New-Object System.Windows.Forms.ToolStripMenuItem
         $parent.Text = $(if ($armed) { '{0} in {1}' -f $spec.Title, (Format-Duration $left) }
                          else { '{0} in...' -f $spec.Title })
-        $parent.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+        $parent.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
         if ($armed) {
             $parent.Checked = $true
-            $parent.Font = Get-UiFont -Semibold
+            $parent.Font = Get-UiFont -Scale $scale -Semibold
             $parent.ShortcutKeyDisplayString = Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))
 
             # Заведённый таймер чаще двигают, чем отменяют: «ещё пятнадцать минут»
@@ -1024,7 +1039,7 @@ $menu.add_Opening({
     }
 
     $statsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Statistics...'
-    $statsItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $statsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     if (-not (Get-ActiveSettings).stats) {
         # Дневник выключен — пункт видно, но он объясняет, почему пуст, вместо
         # того чтобы открыть страницу с нулями.
@@ -1052,12 +1067,12 @@ $menu.add_Opening({
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
     $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
-    $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $settingsItem.add_Click({ Open-SettingsWindow })
     [void]$menu.Items.Add($settingsItem)
 
     $logItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open log'
-    $logItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $logItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $logItem.add_Click({
         if (Test-Path $script:LogFile) { Start-Process notepad.exe $script:LogFile }
         else { Show-Balloon 'No log yet' 'It appears after the first switch.' -Always }
@@ -1065,7 +1080,7 @@ $menu.add_Opening({
     [void]$menu.Items.Add($logItem)
 
     $folderItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open folder'
-    $folderItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $folderItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
 
@@ -1073,14 +1088,14 @@ $menu.add_Opening({
     # останавливает цикл сообщений, а вместе с ним и сторожа частоты, и таймер
     # выключения.
     $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem 'About ScreenDeck'
-    $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $aboutItem.add_Click({ Show-Balloon 'ScreenDeck' (Get-VersionLine) -Always })
     [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
     $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Exit'
-    $exitItem.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+    $exitItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $exitItem.add_Click({ [System.Windows.Forms.Application]::Exit() })
     [void]$menu.Items.Add($exitItem)
 })

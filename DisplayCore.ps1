@@ -1634,14 +1634,75 @@ public class NativeWindows {
 // SetProcessDpiAwarenessContext отсутствует или отдаёт ошибку — тогда откат на
 // SetProcessDPIAware (system-aware), он есть с Vista.
 public class NativeDpi {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT {
+        public int X;
+        public int Y;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
 
     [DllImport("user32.dll")]
     public static extern bool SetProcessDPIAware();
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType,
+                                               out uint dpiX, out uint dpiY);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDeviceCaps(IntPtr dc, int index);
+
     // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (HANDLE)-4
     public static readonly IntPtr PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+    private const int MDT_EFFECTIVE_DPI = 0;
+    private const int LOGPIXELSY = 90;
+
+    public static int GetDpiAtCursor() {
+        // У меню ещё нет надёжно размещённого HWND, поэтому GetDpiForWindow здесь
+        // не годится. GetDpiForMonitor формально не DPI-aware, но для процесса с
+        // per-monitor awareness возвращает фактический DPI выбранного монитора;
+        // именно процесс, а не случайное окно под курсором, задаёт этот контракт.
+        try {
+            POINT point;
+            if (GetCursorPos(out point)) {
+                IntPtr monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+                uint dpiX, dpiY;
+                if (monitor != IntPtr.Zero &&
+                    GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out dpiX, out dpiY) == 0 &&
+                    dpiY > 0) return (int)dpiY;
+            }
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+
+        // На Windows без shcore процесс откатывается на system-aware. Там DC
+        // рабочего стола знает системный DPI; в PMv2 он даст 96, но сюда мы
+        // попадаем лишь после отказа точного запроса, и 96 сохраняет прежний вид.
+        IntPtr dc = GetDC(IntPtr.Zero);
+        if (dc != IntPtr.Zero) {
+            try {
+                int dpi = GetDeviceCaps(dc, LOGPIXELSY);
+                if (dpi > 0) return dpi;
+            }
+            finally { ReleaseDC(IntPtr.Zero, dc); }
+        }
+        return 96;
+    }
 }
 
 // Приёмник горячих клавиш. Жил в Displays.ps1 и компилировался четвёртым
@@ -1729,9 +1790,13 @@ public static class NativeTheme {
 // как обычный текст: с системным отрисовщиком всё это было одинаково серым.
 public class ModernMenuRenderer : ToolStripRenderer {
     private readonly Color _back, _text, _dim, _hover, _line, _accent;
+    private readonly float _scale;
 
-    public ModernMenuRenderer(bool dark, Color accent) {
+    public ModernMenuRenderer(bool dark, Color accent) : this(dark, accent, 1f) { }
+
+    public ModernMenuRenderer(bool dark, Color accent, float scale) {
         _accent = accent;
+        _scale = scale < 1f ? 1f : scale;
         if (dark) {
             _back  = Color.FromArgb(0x2C, 0x2C, 0x2C);
             _text  = Color.FromArgb(0xF2, 0xF2, 0xF2);
@@ -1747,6 +1812,10 @@ public class ModernMenuRenderer : ToolStripRenderer {
             _hover = Color.FromArgb(0xEA, 0xEA, 0xEA);
             _line  = Color.FromArgb(0xE0, 0xE0, 0xE0);
         }
+    }
+
+    private int S(int value) {
+        return (int)Math.Round(value * _scale, MidpointRounding.AwayFromZero);
     }
 
     private static GraphicsPath Rounded(Rectangle r, int radius) {
@@ -1769,7 +1838,9 @@ public class ModernMenuRenderer : ToolStripRenderer {
 
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) {
         // Тонкая рамка, чтобы меню не сливалось с тем, что под ним. Углы у неё
-        // прямые — на Windows 11 их срежет DWM вместе с углами самого окна.
+        // прямые — на Windows 11 их срежет DWM вместе с углами самого окна. Один
+        // физический пиксель оставлен намеренно: системные меню держат hairline
+        // при любом DPI, чтобы контур не становился тяжелее содержимого.
         var r = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
         using (var p = new Pen(_line)) e.Graphics.DrawRectangle(p, r);
     }
@@ -1777,10 +1848,10 @@ public class ModernMenuRenderer : ToolStripRenderer {
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e) {
         if (!e.Item.Selected || !e.Item.Enabled) return;
         var g = e.Graphics;
-        var r = new Rectangle(3, 1, e.Item.Width - 6, e.Item.Height - 2);
+        var r = new Rectangle(S(3), S(1), e.Item.Width - S(6), e.Item.Height - S(2));
         var old = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var path = Rounded(r, 4))
+        using (var path = Rounded(r, S(4)))
         using (var b = new SolidBrush(_hover)) g.FillPath(b, path);
         g.SmoothingMode = old;
     }
@@ -1788,7 +1859,8 @@ public class ModernMenuRenderer : ToolStripRenderer {
     protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e) {
         if (e.Vertical) { base.OnRenderSeparator(e); return; }
         int y = e.Item.Height / 2;
-        using (var p = new Pen(_line)) e.Graphics.DrawLine(p, 10, y, e.Item.Width - 10, y);
+        // Как и рамка, сама линия остаётся hairline; растёт только её отступ.
+        using (var p = new Pen(_line)) e.Graphics.DrawLine(p, S(10), y, e.Item.Width - S(10), y);
     }
 
     // Цвет ЗАДАЁМ САМИ, потому что базовый ToolStripRenderer.OnRenderItemText
@@ -1862,7 +1934,7 @@ public class ModernMenuRenderer : ToolStripRenderer {
         var r = e.ImageRectangle;
         var old = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var p = new Pen(_accent, 1.8f)) {
+        using (var p = new Pen(_accent, 1.8f * _scale)) {
             p.StartCap = LineCap.Round;
             p.EndCap = LineCap.Round;
             p.LineJoin = LineJoin.Round;
@@ -2023,6 +2095,18 @@ function Initialize-DpiAwareness {
 }
 
 Initialize-DpiAwareness
+
+function Get-UiScale {
+    param([int]$Dpi = 0)
+
+    # Ноль означает живой запрос для монитора под курсором. Явное значение —
+    # детерминированный шов тестов: они не должны зависеть от настоящего стола.
+    if ($Dpi -le 0) {
+        try { $Dpi = [NativeDpi]::GetDpiAtCursor() }
+        catch { $Dpi = 96 }
+    }
+    return [Math]::Max([double]1.0, ([double]$Dpi / 96.0))
+}
 
 function New-DisplayDevice {
     $d = New-Object NativeDisplay+DISPLAY_DEVICE
