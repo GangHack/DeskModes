@@ -1087,9 +1087,12 @@ $menu.add_Opening({
     # Версия — через всплывашку, а не через MessageBox: модальное окно из трея
     # останавливает цикл сообщений, а вместе с ним и сторожа частоты, и таймер
     # выключения.
-    $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem 'About ScreenDeck'
+    # Имя берётся из $script:AppName, а не пишется буквами: оно же стоит в
+    # подсказке иконки, в заголовках ошибок и в приветствии первого запуска, и
+    # разъехавшееся имя — первое, что человек заметит в отчёте о баге.
+    $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem "About $script:AppName"
     $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
-    $aboutItem.add_Click({ Show-Balloon 'ScreenDeck' (Get-VersionLine) -Always })
+    $aboutItem.add_Click({ Show-Balloon $script:AppName (Get-VersionLine) -Always })
     [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
