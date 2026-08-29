@@ -623,7 +623,7 @@ $script:SettingsWindowXaml = @'
                     <StackPanel>
                         <TextBlock Style="{StaticResource H2}" Text="Your desk"/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Arrange the cards in the order the displays stand on your desk, left to right - the cursor will cross between screens the same way. The star marks the display that keeps the taskbar."/>
+                                   Text="Arrange the cards from left to right; the star marks the display that keeps the taskbar."/>
                         <WrapPanel x:Name="DeskPanel"/>
                         <Border x:Name="PreviewBox" CornerRadius="6" Padding="12,10" Margin="0,4,0,0"
                                 Background="{StaticResource MiniBrush}"
@@ -632,7 +632,7 @@ $script:SettingsWindowXaml = @'
                                 <Canvas x:Name="PreviewCanvas" Width="540" Height="132" HorizontalAlignment="Center"/>
                                 <TextBlock x:Name="PreviewHint" Style="{StaticResource Hint}" Margin="0,8,0,0"
                                            TextAlignment="Center"
-                                           Text="Your desk as Windows will see it: sizes to scale, centred vertically so the cursor can cross between panels of different heights."/>
+                                           Text="How Windows will arrange the displays."/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -641,7 +641,7 @@ $script:SettingsWindowXaml = @'
                     <StackPanel>
                         <TextBlock Style="{StaticResource H2}" Text="Modes"/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Everything you can switch to: one mode per display, every combination you made, and all of them at once. Edit opens the one place a mode is set up - the displays it turns on, where the taskbar goes, the shortcut, and the brightness of its monitors. A display's mode exists while the display does; combinations are yours to add and to remove."/>
+                                   Text="Everything you can switch to; Edit opens the one place each mode is set up."/>
                         <StackPanel x:Name="ModesPanel"/>
                         <Button x:Name="AddComboBtn" Style="{StaticResource Btn}" Content="Add a combination"
                                 HorizontalAlignment="Left" Margin="0,10,0,0"/>
@@ -713,7 +713,7 @@ $script:SettingsWindowXaml = @'
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
                                 <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
-                                           Text="Count how long you spend in which app, on which display and in which mode - Statistics in the tray menu shows it. Kept in activity.json next to the scripts, never sent anywhere; window titles are not recorded. Delete the file to forget everything."/>
+                                           Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
                             </StackPanel>
                             <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
@@ -758,7 +758,7 @@ $script:ModeEditorXaml = @'
                     <ComboBox x:Name="PrimaryBox" Style="{StaticResource Select}" Height="30"/>
                 </StackPanel>
                 <TextBlock Style="{StaticResource H2}" Text="Shortcut" Margin="0,16,0,0"/>
-                <TextBlock Style="{StaticResource Hint}" Text="Optional - the mode works from the tray menu either way. Click the box and press the keys: Ctrl, Alt, Shift or Win plus something."/>
+                <TextBlock Style="{StaticResource Hint}" Text="Optional - the mode still works from the tray; click the box and press Ctrl, Alt, Shift or Win plus another key."/>
                 <StackPanel Orientation="Horizontal">
                     <TextBox x:Name="HotkeyBox" Style="{StaticResource Input}" Width="150" TextAlignment="Center"/>
                     <Button x:Name="ClearHotkeyBtn" Style="{StaticResource BtnSubtle}" Content="&#x00D7;"
@@ -767,7 +767,7 @@ $script:ModeEditorXaml = @'
                 </StackPanel>
                 <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,18,0,0"/>
                 <TextBlock Style="{StaticResource Hint}"
-                           Text="This mode can carry the brightness of its monitors, so you stop reaching for the buttons on the bezel. It goes over DDC/CI, the service channel inside the cable: only monitors that answer can be set, and &quot;Ask the monitors&quot; tells which of yours do. Contrast is the same idea and lives in settings.json."/>
+                           Text="Set brightness with this mode; &quot;Ask the monitors&quot; shows which of yours can be set."/>
                 <ComboBox x:Name="LevelKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
                 <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
@@ -1829,20 +1829,20 @@ function Set-ModeEditorHeader {
     if ($Kind -eq 'combo') {
         # Имя и состав правятся ниже, своими полями: заголовку остаётся сказать,
         # что это вообще такое. Заведённой комбинации объяснять уже нечего —
-        # подсказка уходит, окно становится короче на две строки.
+        # подсказка уходит, и окно становится короче на строку.
         $headTitle.Text = $(if ($Combo) { 'Combination' } else { 'New combination' })
         if ($Combo) { $headHint.Visibility = 'Collapsed' }
         else {
-            $headHint.Text = 'Any set of displays under a name you choose. It gets an entry in the tray menu, a shortcut if you want one, and the brightness set below.'
+            $headHint.Text = 'A named set of displays with its own tray entry, optional shortcut and brightness.'
         }
     }
     else {
         $Window.FindName('ComboPart').Visibility = 'Collapsed'
         $headTitle.Text = $(if ($Mode) { [string]$Mode.Title } else { 'Mode' })
         $headHint.Text = $(if ($Kind -eq 'all') {
-            'Every display on your desk at once. Which displays these are the desk decides, so what belongs to the mode itself is the shortcut and the brightness.'
+            'Every display at once, with its own shortcut and brightness.'
         } else {
-            'This mode leaves one display on and turns the rest off. Its set of displays is fixed, so what belongs to the mode itself is the shortcut and the brightness.'
+            'One display on and the rest off, with its own shortcut and brightness.'
         })
     }
 
