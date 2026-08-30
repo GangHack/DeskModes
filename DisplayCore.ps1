@@ -16,7 +16,7 @@ $script:ToolRoot     = $PSScriptRoot
 # строки (компиляция типов, поворот журнала) пишутся уже при загрузке этого
 # файла, и подменить $script:LogFile после дот-сорса поздно. Журнал — главный
 # инструмент разбора, чужих следов в нём быть не должно.
-$script:LogFile      = $(if ($env:MMT_LOG_FILE) { $env:MMT_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
+$script:LogFile      = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'

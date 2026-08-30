@@ -37,9 +37,9 @@ $root = Split-Path -Parent $PSScriptRoot
 # Журнал уводим в сторону ДО дот-сорса: DisplayCore пишет в него уже при загрузке
 # (поворот журнала, компиляция типов), и подменять $script:LogFile после было
 # поздно — эти строки уезжали в настоящий last-run.log.
-$script:LogDir = Join-Path $env:TEMP ('mmt-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$script:LogDir = Join-Path $env:TEMP ('screendeck-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $script:LogDir | Out-Null
-$env:MMT_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
+$env:SCREENDECK_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 
 # Фреймворк — до подопытного кода: Test-Case и утверждения нужны всем, и
 # дот-сорс кладёт их в область ЭТОГО файла, где лежат счётчики и $Only.
@@ -92,7 +92,7 @@ foreach ($case in $cases) { . $case.FullName }
 # --- итог -------------------------------------------------------------------
 
 Remove-Item -LiteralPath $script:TestDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item Env:\MMT_LOG_FILE -ErrorAction SilentlyContinue
+Remove-Item Env:\SCREENDECK_LOG_FILE -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($script:Failed -eq 0) {

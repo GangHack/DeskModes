@@ -191,7 +191,7 @@ Layout:
 **No test touches the real displays, `settings.json`, the log or the diary.** That is
 held up by two things, and a new test must not break either:
 
-- `$env:MMT_LOG_FILE` is set to a temp file *before* `DisplayCore.ps1` is dot-sourced.
+- `$env:SCREENDECK_LOG_FILE` is set to a temp file *before* `DisplayCore.ps1` is dot-sourced.
   It has to be before: log rotation and type compilation write to it during load, and
   reassigning `$script:LogFile` afterwards is too late.
 - `$script:SettingsFile`, `$script:WindowStateFile`, `$script:LastModeFile`,

@@ -51,8 +51,8 @@ $ErrorActionPreference = 'Stop'
 
 # Журнал уводим в сторону: это инструмент разработки, и в разборе настоящих
 # переключений его следам не место.
-if (-not $env:MMT_LOG_FILE) {
-    $env:MMT_LOG_FILE = Join-Path $env:TEMP 'screendeck-render-preview.log'
+if (-not $env:SCREENDECK_LOG_FILE) {
+    $env:SCREENDECK_LOG_FILE = Join-Path $env:TEMP 'screendeck-render-preview.log'
 }
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
