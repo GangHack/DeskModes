@@ -230,10 +230,14 @@ value of this project, and no fake reproduces them.
   instead.
 - **Do not translate the comments to English**, and do not translate the interface or
   the log to Russian.
-- **Do not rename the folder.** The repository lives in `MultiMonitorTool` while the
-  product is ScreenDeck. That is a leftover, and it stays: renaming breaks paths, the
-  startup shortcut and the `.cmd` wrappers. It is a job for one person, done alone and
-  last.
+- **Do not let anything here learn where it lives.** There is not one absolute path in
+  this repository — every one of them resolves through `$PSScriptRoot` or `%~dp0`, which
+  is why the folder can be moved or renamed at no cost. Keep it that way. What a move
+  does break is outside the repository: the startup shortcut stores an absolute path
+  (`Set-RunAtStartup`, `DisplayCore.ps1:4907`) and so does any shortcut pinned to
+  `Displays.cmd`. `Test-RunAtStartup` only checks that the `.lnk` exists, so a stale one
+  reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
+  new location.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
   `display-modes.json`, `window-state.json`, `activity.json`, `stats.html` and
   `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
