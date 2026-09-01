@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 rem Enable every connected monitor.
 rem
 rem || pause: on success the window closes at once, as it should; on a refusal it stays

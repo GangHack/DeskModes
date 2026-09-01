@@ -6,9 +6,9 @@
 # A person sees the first run exactly once, and live it cannot be repeated without deleting the settings
 # — and that is the one path nobody ever reopens by hand.
 #
-# Both Show-Balloon and the body of the startup timer are pulled out of Displays.ps1 by parsing the file:
-# an entry point cannot be dot-sourced, it brings the whole application up, and a copy of the code in the
-# test would drift apart from the original (the same trick as in 16-restore-on-start).
+# Both Show-Balloon and the body of the startup timer come out of Displays.ps1 by parsing it — see
+# Get-TrayFunctionSource in tests\fakes.ps1 for why. The first-run block itself is not a function but
+# top-level script code, so it is read rather than run.
 
 Write-Host ''
 Write-Host 'the balloons and the first run' -ForegroundColor White
@@ -16,8 +16,7 @@ Write-Host 'the balloons and the first run' -ForegroundColor White
 # ToolTipIcon comes from WinForms: Show-Balloon takes the icon out of it by the kind's name.
 Add-Type -AssemblyName System.Windows.Forms
 
-$script:TrayAst = [System.Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $root 'Displays.ps1'), [ref]$null, [ref]$null)
+$script:TrayAst = Get-TrayAst
 
 $balloon = @($script:TrayAst.FindAll({ param($n)
     $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
@@ -153,6 +152,23 @@ Test-Case 'startup: the welcome belongs to the run that had to create the settin
     Assert-Equal 1 $creates.Count 'one block decides that this is a first run'
     if ($creates.Count -eq 1) {
         Assert-True ($creates[0].Extent.Text -match '\$script:FirstRun\s*=\s*\$true') 'and it is the one that raises the flag'
+    }
+}
+
+Test-Case 'startup: a first run that could not save the settings says so' {
+    # In a folder we may not write to — Program Files, a read-only share — the old line logged "assigned
+    # the default shortcuts" over a file that was never created. And since a first run is told by the
+    # ABSENCE of that file, every start after it was a first run again: welcome balloon, Settings window,
+    # for good. Read rather than run: this block is top-level script code, not a function.
+    $ifs = @($script:TrayAst.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.IfStatementAst] }, $true))
+    $creates = @($ifs | Where-Object { $_.Clauses[0].Item1.Extent.Text -match 'Test-Path \$script:SettingsFile' })
+    Assert-Equal 1 $creates.Count 'the block that decides this is a first run'
+    if ($creates.Count -eq 1) {
+        $text = $creates[0].Extent.Text
+        Assert-True ($text -notmatch '\[void\]\(Save-DisplaySettings') 'the answer is not thrown away'
+        Assert-True ($text -match 'if \(Save-DisplaySettings') 'what goes in the log depends on it'
+        Assert-True ($text -match 'could not be saved') 'and a refusal is said in words'
     }
 }
 

@@ -1926,3 +1926,192 @@ the device path IS the identifier, and the monitor's own id sits inside it (`DIS
 map filled from the right place that road is not needed, and it is kept deliberately all the same: this
 function's whole job is that the log never says "somebody", and three lines of arithmetic are a cheap price
 for never having to run this investigation twice.
+
+## A second sweep, and the answer that had no shape (2026-09-01)
+
+The reading above found five things and shipped them. A second pass over the same code — this time going
+after the *seams between* the parts rather than the parts — found twenty, and one of them was the reason
+four of the others existed. Written down here because the four looked like four separate bugs right up to
+the moment they turned out to be one.
+
+### The answer a switch gives had no vocabulary
+
+`Switch-DisplayMode` returned a `[pscustomobject]` built by hand at each of its three exits: `Skipped` on
+a busy mutex, `Ok` plus `Message` at the end, `Ok = $true` on a dry run. A refusal did not return at all —
+it threw, because the message is written for a person and belongs in a balloon. Four shapes, no name for
+the question a caller actually has.
+
+Two callers in the tray have that question, and each answered it out of a different piece:
+
+```
+Invoke-RulesCheck    switch branch   if ($script:LastSwitchSkipped) { Reset-RuleOwnership }
+                     return branch   if (-not $script:LastSwitchSkipped) { Reset-RuleOwnership }
+Invoke-ReapplyMode                   $switched = -not $result.Skipped   →  if (-not $switched) { re-arm }
+```
+
+Read each on its own and each is defensible. Together they are two opposite retry policies, and both are
+wrong at one end:
+
+* The rule's way back let the desk go on **any** failure that was not a busy mutex. A throw — Windows
+  refusing the configuration, once — and the claim was dropped while the desk stood in the rule's mode.
+  The condition has ended by then, so nothing comes back down that road ever again: the person stays on
+  the game display until they switch by hand. Permanent, from one transient refusal.
+* The reapply did the mirror image. `-not $result.Skipped` counts a switch where no monitor woke as
+  "went", so the intent went in the bin with the desk still drifted — and counts a throw as "did not go",
+  so the intent was re-armed and the 15-second timer asked again, and again: an error balloon every
+  fifteen seconds, each one a whole switch attempt on the tray's single STA thread, until the next
+  hotplug happened to change the answer.
+* And a rule that failed hard kept its claim, so the next tick compared the unchanged desk against the
+  mode it had never reached and released with `the displays were changed by hand` — about a person who
+  had touched nothing. Then the rule fired again, failed again, and the pair repeated for as long as the
+  condition lasted.
+
+Four symptoms, in three files, and no fix to any one of them is safe on its own: releasing the claim
+sooner fixes the rule and arms the balloon storm, keeping it longer fixes the storm and strands the desk.
+
+**None of the four has ever happened on this desk, and that is the point of writing them down.** The log
+holds 26 `skip: mode` lines, so the busy mutex is an everyday event — but not one `rule:` line in the
+whole file, because no rule has ever been configured here, and not one `did not come up`, because these
+three monitors always attach. The two paths where the two policies diverge have never been walked. Found
+by reading, fixed by reading, and covered now by tests that walk all four on purpose — which is the only
+way this class of thing gets found at all.
+
+So the fix is the shape. `New-SwitchResult` builds every answer, `New-SwitchFailure` turns a caught throw
+into the same one, and both callers now read two named fields:
+
+* **`Ok`** — the desk **is** in the requested mode now. Nothing else means that. A switch that came to
+  nothing ran to the end, has a summary, has a duration in the log, and is not a success.
+* **`Retry`** — asking again in a moment can change this answer. True for a busy mutex (the refresh-rate
+  watchdog holds `Local\ScreenDeckSwitch` for about a second after every switch, ours included) and for a
+  display that has not attached yet. False for Windows turning the configuration down and for a mode that
+  is no longer in the settings.
+
+`Outcome` is the same answer as a word — `done`, `partial`, `busy`, `dryrun`, `refused` — and the rules
+need it, because their question is a third one: *did the desk move?* A `partial` switch moved it; a
+display that stayed dark does not undo the ones that lit. So `partial` claims the desk, `busy` claims
+nothing and asks again next tick, and `refused` keeps the claim (to stop the rule firing every fifteen
+seconds) while `-Taken $false` keeps the state honest — `Get-RuleDecision` now sits out the condition in
+silence rather than blaming a person, and when the condition ends it lets go without moving a screen.
+
+The retry that was missing is bounded: `$script:AutoRetryLimit`, four ticks, about a minute. Long enough
+for a mutex or a display still waking; short enough that "keep asking" and "a warning balloon until
+bedtime" stay different things. Waiting out a full-screen game does not spend an attempt — a game that
+lasted three hours must not have used up the retries a waking display needs afterwards.
+
+The tray's two loose booleans are one field now, `$script:LastSwitch`, and the AST test in
+`34-reapply-fullscreen` asserts that the real `Invoke-Mode` publishes it from its `finally` — the line
+every fake in two files stands on, and until now covered by none of a thousand assertions. Delete it and
+the suite used to stay green.
+
+### A BOM in `work.cmd`, and the two launch paths that disagree about it
+
+`work.cmd`, `game.cmd` and `all.cmd` had a UTF-8 BOM. `.editorconfig` says `charset = utf-8-bom` for
+`[*]` and had nothing to say about `.cmd`, so every editor put one there — and gate 2 of
+`tools/check.ps1` never looked, because its file filter was `ps1|psd1|md|json`.
+
+The measurement is worth writing down in full, because the first way of taking it says there is no
+problem. A two-line batch, `set FIRST=RAN` and an `echo` of it, in both encodings:
+
+```
+cmd /c file.cmd          with a BOM  FIRST=[RAN]     without  FIRST=[RAN]
+ShellExecute(file.cmd)   with a BOM  FIRST=[]        without  FIRST=[RAN]
+```
+
+`cmd /c` tolerates the BOM. **ShellExecute — a double click, and a shortcut pinned to the file — does
+not**: the three bytes are glued to the first command, which fails as unrecognised (`ERRORLEVEL` 9009 on
+the next line, measured), and then the rest of the file runs on. So a BOM costs exactly the first line,
+and only when launched the way a person launches these.
+
+Which puts the real cost lower than "the file does nothing" and higher than nothing at all. The first
+line here is `@echo off`. The switch still happens; what is lost is the quiet: the window shows
+`'∩╗┐@echo' is not recognized`, then echoes the whole `powershell -NoProfile ...` line, and on success
+closes the instant it is done. `@echo off` and `|| pause` exist together so that the ONLY thing a person
+ever reads out of these files is a refusal. A BOM turns that into a flash of an error message on every
+successful switch — a file that works and looks broken, which is worse than one that plainly does not.
+
+Both halves are fixed: the BOM stripped, `[*.cmd]` written into `.editorconfig`, and gate 2 now covers
+`.cmd` with the requirement *inverted* — `.ps1` must have the BOM, `.cmd` must not, and the two sit in
+one directory where one careless "normalise on save" reaches both.
+
+### Nothing to anchor is not "already correct"
+
+The unconditional `Set-CcdLayout` from the review above brought a case with it that the old `if` had kept
+out of reach. With no `layout` in the settings the call has one job — put the primary display at (0, 0) —
+and it took its anchor from `$screens[0]` when the display it was asked for was not among the active ones.
+
+That shifts the **whole desk** by a stranger's offset: every window moves, the taskbar lands on a display
+nobody named, and the line above it in the log reports the taskbar as having gone to the display that
+never came up. Before the call became unconditional this branch was reached only when an order existed
+and the fallback was unreachable; afterwards it is reached on every desk whose owner has never opened the
+Settings window, and a display refusing to wake is precisely when it fires.
+
+There is nobody to anchor, so nothing moves. The layout result carries a `Note` for exactly this — "not
+`Changed`, and not because everything was already right" — and the caller prints it instead of `layout:
+already correct`. The absent display is reported in its own right, one line up.
+
+### The session stamp read its own past as somebody else's
+
+`Get-SystemSessionId` writes `<shutdownTime>/<epochSeconds>`. Before the review above it wrote
+`<shutdownTime>/<yyyy-MM-dd HH:mm>`, and `last-mode.json` outlives an upgrade — this machine's own file
+still said so while the fix was being written:
+
+```
+{"key":"solo:LG ULTRAGEAR","session":"134326946768424535/2026-09-01 10:25","when":"2026-09-01T15:19:03"}
+```
+
+`Test-SameSession` split that, failed to parse `2026-09-01 10:25` as a number, and answered "another
+session" — so the first start after the upgrade would lay the remembered mode over a desk the person had
+arranged themselves. Once, on every installation in existence, with nothing in the log anybody would
+connect to the upgrade. The test file made it worse than a slip: `and anything else is not` asserted the
+wrong answer in so many words, so the suite was holding the defect in place.
+
+The shutdown half decides it now. That one is read out of the registry by both sides and changes at every
+power-off, so a match means the power-on we are living in — bar a crash or a Reset, which leave it
+untouched. That "bar" is why the answer is yes rather than no: guessing wrong this way costs one skipped
+restore and a keypress, guessing wrong the other way moves somebody's desk. It happens exactly once —
+the next switch writes the stamp in today's shape.
+
+### The promise about window titles was true in one file and false in another
+
+README, `Activity.ps1` and the Settings window all say, in those words, that window titles are never
+read. `Save-WindowLayout` wrote `title` and `path` — the window's caption and the full path to its
+executable — into `window-state.json` for every window on the desk, on every switch. `Restore-WindowLayout`
+reads `hwnd`, `pid`, `showCmd`, `n`, `mn`, `mx`. Nothing anywhere read the other two, ever.
+
+So "Delete `activity.json` to forget everything", which the Settings window offers, forgot nothing of the
+sort: the titles were sitting in the file next to it. A promise is kept where the reading would happen,
+not where the writing does, so `Title` and `Path` are gone from `WinInfo` and from `Enumerate` — along
+with `PathOf`, which was an `OpenProcess` per window on the switch path. What is never gathered cannot be
+written down by the next person to touch the snapshot. An existing store is swept on the next tray start:
+stopping the writing is only half of it, because a snapshot is rewritten only when its own desk is left,
+and the layouts a person visits rarely would have kept their titles for as long as the file lived.
+
+### The rest, and the one thing worth generalising
+
+A claim on the desk was a rule's **index**, and the rules list is edited by hand and from the Settings
+window while a rule is holding it: delete a rule above the holder and the claim quietly moves to whoever
+slides into that slot. `Get-RuleSignature` — what it watches, what for, where it goes, where it comes back
+— is the identity now, and the index is only where to look first. Deleting the *last* rule while it held
+the desk did nothing at all, because `Invoke-RulesCheck` returned early on an empty list, jumping over the
+answer `Get-RuleDecision` has had for that case from the start.
+
+Two `WaitOne(0)` calls stood outside their `try`. `AbandonedMutexException` is thrown *while granting
+ownership*: the wait fails and the mutex is ours, so out there it was leaked, and in a tray that lives for
+weeks every later switch would have answered "a switch is already in progress" for good. Self-healing on
+restart, which is why nobody had seen it.
+
+Three `Set-Content` calls had no `-ErrorAction Stop`, so their non-terminating refusal skipped the `catch`
+and the next line reported success — the diary would have declared its unsaved day clean and thrown it
+away. They were masked by both entry points setting `$ErrorActionPreference = 'Stop'`, which is exactly
+the mask `Write-DisplayLog` has carried a comment about since August: core must not depend on its caller's
+preference, and neither must anything core dot-sources. `[void](Save-DisplaySettings)` on the first-run
+path was the same disease with a worse ending: a first run is told by the ABSENCE of `settings.json`, so
+in a folder we may not write to, the log said "assigned the default shortcuts" and every start afterwards
+was a first run again — welcome balloon, Settings window, for good.
+
+The generalisation, and the only line of this section worth carrying forward: **every one of these is a
+caller and a callee disagreeing about what an answer means.** `-ErrorAction Stop` is a callee that returns
+failure by a channel the caller is not listening on. `WaitOne` is a callee that returns success by
+throwing. `Skipped` versus `Ok` is one answer that two callers read as two. `$screens[0]` is a callee
+inventing an answer rather than admitting it has none. They are not five kinds of bug; they are one, and
+the place to look for the next one is wherever a return value is read in pieces.

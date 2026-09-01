@@ -65,6 +65,29 @@ function Test-ShippedFile {
     return $true
 }
 
+# One version's section of CHANGELOG.md: its heading and its body, separately. Two things want it — the
+# heading, to check it carries a date, and the body, which becomes the release description on GitHub — and
+# they used to walk the file with a loop each, the two loops agreeing on what a heading looks like only by
+# both being written on the same evening. Heading is '' when there is no section at all.
+function Get-ChangelogSection {
+    param([string]$Version)
+
+    $heading = ''
+    $body = New-Object System.Collections.Generic.List[string]
+    $inside = $false
+    foreach ($line in [System.IO.File]::ReadAllLines((Join-Path $root 'CHANGELOG.md'))) {
+        if ($line -match '^##\s+(\d+\.\d+\.\d+)') {
+            # The next version's heading ends ours. Ordered this way round so that a file listing the
+            # same version twice takes the first section and stops, rather than glueing them together.
+            if ($inside) { break }
+            if ($Matches[1] -eq $Version) { $heading = $line; $inside = $true }
+            continue
+        }
+        if ($inside) { $body.Add($line) }
+    }
+    return [pscustomobject]@{ Heading = $heading; Body = $body }
+}
+
 # --- the version ------------------------------------------------------------
 # By regex rather than by dot-sourcing: loading DisplayCore.ps1 compiles the native types and writes
 # to the log, whereas the packer has to be free of side effects — it is called in CI too, where
@@ -93,10 +116,7 @@ if ($ExpectVersion -and $ExpectVersion -ne $version) {
 # a refusal that leaves rubbish behind. -ExpectVersion is what tells a release from a local build —
 # only the workflow passes it, and only for a tag.
 if ($ExpectVersion) {
-    $heading = ''
-    foreach ($line in [System.IO.File]::ReadAllLines((Join-Path $root 'CHANGELOG.md'))) {
-        if ($line -match '^##\s+(\d+\.\d+\.\d+)' -and $Matches[1] -eq $version) { $heading = $line; break }
-    }
+    $heading = (Get-ChangelogSection -Version $version).Heading
     if (-not $heading) { throw "CHANGELOG.md has no section for $version." }
     if ($heading -notmatch '\d{4}-\d{2}-\d{2}') {
         throw ("CHANGELOG.md: the heading for $version carries no date - '$($heading.Trim())'. " +
@@ -171,15 +191,7 @@ Set-Content -LiteralPath $hashPath -Value "$hash *$zipName" -Encoding ASCII
 # Its own version's section out of CHANGELOG.md — so that the release description on GitHub is
 # written once and in one place rather than drifting apart from the file.
 if ($NotesOut) {
-    $notes = New-Object System.Collections.Generic.List[string]
-    $inside = $false
-    foreach ($line in [System.IO.File]::ReadAllLines((Join-Path $root 'CHANGELOG.md'))) {
-        if ($line -match '^##\s+(\d+\.\d+\.\d+)') {
-            if ($Matches[1] -eq $version) { $inside = $true; continue }
-            if ($inside) { break }
-        }
-        if ($inside) { $notes.Add($line) }
-    }
+    $notes = (Get-ChangelogSection -Version $version).Body
     if ($notes.Count -eq 0) { throw "CHANGELOG.md has no section for $version." }
     # We expand a relative path ourselves: .NET has a current directory of its own, and it need not
     # match the one PowerShell is standing in — the file would have gone somewhere else.

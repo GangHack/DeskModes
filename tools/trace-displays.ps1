@@ -31,7 +31,17 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$logFile = Join-Path $root 'last-run.log'
+
+# The same answer DisplayCore.ps1 gives itself (see $script:LogFile there): the environment variable wins,
+# and the tests set it. Reading last-run.log unconditionally meant that whoever ran this after a test run
+# was handed the wrong file with no hint of it.
+$logFile = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FILE } else { Join-Path $root 'last-run.log' })
+
+# And its predecessor. The log rotates at half a megabyte, and the rotation renames the file to
+# .old — so "the last twenty-four hours" straddles the seam whenever it happens to have just rotated, and
+# the hour before the rotation was simply not in the timeline. Oldest first, so the ordinal below still
+# counts in the order the lines were written.
+$logFiles = @(($logFile + '.old'), $logFile)
 
 $since = $(if ($All) { [datetime]'1970-01-01' } else { (Get-Date).AddHours(-$Hours) })
 
@@ -45,8 +55,9 @@ $since = $(if ($All) { [datetime]'1970-01-01' } else { (Get-Date).AddHours(-$Hou
 # claim that a line below another is a reaction to it, so the ordinal is not a nicety.
 $ordinal = 0
 $ours = @()
-if (Test-Path $logFile) {
-    foreach ($line in (Get-Content -LiteralPath $logFile -Encoding UTF8)) {
+foreach ($file in $logFiles) {
+    if (-not (Test-Path -LiteralPath $file)) { continue }
+    foreach ($line in (Get-Content -LiteralPath $file -Encoding UTF8)) {
         if ($line -notmatch '^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(.*)$') { continue }
         $when = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss',
                                        [System.Globalization.CultureInfo]::InvariantCulture)

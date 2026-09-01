@@ -216,6 +216,19 @@ function Invoke-ModeWatch {
 
 $script:RuleOwnedIndex = -1
 $script:RuleOwnedBack = ''
+# WHO holds the desk, as against where they sit in the list. Rules get added and deleted — by hand and
+# from the Settings window — while one of them is holding the desk, and an index on its own then points at
+# whoever slid into that slot: the desk would go back to a stranger's "back". See Get-RuleSignature.
+$script:RuleOwnedSig = ''
+# Whether the switch that was to take the desk actually went through. A claim is kept even after a refusal
+# that asking again will not cure — otherwise the rule fires on every tick and every tick is a balloon —
+# and this is what keeps the state honest while it is kept: the desk is nobody's, so the next tick must
+# not read it as "the displays were changed by hand" and say so about a person who touched nothing.
+$script:RuleOwnedTaken = $false
+# How many times the way back has been tried. The way back is the one path that has to keep asking: the
+# condition has ended, so nothing comes through here again later, and a desk left standing in the rule's
+# mode stays there for good. Bounded all the same — see $script:AutoRetryLimit.
+$script:RuleReturnTries = 0
 # The last "there will be nowhere to go back to" complaint: without this it would go to
 # the log every fifteen seconds for as long as the game is open.
 $script:RuleLastBlocked = ''
@@ -223,11 +236,17 @@ $script:RuleLastBlocked = ''
 function Reset-RuleOwnership {
     $script:RuleOwnedIndex = -1
     $script:RuleOwnedBack = ''
+    $script:RuleOwnedSig = ''
+    $script:RuleOwnedTaken = $false
+    $script:RuleReturnTries = 0
 }
 
 function Invoke-RulesCheck {
     $rules = @((Get-ActiveSettings).rules)
-    if ($rules.Count -eq 0) { return }
+    # No rules and nothing claimed: the ordinary case, and the cheapest way out of it. Not while a rule
+    # is holding the desk, though — deleting the last rule while it holds one is exactly when the desk has
+    # to be handed back, and Get-RuleDecision has an answer for that which this used to jump straight over.
+    if ($rules.Count -eq 0 -and $script:RuleOwnedIndex -lt 0) { return }
 
     # Processes are asked for in ONE call for all the rules: Get-Process without a name
     # costs the same as with one, and there can be a dozen rules.
@@ -244,34 +263,62 @@ function Invoke-RulesCheck {
     }
 
     $decision = Get-RuleDecision -Rules $rules -Facts $facts -CurrentMode (Get-CurrentModeKey) `
-                                 -OwnedIndex $script:RuleOwnedIndex -OwnedBack $script:RuleOwnedBack
+                                 -OwnedIndex $script:RuleOwnedIndex -OwnedBack $script:RuleOwnedBack `
+                                 -OwnedSignature $script:RuleOwnedSig -OwnedTaken $script:RuleOwnedTaken
 
     switch ($decision.Action) {
         'switch' {
             $script:RuleOwnedIndex = [int]$decision.RuleIndex
             $script:RuleOwnedBack = [string]$decision.Back
+            $script:RuleOwnedSig = Get-RuleSignature -Rule $rules[[int]$decision.RuleIndex]
+            $script:RuleOwnedTaken = $false
+            $script:RuleReturnTries = 0
             $script:RuleLastBlocked = ''
             Write-DisplayLog ("rule: {0} -> {1}" -f $decision.Reason, $decision.Mode)
             Invoke-Mode $decision.Mode -Auto
-            # A busy mutex is not an answer, it is "ask again in a moment" — and it is an ordinary answer
-            # here: a rule fires on the events the refresh-rate watchdog wakes on, and that one holds
-            # Local\ScreenDeckSwitch for about a second. Owning a desk we never took cost the rule its
-            # whole turn: the next tick saw the mode unchanged and let go with "the displays were changed
-            # by hand", and on a desk that matches no known mode it stayed owned, without ever having
-            # switched, until the condition ended. Letting the claim go instead makes the next tick fire
-            # the rule again. Other refusals keep the claim, as before: those will not come right by
-            # being asked again, and a retry every fifteen seconds is a balloon every fifteen seconds.
-            if ($script:LastSwitchSkipped) { Reset-RuleOwnership }
+
+            # Three different answers, three different claims to make.
+            if ($script:LastSwitch.Outcome -eq 'busy') {
+                # Not an answer at all, but "ask again in a moment" — and an ordinary one here: a rule
+                # fires on the very events the refresh-rate watchdog wakes on, and that one holds
+                # Local\ScreenDeckSwitch for about a second afterwards. Owning a desk we never took cost
+                # the rule its whole turn, so we claim nothing and the next tick fires the rule again.
+                Reset-RuleOwnership
+            }
+            elseif ($script:LastSwitch.Outcome -eq 'refused') {
+                # It will not come right by being asked again fifteen seconds later, and a retry loop
+                # there is a balloon every fifteen seconds. So the claim stands and stops the rule from
+                # firing again — but -Taken false, so nothing anywhere takes the desk for ours.
+                $script:RuleOwnedTaken = $false
+            }
+            else {
+                # 'done' or 'partial'. The desk moved, so it is the rule's now: a display that did not
+                # come up does not undo the ones that did.
+                $script:RuleOwnedTaken = $true
+            }
         }
         'return' {
             if (-not $decision.Mode) { Reset-RuleOwnership }
             else {
                 Write-DisplayLog ("rule: {0} -> back to {1}" -f $decision.Reason, $decision.Mode)
                 Invoke-Mode $decision.Mode -Auto
-                # The same rule at the other end, and it matters more here. Letting go before the switch
-                # had gone through left the desk in the rule's mode for good: the condition has ended, so
-                # nothing comes back this way to try again. We hold the desk until it is really handed back.
-                if (-not $script:LastSwitchSkipped) { Reset-RuleOwnership }
+                $script:RuleReturnTries++
+                # The same question at the other end, and it matters more here: letting go before the way
+                # back has gone through leaves the desk in the rule's mode for good, because the
+                # condition has ended and nothing comes back this way to try again. The test used to be
+                # "was it a busy mutex" — and a throw is not one, so Windows refusing the configuration
+                # once was enough to strand a person on the game display. Now it is the only test that
+                # answers the question asked: did the desk really come back.
+                if ($script:LastSwitch.Ok) { Reset-RuleOwnership }
+                elseif ($script:RuleReturnTries -ge $script:AutoRetryLimit) {
+                    # And it does stop asking. Four goes over about a minute cover a busy mutex and a
+                    # display still waking; past that the reason is not going away, and a desk is
+                    # something a person can move themselves — a warning balloon every fifteen seconds
+                    # for the rest of the day is not.
+                    Write-DisplayLog ("rule: gave up handing the desk back to {0} after {1} attempts" -f `
+                        $decision.Mode, $script:RuleReturnTries)
+                    Reset-RuleOwnership
+                }
             }
         }
         'release' {
@@ -356,7 +403,7 @@ $script:StatusDots = @{}
 function Get-StatusDot {
     param([string]$Kind, [double]$Scale = 1.0)
 
-    $px = [int][Math]::Round(16 * $Scale, [System.MidpointRounding]::AwayFromZero)
+    $px = Get-ScaledPx -Value 16 -Scale $Scale
     $key = '{0}|{1}' -f $Kind, $px
     if ($script:StatusDots.Contains($key)) { return $script:StatusDots[$key] }
 
@@ -416,17 +463,25 @@ function Show-Balloon {
 # than ours.
 $script:SwitchedOnce = $false
 
-# Whether the LAST call to Invoke-Mode actually moved the desk. Invoke-Mode answers every outcome with a
-# balloon and nothing else, so a caller that has to know — the postponed reapply, which must not throw its
-# intent away over a busy mutex — reads it here. A field rather than a return value: five of the six call
-# sites are event handlers that ignore the answer, and a returned boolean would leak into their output.
-$script:LastSwitchWent = $false
+# What the LAST call to Invoke-Mode answered, in the vocabulary New-SwitchResult lays down
+# (DisplayCore.ps1): Ok is "the desk is in that mode now", Retry is "asking again in a moment can change
+# this", Outcome is the same answer as a word. Invoke-Mode replies to every outcome with a balloon and
+# nothing else, so the two callers that have to know what to do next read it here — the rules, deciding
+# whether the desk is theirs, and the postponed rebuild, deciding whether to keep its intent.
+#
+# A field rather than a return value: five of the six call sites are event handlers that ignore the
+# answer, and a returned object would leak into their output.
+#
+# ONE field, where two loose booleans used to stand. They were read apart from each other, and the two
+# readers built opposite retry policies out of the same answer — see the comment on New-SwitchResult for
+# what that cost at both ends.
+$script:LastSwitch = New-SwitchFailure -ModeKey '' -Message 'no switch in this run yet'
 
-# And WHY it did not go, in the one case where that changes what to do next: a busy mutex means "ask
-# again in a moment", while everything else ("that display is not connected", Windows refusing the
-# configuration) means "this will not work" and asking again every fifteen seconds would only be a
-# balloon every fifteen seconds. The rules read this one; see Invoke-RulesCheck.
-$script:LastSwitchSkipped = $false
+# How many times an automatic path asks again after a switch that did not go through. The tray's timer
+# ticks every fifteen seconds, so four attempts is about a minute: long enough for a display that is
+# still waking, or for the refresh-rate watchdog to let go of Local\ScreenDeckSwitch, and short enough
+# that a refusal which will not come right is not a warning balloon every fifteen seconds until bedtime.
+$script:AutoRetryLimit = 4
 
 function Invoke-Mode {
     param([string]$Key, [switch]$Auto, [switch]$Silent)
@@ -450,21 +505,20 @@ function Invoke-Mode {
     }
 
     $tray.Text = "$script:AppName - switching..."
-    # A switch actually happened. Not "we were asked to": a failure leaves as an exception
-    # and a busy mutex as Skipped, and neither counts as a switch (see the diary below). A
-    # held-down shortcut produced a queue of skips, and every one of them reached the report.
-    $switched = $false
-    $skipped = $false
-    $script:LastSwitchWent = $false
-    $script:LastSwitchSkipped = $false
+    # The answer, in one variable and in one vocabulary. A refusal leaves Switch-DisplayMode as an
+    # exception, so the catch below turns that into the same shape (New-SwitchFailure): whoever reads the
+    # outcome afterwards must not have to know which of the two roads it arrived by.
+    #
+    # $null until the switch answers, and the catch tells the two cases apart by that: a balloon that
+    # will not show — the shell does refuse a tip now and then — must not turn a switch that landed into
+    # a refusal, or the diary would lose it and a rule would take a desk it is holding for nobody's.
+    $result = $null
     try {
         $keep = -not (Get-ActiveSettings).maximizeRefresh
         # -Automatic travels with -Auto: only a person overwrites the chosen mode. Every
         # automatic path (rules, startup, reapply) calls us with -Auto, so there is no need
         # to list them here one by one.
         $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet -Automatic:$Auto
-        $switched = -not $result.Skipped
-        $skipped = [bool]$result.Skipped
         if ($result.Skipped) {
             Show-Balloon 'Skipped' $result.Message 'Warning'
         }
@@ -485,18 +539,30 @@ function Invoke-Mode {
         }
     }
     catch {
+        # The message was written for a person to read ("That display is not connected right now"), which
+        # is why it goes into the balloon whole and into the result beside it. Only when the switch itself
+        # is what threw, though — see $result above.
+        if ($null -eq $result) { $result = New-SwitchFailure -ModeKey $Key -Message $_.Exception.Message }
         Show-Balloon 'Failed' $_.Exception.Message 'Error'
     }
     finally {
-        $script:LastSwitchWent = $switched
-        $script:LastSwitchSkipped = $skipped
+        # Nothing at all came back: Switch-DisplayMode always answers, so this is belt and braces, and the
+        # readers below must never be left looking at the answer before last.
+        if ($null -eq $result) { $result = New-SwitchFailure -ModeKey $Key -Message 'the switch did not report back' }
+        $script:LastSwitch = $result
         Update-TrayText
         Update-StateCache
         # The diary counts switches — they show how many times a day a person touches the
         # desk at all. As a separate event, because everything else in the diary is a sum of
         # seconds. Only the ones that happened: a report with more switches in it than there
         # were is not a report.
-        if ($switched -and (Get-ActiveSettings).stats) {
+        #
+        # "Happened" here is "moved the desk", which is not the same as Ok: a display that did not come
+        # up does not undo the ones that did, so 'partial' counts. 'busy' never started and 'refused'
+        # threw — a held-down shortcut used to produce a queue of skips, and every one of them reached
+        # the report.
+        $moved = @('done', 'partial') -contains $result.Outcome
+        if ($moved -and (Get-ActiveSettings).stats) {
             try { Add-ActivitySwitch -Mode $Key } catch { }   # the diary must not get in a switch's way
         }
     }
@@ -574,6 +640,13 @@ function Invoke-ReapplyMode {
 
     if (-not $Key) { return }
 
+    # Attempts already spent on THIS intent. A newer event about a different mode starts the count over:
+    # the old intent is no longer true, so neither are its attempts.
+    $tries = 0
+    if ($script:ReapplyPending -and $script:ReapplyPending.Key -eq $Key) {
+        $tries = [int]$script:ReapplyPending.Tries
+    }
+
     # Under a game the desk is not touched — for the same reason the refresh-rate watchdog
     # backs off (see Restore-BestModes): a configuration change kills a full-screen D3D
     # device. The watchdog could do this from the start, this path could not, and on
@@ -586,7 +659,9 @@ function Invoke-ReapplyMode {
         if (-not $script:ReapplyPending -or $script:ReapplyPending.Key -ne $Key) {
             Write-DisplayLog ("reapply: postponed - full screen: {0}" -f $script:FullscreenWhy)
         }
-        $script:ReapplyPending = [pscustomobject]@{ Key = $Key; Reason = $Reason }
+        # Waiting for a game to end is not an attempt, so the count is carried over untouched: $tries is
+        # this intent's own, and zero for one we have not tried yet.
+        $script:ReapplyPending = [pscustomobject]@{ Key = $Key; Reason = $Reason; Tries = $tries }
         return
     }
 
@@ -594,12 +669,12 @@ function Invoke-ReapplyMode {
     # needed: the fresh event about it IS that same "assemble again", only newer.
     #
     # Kept in hand until the switch reports back, though. Invoke-Mode answers a busy mutex with
-    # Skipped and a monitor that never woke with "Nothing came up" — neither moves the desk, and
+    # 'busy' and a monitor that never woke with 'partial' — neither leaves the desk assembled, and
     # both are ordinary here: the game exiting is itself a configuration change, so the
     # refresh-rate watchdog is holding Local\ScreenDeckSwitch for about a second exactly when this
     # runs. Dropping the intent there left the desk drifted for good, because nothing re-arms it
     # short of the next hotplug.
-    $pending = [pscustomobject]@{ Key = $Key; Reason = $Reason }
+    $pending = [pscustomobject]@{ Key = $Key; Reason = $Reason; Tries = ($tries + 1) }
     $script:ReapplyPending = $null
 
     $state = Get-CachedState
@@ -612,11 +687,25 @@ function Invoke-ReapplyMode {
 
     Write-DisplayLog ("reapply: {0} -> '{1}'" -f $Reason, $mode.Title)
     Invoke-Mode $Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
-    if (-not $script:LastSwitchWent) {
-        # Put back, not logged loudly: Invoke-Mode has already said why in a balloon and in the log,
-        # and the 15-second timer will bring us back here.
-        $script:ReapplyPending = $pending
+
+    # The desk is assembled — nothing to keep. The test used to be "did it move at all", and a monitor
+    # that had not woken yet passed it: the intent went in the bin while the desk was still drifted.
+    if ($script:LastSwitch.Ok) { return }
+
+    # It did not, and only a temporary reason earns another go. A busy mutex clears in a second and a
+    # display still waking attaches a moment later; Windows refusing the configuration outright does not
+    # change its mind in fifteen seconds, and putting the intent back there meant an error balloon every
+    # fifteen seconds — each one a whole switch attempt on the tray's single thread.
+    if (-not $script:LastSwitch.Retry) { return }
+
+    if ($pending.Tries -ge $script:AutoRetryLimit) {
+        Write-DisplayLog ("reapply: gave up assembling '{0}' after {1} attempts" -f `
+            (Get-ModeTitleFromKey $Key), $pending.Tries)
+        return
     }
+    # Put back, not logged loudly: Invoke-Mode has already said why in a balloon and in the log,
+    # and the 15-second timer will bring us back here.
+    $script:ReapplyPending = $pending
 }
 
 # What was postponed under a game is picked up here. Leaving a borderless full screen comes
@@ -984,18 +1073,18 @@ function Add-MenuHeader {
     # text colour) — Enabled is false on both, so that neither catches clicks.
     $item.Tag = 'header'
     $item.Font = Get-UiFont -Size 8.5 -Scale $Scale -Semibold
-    $top = [int][Math]::Round(3 * $Scale, [System.MidpointRounding]::AwayFromZero)
-    $bottom = [int][Math]::Round(1 * $Scale, [System.MidpointRounding]::AwayFromZero)
+    $top = Get-ScaledPx -Value 3 -Scale $Scale
+    $bottom = Get-ScaledPx -Value 1 -Scale $Scale
     $item.Padding = New-Object System.Windows.Forms.Padding 0, $top, 0, $bottom
     [void]$menu.Items.Add($item)
 }
 
 $menu.add_Opening({
     $scale = Get-UiScale
-    $iconPx = [int][Math]::Round(16 * $scale, [System.MidpointRounding]::AwayFromZero)
-    $sidePad = [int][Math]::Round(4 * $scale, [System.MidpointRounding]::AwayFromZero)
-    $topPad = [int][Math]::Round(6 * $scale, [System.MidpointRounding]::AwayFromZero)
-    $itemPad = [int][Math]::Round(4 * $scale, [System.MidpointRounding]::AwayFromZero)
+    $iconPx = Get-ScaledPx -Value 16 -Scale $scale
+    $sidePad = Get-ScaledPx -Value 4 -Scale $scale
+    $topPad = Get-ScaledPx -Value 6 -Scale $scale
+    $itemPad = Get-ScaledPx -Value 4 -Scale $scale
 
     $menu.Items.Clear()
     $menu.Font = Get-UiFont -Scale $scale
@@ -1094,10 +1183,15 @@ $menu.add_Opening({
 
             # A timer that is set gets moved more often than cancelled: "another fifteen
             # minutes" is what people usually come back to it for.
+            #
+            # Everything below carries $itemPad like the items on the top level. Without it the whole
+            # timer submenu sat tighter than the menu it drops out of — invisible at 100%, plain at
+            # 150%, where four pixels of padding are six.
             foreach ($shift in 15, -15) {
                 $move = New-Object System.Windows.Forms.ToolStripMenuItem
                 $move.Text = $(if ($shift -gt 0) { 'Add {0} minutes' -f $shift }
                                else { 'Take {0} minutes off' -f [math]::Abs($shift) })
+                $move.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
                 $move.Tag = $shift
                 # There is nothing to take off when less than that is left: the timer must not
                 # be able to turn the computer off right now, past the one-minute warning.
@@ -1107,6 +1201,7 @@ $menu.add_Opening({
             }
 
             $cancel = New-Object System.Windows.Forms.ToolStripMenuItem 'Cancel the timer'
+            $cancel.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
             $cancel.add_Click({ Stop-PowerTimer })
             [void]$parent.DropDownItems.Add($cancel)
             [void]$parent.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -1114,6 +1209,7 @@ $menu.add_Opening({
         foreach ($minutes in 15, 30, 60, 120) {
             $item = New-Object System.Windows.Forms.ToolStripMenuItem (Format-DurationShort $minutes)
             $item.ShortcutKeyDisplayString = Get-TimerTargetText -Minutes $minutes
+            $item.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
             $item.Tag = '{0}|{1}' -f $action, $minutes
             $item.add_Click({
                 $parts = ([string]$this.Tag) -split '\|'
@@ -1127,6 +1223,7 @@ $menu.add_Opening({
         # pills, the wheel and the same time on the clock as the ready-made amounts have. A
         # zero from there means "changed my mind", and then there is nothing to set.
         $custom = New-Object System.Windows.Forms.ToolStripMenuItem 'Pick a time...'
+        $custom.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
         $custom.Tag = $action
         $custom.add_Click({
             $act = [string]$this.Tag
@@ -1335,8 +1432,18 @@ if (-not (Test-Path $script:SettingsFile)) {
         $script:Settings.hotkeys[$mode.Key] = "Ctrl+Alt+F$i"
         $i++
     }
-    [void](Save-DisplaySettings $script:Settings)
-    Write-DisplayLog 'settings: first run - assigned the default shortcuts'
+    # The answer is read, unlike above: here it decides whether the log tells the truth. A folder we may
+    # not write to (Program Files, a read-only share) gave "assigned the default shortcuts" over a file
+    # that was never created — and since a first run is told by the ABSENCE of that file, every start
+    # after it was a first run again, welcome balloon and Settings window included, for good.
+    if (Save-DisplaySettings $script:Settings) {
+        Write-DisplayLog 'settings: first run - assigned the default shortcuts'
+    }
+    else {
+        # Save-DisplaySettings has already logged the reason. The shortcuts work this run — they live in
+        # memory — and the next start will meet a first run again; both halves have to be said.
+        Write-DisplayLog 'settings: first run - the default shortcuts work for this run, but could not be saved'
+    }
 }
 
 Register-Hotkeys

@@ -57,7 +57,12 @@ function Get-WindowStateStore {
 function Save-WindowStateStore {
     param($Store)
     try {
-        $Store | ConvertTo-Json -Depth 6 -Compress | Set-Content -Path $script:WindowStateFile -Encoding UTF8
+        # -ErrorAction Stop because a refusal from Set-Content is a NON-terminating error: without it the
+        # catch never fires, this returns $true, and the caller writes "windows: saved 34" about a file
+        # that was not written. It is not covered by the entry points setting $ErrorActionPreference to
+        # Stop either — the next caller of this file need not do that, and core deliberately does not.
+        $Store | ConvertTo-Json -Depth 6 -Compress |
+            Set-Content -Path $script:WindowStateFile -Encoding UTF8 -ErrorAction Stop
         return $true
     }
     catch {
@@ -81,13 +86,15 @@ function Save-WindowLayout {
     }
     if ($wins.Count -eq 0) { Write-DisplayLog 'windows: nothing to save, no ordinary windows on the desktop'; return }
 
+    # Exactly what Restore-WindowLayout reads back and not a field more. A window title and the full path
+    # to its executable used to be written here as well, and nothing ever read them: the store is not a
+    # diary, and a title holds the document you have open. The gathering is gone too (see WinInfo in
+    # DisplayCore.ps1) — a promise that titles are never read is kept where the read would be.
     $list = @()
     foreach ($w in $wins) {
         $list += [ordered]@{
             hwnd    = [int64]$w.Hwnd
             pid     = $w.Pid
-            path    = $w.Path
-            title   = $w.Title
             showCmd = $w.ShowCmd
             n       = @($w.NL, $w.NT, $w.NR, $w.NB)
             mn      = @($w.MinX, $w.MinY)
@@ -168,6 +175,11 @@ function Format-LayoutKey {
 
 # Entries whose every process is already dead are worth nothing: an HWND from a
 # previous Windows logon means nothing. Called on tray startup.
+#
+# The same pass throws out the window titles and executable paths an older version wrote here. It is not
+# enough to stop writing them: a snapshot is only rewritten when its own desk is left, so the layouts a
+# person visits rarely would have kept their titles for as long as the file lived — and the tool promises
+# that titles are not kept. One sweep, on the first start after the upgrade, and they are gone.
 function Remove-DeadWindowLayouts {
     if (-not (Test-Path $script:WindowStateFile)) { return }
 
@@ -178,13 +190,39 @@ function Remove-DeadWindowLayouts {
     foreach ($p in @(Get-Process -ErrorAction SilentlyContinue)) { $alive[$p.Id] = $true }
 
     $dropped = 0
+    $scrubbed = 0
     foreach ($key in @($store.Keys)) {
         $wins = @($store[$key].windows)
         $live = @($wins | Where-Object { $alive.ContainsKey([int]$_.pid) })
-        if ($live.Count -eq 0) { $store.Remove($key); $dropped++ }
+        if ($live.Count -eq 0) { $store.Remove($key); $dropped++; continue }
+
+        # Fields we no longer write. Rebuilt rather than edited in place: what comes back from
+        # ConvertFrom-Json is a PSCustomObject, and the store is written straight back out as it stands.
+        $old = @($wins | Where-Object { $_.PSObject.Properties.Name -contains 'title' -or
+                                        $_.PSObject.Properties.Name -contains 'path' })
+        if ($old.Count -eq 0) { continue }
+        $store[$key] = [ordered]@{
+            saved   = $store[$key].saved
+            windows = @($wins | ForEach-Object {
+                [ordered]@{
+                    hwnd    = [int64]$_.hwnd
+                    pid     = [int]$_.pid
+                    showCmd = [int]$_.showCmd
+                    n       = @($_.n)
+                    mn      = @($_.mn)
+                    mx      = @($_.mx)
+                }
+            })
+        }
+        $scrubbed++
     }
-    if ($dropped -gt 0) {
+    if ($dropped -gt 0 -or $scrubbed -gt 0) {
         [void](Save-WindowStateStore $store)
-        Write-DisplayLog ("windows: dropped {0} stale snapshot(s) from a previous session" -f $dropped)
+        if ($dropped -gt 0) {
+            Write-DisplayLog ("windows: dropped {0} stale snapshot(s) from a previous session" -f $dropped)
+        }
+        if ($scrubbed -gt 0) {
+            Write-DisplayLog ("windows: cleared window titles an older version left in {0} snapshot(s)" -f $scrubbed)
+        }
     }
 }

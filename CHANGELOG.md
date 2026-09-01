@@ -7,7 +7,7 @@ something new appears, the last one when something is fixed.
 The version is printed by `.\Set-Display.ps1 status` and by **About ScreenDeck**
 in the tray menu — that line is the right thing to paste into a bug report.
 
-## 1.0.0 — not released yet
+## 1.0.0 — 2026-09-01
 
 First public release. Everything below is what the tool does on day one, not a
 list of changes against something earlier.

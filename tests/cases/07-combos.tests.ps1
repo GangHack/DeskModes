@@ -21,7 +21,8 @@ Test-Case 'combos: settings survive a round-trip, in all three spellings' {
     Assert-Equal '' $s.combos['Side pair'].primary 'shorthand means no primary of its own'
     Assert-Equal @('XG27AQDMGR') @($s.combos['Lone'].displays) 'string shorthand normalised'
 
-    Save-DisplaySettings $s
+    # [void]: the answer is a boolean, and a bare call prints it into the test output as a stray True.
+    [void](Save-DisplaySettings $s)
     $back = Get-DisplaySettings
     Assert-Equal @('ULTRAFINE', 'XG27AQDMGR') @($back.combos['Movie night'].displays) 'displays after a save'
     Assert-Equal 'ULTRAFINE' $back.combos['Movie night'].primary 'primary after a save'

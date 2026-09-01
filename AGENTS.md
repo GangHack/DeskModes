@@ -22,7 +22,7 @@ Displays.ps1 also dot-sources       SettingsDialog.ps1
 
 `DisplayCore.ps1` holds definitions only and does nothing on load beyond compiling its
 types. It must keep working when `WindowLayout.ps1` was not dot-sourced, so it calls
-into that file through a presence check rather than blind (`DisplayCore.ps1:3887`):
+into that file through a presence check rather than blind (`DisplayCore.ps1:4146`):
 
 ```powershell
 $doWindows = ((Test-Path Function:\Save-WindowLayout) -and ...)
@@ -71,19 +71,19 @@ new file of the program ships by itself, a new file for us has to be named there
 
 | File | Lines | Go here for |
 | --- | --- | --- |
-| `DisplayCore.ps1` | 5037 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 793-2041, the compiled-assembly cache 2043-2152, `Switch-DisplayMode` at 3896 |
+| `DisplayCore.ps1` | 5208 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 810-2042, the compiled-assembly cache 2044-2153, `Switch-DisplayMode` at 3990 |
 | `SettingsDialog.ps1` | 3099 | all WPF: the Settings window, the mode editor, the timer popup. Building a window is separated from showing it so tests can build one and never show it |
-| `Displays.ps1` | 1399 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
-| `Activity.ps1` | 548 | the diary and its HTML report |
-| `Set-Display.ps1` | 207 | the command line: argument parsing and printing, no logic |
-| `WindowLayout.ps1` | 190 | window-position snapshots per display set |
+| `Displays.ps1` | 1499 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
+| `Activity.ps1` | 556 | the diary and its HTML report |
+| `Set-Display.ps1` | 218 | the command line: argument parsing and printing, no logic |
+| `WindowLayout.ps1` | 228 | window-position snapshots per display set |
 | `render-preview.ps1` | 201 | dev tool: renders windows to PNG without showing them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
-| `tools/check.ps1` | 221 | the four gates, and the only answer to "am I done" |
-| `tools/trace-displays.ps1` | 103 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
-| `tools/pack.ps1` | 179 | the release archive: what the user downloads, built from `git ls-files` |
-| `tests/` | — | the runner (107), the framework (79), the fakes (58), 35 files of cases (4660) and `live.ps1` (252) |
-| `docs/notes.md` | 1766 | the engineering diary: what Windows actually does, measured, day by day |
+| `tools/check.ps1` | 232 | the four gates, and the only answer to "am I done" |
+| `tools/trace-displays.ps1` | 132 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
+| `tools/pack.ps1` | 211 | the release archive: what the user downloads, built from `git ls-files` |
+| `tests/` | — | the runner (107), the framework (79), the fakes (131), 35 files of cases (5096) and `live.ps1` (252) |
+| `docs/notes.md` | 2117 | the engineering diary: what Windows actually does, measured, day by day |
 
 Line counts are signposts, not contracts — they drift. `docs/notes.md` is the place
 to look when a decision here looks arbitrary; it usually records the evening that
@@ -123,7 +123,7 @@ produced it.
 ## Traps
 
 Most of these are written up in `docs/notes.md`, section "Dead ends not to go back to"
-(`docs/notes.md:515`). Do not rediscover them.
+(`docs/notes.md:521`). Do not rediscover them.
 
 - **CCD only.** Turning a display on goes through `QueryDisplayConfig` /
   `SetDisplayConfig`. The legacy `ChangeDisplaySettingsEx` returns `-4` (bad flags) on
@@ -174,6 +174,29 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   for roughly a second after every switch. Anything that switches back to back must expect
   a `Skipped` result and retry (`tests/live.ps1` does); anything that reads a red result
   should check this first, because the failure surfaces far from its cause.
+- **Read a switch's answer through `Ok` / `Retry` / `Outcome`, never by assembling it out of
+  the pieces.** `New-SwitchResult` builds every answer `Switch-DisplayMode` can give, and
+  `New-SwitchFailure` turns a caught refusal into the same shape. `Ok` is "the desk is in
+  that mode now"; `Retry` is "asking again in a moment can change this" — true for a busy
+  mutex and for a display still waking, false for Windows refusing outright. Before that
+  existed, the tray's two automatic callers each read `Skipped` and `Ok` apart from each
+  other and derived opposite policies: a rule that stranded a person on the game display
+  for good on one side, an error balloon every fifteen seconds on the other. And it is
+  bounded: `$script:AutoRetryLimit` in `Displays.ps1` is how many times any automatic path
+  asks again — four ticks of the 15-second timer, about a minute.
+- **A `.cmd` file must NOT have a UTF-8 BOM,** and the two launch paths disagree about it, which
+  is why it went unnoticed. `cmd /c work.cmd` tolerates the BOM; **ShellExecute — what a double
+  click and a pinned shortcut do — does not.** There the three bytes are glued to the first
+  command, it fails as unrecognised (`ERRORLEVEL` 9009, measured 2026-09-01), and the rest of
+  the file runs on. So the first line is the whole cost: here it is `@echo off`, so the switch
+  still happens, with an error message and every command echoed into a window that closes the
+  instant it is done. An editor set to "UTF-8" puts the BOM back on save, which is why both
+  `.editorconfig` and gate 2 of `tools/check.ps1` say so — `.ps1` needs the BOM, `.cmd`
+  must not have one, and the two live in one directory.
+- **A rule's claim on the desk is its identity, not its index.** `Get-RuleSignature` is what
+  `Get-RuleDecision` finds the holder by; the index is only where to look first. The list is
+  edited by hand and from the Settings window while a rule is holding the desk, and deleting
+  a rule above the holder renumbers everything below it.
 
 ## Tests
 
@@ -192,7 +215,11 @@ Layout:
 - `tests/run-tests.ps1` — entry point. Redirects the log, dot-sources the code under
   test, walks `cases/`, prints the total.
 - `tests/framework.ps1` — `Test-Case` and the assertions.
-- `tests/fakes.ps1` — `New-FakeMonitor`, `New-FakeScreen`, `New-TestSettings` and kin.
+- `tests/fakes.ps1` — `New-FakeMonitor`, `New-FakeScreen`, `New-TestSettings` and kin, plus
+  `Get-TrayFunctionSource` / `Get-TrayVariableSource`: `Displays.ps1` cannot be dot-sourced by
+  a test — it brings the whole application up — so the functions under test are cut out of it
+  by parsing the file, and the caller dot-sources what comes back. Four files of cases do this;
+  the parse itself is cached (`Get-TrayAst`).
 - `tests/cases/NN-name.tests.ps1` — one file per group; the numeric prefix fixes the
   order of the output.
 
@@ -243,7 +270,7 @@ value of this project, and no fake reproduces them.
   this repository — every one of them resolves through `$PSScriptRoot` or `%~dp0`, which
   is why the folder can be moved or renamed at no cost. Keep it that way. What a move
   does break is outside the repository: the startup shortcut stores an absolute path
-  (`Set-RunAtStartup`, `DisplayCore.ps1:4838`) and so does any shortcut pinned to
+  (`Set-RunAtStartup`, `DisplayCore.ps1:5186`) and so does any shortcut pinned to
   `Displays.cmd`. `Test-RunAtStartup` only checks that the `.lnk` exists, so a stale one
   reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
   new location.

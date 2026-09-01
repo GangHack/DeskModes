@@ -52,7 +52,8 @@ Test-Case 'settings: round-trip through disk preserves everything' {
     $s.primary = 'ULTRAGEAR'
     $s.restoreWindows = $false
     $s.audio['combo:Work'] = 'ULTRAFINE'
-    Save-DisplaySettings $s
+    # [void]: the answer is a boolean, and a bare call prints it into the test output as a stray True.
+    [void](Save-DisplaySettings $s)
 
     $back = Get-DisplaySettings
     Assert-Equal 'Ctrl+Alt+F1' $back.hotkeys['solo:LG ULTRAGEAR'] 'hotkey'

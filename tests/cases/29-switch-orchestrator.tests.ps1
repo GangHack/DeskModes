@@ -55,6 +55,8 @@ $script:SwFakes = {
     $script:SwSettled = [pscustomobject]@{ Ok = $true; MissingLabels = @(); ExtraLabels = @() }
     $script:SwLayoutOk = $true
     $script:SwLayoutChanged = $false
+    # "Nothing moved, and not because everything was already right" — see the case at the end.
+    $script:SwLayoutNote = ''
     $script:SwSavedMode = ''
     $script:SwAppliedModes = $null
 
@@ -100,7 +102,8 @@ $script:SwFakes = {
         # the display the settings name" are two different claims, and only the second one is the promise.
         $script:SwLayoutPrimary = $PrimaryPath
         $script:SwLayoutOrder = @($Order)
-        return [pscustomobject]@{ Ok = $script:SwLayoutOk; Changed = $script:SwLayoutChanged }
+        return [pscustomobject]@{ Ok = $script:SwLayoutOk; Changed = $script:SwLayoutChanged
+                                  Note = $script:SwLayoutNote }
     }
 
     # Set-WantedModes works for real: only its ends at the hardware are shadowed.
@@ -465,6 +468,30 @@ Test-Case 'switch: the taskbar is placed even when the settings say nothing abou
     Assert-Equal 0 $script:SwLayoutOrder.Count 'with no order to arrange by - only the primary moves'
 }
 
+Test-Case 'switch: nothing to anchor is not "already correct"' {
+    # The display that was to hold the taskbar never came up, so the layout moved nobody. There is a
+    # difference between "nothing moved because everything was already right" and "nothing moved because
+    # there was nobody to anchor", and the log used to print the first over the second — while the line
+    # above it named the display that was not there as the one the taskbar had gone to. The floor below
+    # is where the second case is decided (Invoke-CcdLayoutAttempt); here it has to reach the log.
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwLayoutChanged = $false
+    $script:SwLayoutNote = 'layout: the display that was to be primary is not on the desk - nobody moved'
+
+    # Only this switch's own lines are read: the log is one file for the whole run.
+    $mark = '--- case: nothing to anchor'
+    Write-DisplayLog $mark
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet
+
+    Assert-True $r.Ok 'the layout did not refuse - there was simply nobody to move'
+    $log = [System.IO.File]::ReadAllText($script:LogFile)
+    $mine = $log.Substring($log.LastIndexOf($mark))
+    Assert-True ($mine -like "*$script:SwLayoutNote*") 'the log says why nothing moved'
+    Assert-True ($mine -notlike '*layout: already correct*') 'instead of claiming the desk was checked and right'
+}
+
 Test-Case 'switch: with an order, the layout gets it whole' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false
@@ -475,4 +502,61 @@ Test-Case 'switch: with an order, the layout gets it whole' {
 
     Assert-Equal 'path-uf' $script:SwLayoutPrimary 'the taskbar display'
     Assert-Equal 3 $script:SwLayoutOrder.Count 'and all three names, in the order from the settings'
+}
+
+# --- the answer a switch gives ----------------------------------------------
+# Two callers in the tray read this and used to derive opposite retry policies out of the pieces: the way
+# back from a rule let the desk go on any failure and left a person on the game display for good, while
+# the postponed rebuild threw its intent away when a display had not woken and put it back when Windows
+# had refused outright. One vocabulary, and it is tested rather than described.
+
+Test-Case 'result: a switch that landed is a success and there is nothing to ask again' {
+    $r = New-SwitchResult -ModeKey 'all' -Outcome 'done' -Message 'three displays'
+    Assert-True $r.Ok 'Ok'
+    Assert-True (-not $r.Retry) 'nothing to retry'
+    Assert-True (-not $r.Skipped) 'and it was not skipped'
+    Assert-Equal 'all' $r.Mode 'the mode it was about'
+}
+
+Test-Case 'result: a display that did not come up is not a success, and is worth another go' {
+    # It RAN: the topology went over, the summary is there, the desk moved. And a display still waking up
+    # attaches a moment later, which is what the fifteen-second timer is for.
+    $r = New-SwitchResult -ModeKey 'combo:Work' -Outcome 'partial' -Message 'did not come up: LG ULTRAFINE'
+    Assert-True (-not $r.Ok) 'not a success'
+    Assert-True $r.Retry 'but asking again can change it'
+    Assert-True (-not $r.Skipped) 'it was not skipped - it happened, partly'
+}
+
+Test-Case 'result: a busy mutex is a skip, and the one answer that clears by itself' {
+    # The refresh-rate watchdog holds Local\ScreenDeckSwitch for about a second after every switch,
+    # including ours, so this is an ordinary answer on every automatic path.
+    $r = New-SwitchResult -ModeKey 'all' -Outcome 'busy' -Message 'A switch is already in progress.'
+    Assert-True $r.Skipped 'the command line exits 2 by this'
+    Assert-True $r.Retry 'and a second later it is free'
+    Assert-True (-not $r.Ok) 'nothing moved'
+}
+
+Test-Case 'result: a refusal is final, and reads the same as any other answer' {
+    # Switch-DisplayMode reports a refusal by throwing — the message is written for a person and belongs
+    # in a balloon — and whoever catches it still has to tell the rules what happened.
+    $r = New-SwitchFailure -ModeKey 'solo:GAME' -Message 'That display is not connected right now.'
+    Assert-Equal 'refused' $r.Outcome 'a word for it'
+    Assert-True (-not $r.Ok) 'not a success'
+    Assert-True (-not $r.Retry) 'and fifteen seconds will not change it'
+    Assert-True (-not $r.Skipped) 'it did not stand aside either - it tried'
+    Assert-Equal 'That display is not connected right now.' $r.Message 'the sentence a person reads'
+}
+
+Test-Case 'result: a dry run is a success that touched nothing' {
+    $r = New-SwitchResult -ModeKey 'all' -Outcome 'dryrun' -Message 'dry run'
+    Assert-True $r.Ok 'the command line exits 0'
+    Assert-True (-not $r.Retry) 'and there is nothing to come back for'
+}
+
+Test-Case 'result: an outcome nobody defined is refused rather than guessed at' {
+    # The set is closed on purpose: a typo in an outcome would otherwise arrive as "not Ok, no retry",
+    # which is a policy, silently chosen.
+    $threw = $false
+    try { [void](New-SwitchResult -ModeKey 'all' -Outcome 'probably') } catch { $threw = $true }
+    Assert-True $threw 'the vocabulary is closed'
 }

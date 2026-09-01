@@ -2,8 +2,9 @@
 #
 # Without this file an editor "helpfully" normalising on save rewrites a file
 # whole, and the one real change hides among a thousand touched lines. Worse for
-# .ps1: dropping the BOM makes PowerShell 5.1 read the file as Windows-1251 and
-# every Russian comment turns to mush.
+# .ps1: dropping the BOM makes PowerShell 5.1 read the file as Windows-1251, and
+# every character above ASCII in it — an em dash in a comment, a degree sign in a
+# message — turns to mush without a single error.
 root = true
 
 [*]
@@ -21,6 +22,15 @@ trim_trailing_whitespace = false
 # JSON is read by things other than PowerShell, and a BOM is not universally
 # welcome there. settings.example.json has never had one.
 [*.json]
+charset = utf-8
+
+# The .cmd wrappers must NOT have one, and the two ways of launching them disagree
+# about it: "cmd /c work.cmd" tolerates a BOM, while ShellExecute — a double click,
+# a pinned shortcut — glues those three bytes to the first command, which then fails
+# as unrecognised while the rest of the file runs on. Here the first line is
+# "@echo off", so a BOM costs exactly the quiet: an error message and every command
+# echoed into a window that closes the instant it is done. tools\check.ps1 fails on it.
+[*.cmd]
 charset = utf-8
 
 # Dot-files and YAML follow their own crowd: no BOM, two-space indent.

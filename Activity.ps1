@@ -143,7 +143,12 @@ function Save-ActivityStore {
         foreach ($key in @($script:ActivityStore.days.Keys)) {
             if ($key -lt $limit) { $script:ActivityStore.days.Remove($key) }
         }
-        $script:ActivityStore | ConvertTo-Json -Depth 6 -Compress | Set-Content -Path $script:ActivityFile -Encoding UTF8
+        # -ErrorAction Stop: a refusal from Set-Content is a NON-terminating error, so without it the
+        # catch below never fires — and the line after this one would declare the store clean over a
+        # write that did not happen, throwing the day's seconds away for good. With it, the sample stays
+        # dirty and the next tick tries again.
+        $script:ActivityStore | ConvertTo-Json -Depth 6 -Compress |
+            Set-Content -Path $script:ActivityFile -Encoding UTF8 -ErrorAction Stop
         $script:ActivityDirty = $false
     }
     catch { Write-DisplayLog "stats: could not save activity.json - $($_.Exception.Message)" }
@@ -541,7 +546,10 @@ function Show-ActivityReport {
     $dark = Test-DarkTheme
     $html = New-ActivityHtml -Report $report -Accent (Get-AccentColor -ForDarkTheme:$dark) -Dark:$dark
     $path = Join-Path $script:ToolRoot 'stats.html'
-    Set-Content -Path $path -Value $html -Encoding UTF8
+    # -ErrorAction Stop, or a folder we may not write to gives a non-terminating error, the two lines
+    # below report a report that is not there, and the browser opens yesterday's page — or nothing at
+    # all. The only caller answers a throw with a balloon naming the reason.
+    Set-Content -Path $path -Value $html -Encoding UTF8 -ErrorAction Stop
     Write-DisplayLog "stats: report written to stats.html"
     Start-Process $path | Out-Null
     return $path

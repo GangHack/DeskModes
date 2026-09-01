@@ -1,19 +1,12 @@
 ﻿# --- restoring the mode when the tray starts --------------------------------
 # Live, this can only be tested by rebooting, so the decision ("put it back or leave it alone") is
-# tested separately from the switch itself. We pull the function out of Displays.ps1 by parsing the
-# file — it cannot be dot-sourced, it brings the whole application up, and a copy of the code in the
-# test would drift apart from the original (the same trick as for Resolve-ModeKey above).
+# tested separately from the switch itself. The functions come out of Displays.ps1 by parsing it —
+# see Get-TrayFunctionSource in tests\fakes.ps1 for why, and for who else does this.
 
 Write-Host ''
 Write-Host 'restoring the mode when the tray starts' -ForegroundColor White
 
-$trayAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'Displays.ps1'), [ref]$null, [ref]$null)
-foreach ($name in 'Get-AvailableMode', 'Invoke-StartupRestore') {
-    $found = $trayAst.FindAll({ param($n)
-        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }.GetNewClosure(), $true)
-    if ($found.Count -ne 1) { throw "expected exactly one $name in Displays.ps1, found $($found.Count)" }
-    . ([scriptblock]::Create($found[0].Extent.Text))
-}
+. (Get-TrayFunctionSource 'Get-AvailableMode', 'Invoke-StartupRestore')
 
 # The tray environment this function expects around itself.
 $script:TestSettings = Get-DefaultSettings

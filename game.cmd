@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 rem Switch to the combination named "game" in Settings. A combination of one
 rem works too: the name resolves to that display's own mode.
 rem

@@ -461,8 +461,42 @@ function Test-SameSession {
 
     $a = [int64]0
     $b = [int64]0
-    if (-not [int64]::TryParse($was[1], [ref]$a) -or -not [int64]::TryParse($now[1], [ref]$b)) { return $false }
+    if (-not [int64]::TryParse($now[1], [ref]$b)) { return $false }
+    if (-not [int64]::TryParse($was[1], [ref]$a)) {
+        # A stamp an older version wrote: its second half is a date rounded to the minute
+        # ("134326946768424535/2026-09-01 10:25"), not a count of seconds, so there is nothing here to
+        # compare against. The shutdown half above has already matched, and that one changes at every
+        # power-off — so this is the session we are living in, bar a crash or a Reset, which leave it
+        # untouched. That "bar" is why the answer is yes rather than no: guessing wrong the other way
+        # lays the remembered mode over a desk somebody has arranged by hand, while a startup restore
+        # skipped once costs one keypress. It happens exactly once per installation — the first switch
+        # after the upgrade rewrites the stamp in today's shape.
+        return $true
+    }
     return ([math]::Abs($a - $b) -le $ToleranceSeconds)
+}
+
+# The only writer of last-mode.json. Two callers want two different things out of it and the file has
+# exactly one shape, so the shape lives here once: the two used to be a copy of each other, and a third
+# field would have had to be remembered in both.
+#
+# $Whose finishes the sentence "warn: could not ..." — the two callers fail for the same reasons and a
+# reader has to be able to tell which of them was writing.
+function Write-LastMode {
+    param([string]$Key, [string]$When, [string]$Whose)
+
+    try {
+        [ordered]@{
+            key     = $Key
+            session = Get-SystemSessionId
+            when    = $When
+        } | ConvertTo-Json -Compress |
+            Set-Content -Path $script:LastModeFile -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        # We did not write it down — the switch happened all the same. Bringing it down is not allowed.
+        Write-DisplayLog ("warn: could not {0} - {1}" -f $Whose, $_.Exception.Message)
+    }
 }
 
 # Remember the chosen mode. Called from Switch-DisplayMode on every switch that made it to the end — both
@@ -470,18 +504,7 @@ function Test-SameSession {
 function Save-LastMode {
     param([Parameter(Mandatory)][string]$Key)
 
-    try {
-        [ordered]@{
-            key     = $Key
-            session = Get-SystemSessionId
-            when    = (Get-Date).ToString('s')
-        } | ConvertTo-Json -Compress |
-            Set-Content -Path $script:LastModeFile -Encoding UTF8 -ErrorAction Stop
-    }
-    catch {
-        # We did not remember it — the switch happened all the same. Bringing it down is not allowed.
-        Write-DisplayLog "warn: could not remember the mode - $($_.Exception.Message)"
-    }
+    Write-LastMode -Key $Key -When (Get-Date).ToString('s') -Whose 'remember the mode'
 }
 
 # Re-stamp the session without touching the choice. An automatic switch is not a choice, so it must not
@@ -493,18 +516,12 @@ function Update-LastModeSession {
     $last = Get-LastMode
     if (-not $last) { return }   # nothing chosen yet: there is no record to re-stamp
 
-    try {
-        [ordered]@{
-            key     = $last.Key
-            session = Get-SystemSessionId
-            when    = $last.When
-        } | ConvertTo-Json -Compress |
-            Set-Content -Path $script:LastModeFile -Encoding UTF8 -ErrorAction Stop
-    }
-    catch {
-        # Same as in Save-LastMode: the switch happened, the note about it did not.
-        Write-DisplayLog "warn: could not re-stamp the session - $($_.Exception.Message)"
-    }
+    # Already stamped with this power-on: the file would come out byte for byte the same. Every automatic
+    # switch came through here — a rule, a reapply, the watchdog's mode restore — so this is the common
+    # case, not the rare one, and each of them used to cost a read, a serialise and a write.
+    if ($last.Session -eq (Get-SystemSessionId)) { return }
+
+    Write-LastMode -Key $last.Key -When $last.When -Whose 're-stamp the session'
 }
 
 # What was chosen last time: Key, Session, When. $null if the file is absent or unreadable.
@@ -1558,11 +1575,16 @@ public class NativeAudio {
 // "minimised/maximised" flag. A maximised window through GetWindowRect would hand back full-screen
 // coordinates, and restoring would turn it into an ordinary window of that size — whereas what is wanted
 // is for it to stay maximised.
+//
+// No window title and no path to the executable. They were collected here and written into
+// window-state.json, and NOTHING ever read them back: a title holds the document you have open, the page
+// you are on, the subject of the letter you are writing, and the repository promises in three places that
+// titles are never read. A promise is kept where the reading would happen, not where the writing does —
+// what is never gathered cannot be written down by the next person to touch the snapshot. It is also the
+// cheaper walk: the path cost an OpenProcess per window on the switch path.
 public class WinInfo {
     public IntPtr Hwnd;
     public int Pid;
-    public string Title;
-    public string Path;
     public int ShowCmd;
     public int NL, NT, NR, NB;      // rcNormalPosition
     public int MinX, MinY;          // ptMinPosition
@@ -1588,16 +1610,13 @@ public class NativeWindows {
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr hWnd, StringBuilder s, int n);
+    // The LENGTH of the title only, never the title: a window with no caption at all belongs to the
+    // system, not to a person, and is left out of the snapshot.
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLengthW(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll")] private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
     [DllImport("user32.dll")] private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
-
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(int access, bool inherit, uint pid);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageNameW(IntPtr h, int flags, StringBuilder name, ref int size);
 
     // A window that belongs to the system rather than to the user: panels, popups, invisible handler
     // windows. Where they sit on the desk is of no interest to anybody.
@@ -1605,7 +1624,6 @@ public class NativeWindows {
     private const int GWL_STYLE = -16;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_CHILD = 0x40000000;
-    private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     // DWM "hides" Store apps' windows without closing them: they stay visible by IsWindowVisible, but they
     // are not on the desk. Laying them back out is pointless, and they would land in the snapshot by the
@@ -1618,18 +1636,6 @@ public class NativeWindows {
         try { if (DwmGetWindowAttribute(hWnd, DWMWA_CLOAKED, out cloaked, sizeof(int)) == 0) return cloaked != 0; }
         catch { }   // the attribute is absent on older builds — we take the window to be visible
         return false;
-    }
-
-    public static string PathOf(uint pid) {
-        IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-        if (h == IntPtr.Zero) return "";
-        try {
-            StringBuilder sb = new StringBuilder(1024);
-            int size = sb.Capacity;
-            if (QueryFullProcessImageNameW(h, 0, sb, ref size)) return sb.ToString();
-            return "";
-        }
-        finally { CloseHandle(h); }
     }
 
     public static List<WinInfo> Enumerate() {
@@ -1645,17 +1651,12 @@ public class NativeWindows {
             p.length = Marshal.SizeOf(typeof(WINDOWPLACEMENT));
             if (!GetWindowPlacement(hWnd, ref p)) return true;
 
-            StringBuilder sb = new StringBuilder(512);
-            GetWindowTextW(hWnd, sb, sb.Capacity);
-
             uint pid = 0;
             GetWindowThreadProcessId(hWnd, out pid);
 
             WinInfo w = new WinInfo();
             w.Hwnd = hWnd;
             w.Pid = (int)pid;
-            w.Title = sb.ToString();
-            w.Path = PathOf(pid);
             w.ShowCmd = p.showCmd;
             w.NL = p.rcNormalPosition.Left;   w.NT = p.rcNormalPosition.Top;
             w.NR = p.rcNormalPosition.Right;  w.NB = p.rcNormalPosition.Bottom;
@@ -2204,6 +2205,17 @@ function Get-UiScale {
     return [Math]::Max([double]1.0, ([double]$Dpi / 96.0))
 }
 
+# A design figure in device pixels at the scale in hand. Seven copies of the same expression stood around
+# the tray menu, and they are all one decision, made once here: AwayFromZero rather than .NET's default
+# banker's rounding. A single pixel of padding at 125% is 1.25 and rounds either way under the default;
+# with a column of such figures some go up and some go down, and the gaps above and below an item stop
+# matching each other. Away from zero also keeps a 1 px hairline from rounding to 0 and disappearing.
+function Get-ScaledPx {
+    param([Parameter(Mandatory)][double]$Value, [double]$Scale = 1.0)
+
+    return [int][Math]::Round($Value * $Scale, [System.MidpointRounding]::AwayFromZero)
+}
+
 function New-DisplayDevice {
     $d = New-Object NativeDisplay+DISPLAY_DEVICE
     $d.cb = [System.Runtime.InteropServices.Marshal]::SizeOf($d)
@@ -2634,9 +2646,11 @@ function Invoke-CcdFullConfigAttempt {
 # Ok + Changed rather than a yes/no: the caller needs Changed so as not to write "arranged left to
 # right" into the log where nothing was arranged — a line about work that never happened sends people
 # looking for the defect in the wrong place.
+# $Note is what the log should say instead of "already correct" when nothing moved for a reason of its
+# own. Empty for every ordinary answer: the caller has a line for each of those.
 function New-LayoutResult {
-    param([bool]$Ok, [bool]$Changed)
-    return [pscustomobject]@{ Ok = $Ok; Changed = $Changed }
+    param([bool]$Ok, [bool]$Changed, [string]$Note = '')
+    return [pscustomobject]@{ Ok = $Ok; Changed = $Changed; Note = $Note }
 }
 
 # Where each monitor lands: device path -> @{X;Y}. Pure arithmetic, without a single call to the system
@@ -2662,15 +2676,19 @@ function Get-LayoutPositions {
 
     # A place in the list: we compare by containment so that "UltraGear" finds "LG ULTRAGEAR" and the
     # other way round — the system's names are shorter than the human ones.
+    #
+    # A display the order does not name starts one past the last rank, so it lands behind everybody the
+    # order does name, and Sort-Object breaks that tie by label. With no order at all $Order.Count is 0:
+    # everybody ranks the same and the whole desk is sorted by label. ".Count on $Order" is deliberately
+    # the ONE spelling of "is there an order" in this file — $null.Count is 0 in PowerShell 5.1, so the
+    # extra truthiness test that used to guard it only made three places look like three questions.
     $ranked = @()
     foreach ($s in $list) {
-        $rank = $(if ($Order) { $Order.Count } else { 0 })
-        if ($Order) {
-            for ($k = 0; $k -lt $Order.Count; $k++) {
-                $o = $Order[$k]
-                if (-not $o) { continue }
-                if ($s.Label -like ('*' + $o + '*') -or $o -like ('*' + $s.Label + '*')) { $rank = $k; break }
-            }
+        $rank = $Order.Count
+        for ($k = 0; $k -lt $Order.Count; $k++) {
+            $o = $Order[$k]
+            if (-not $o) { continue }
+            if ($s.Label -like ('*' + $o + '*') -or $o -like ('*' + $s.Label + '*')) { $rank = $k; break }
         }
         $ranked += [pscustomobject]@{
             DevicePath = $s.DevicePath
@@ -2794,7 +2812,7 @@ function Invoke-CcdLayoutAttempt {
         return (New-LayoutResult -Ok $false -Changed $false)
     }
 
-    if ($Order -and $Order.Count -gt 0) {
+    if ($Order.Count -gt 0) {
         $want = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
         foreach ($s in $screens) {
             $p = $want[$s.DevicePath]
@@ -2808,9 +2826,22 @@ function Invoke-CcdLayoutAttempt {
     else {
         # There is no order — nothing to arrange, but the primary monitor still has to end up at (0,0):
         # in Windows "primary" is not a flag but a place.
+        #
+        # And only that monitor. Anchoring on whoever happens to be first when the one we were asked for
+        # is NOT on the desk shifts the WHOLE desk by that stranger's offset: every window moves, the
+        # taskbar lands on a display nobody named, and the line below reports the taskbar as having gone
+        # to the display that never came up. Harmless while this branch was reached only when a `layout`
+        # existed; since the call became unconditional (see Switch-DisplayMode) it is reached on every
+        # desk whose owner has never opened the Settings window, and a display that refused to wake is
+        # exactly when it fires. There is nobody to anchor, so nothing moves — the absent display is
+        # already reported in its own right.
         $anchor = $null
         if ($PrimaryPath) { $anchor = @($screens | Where-Object { $_.DevicePath -eq $PrimaryPath }) | Select-Object -First 1 }
-        if (-not $anchor) { $anchor = $screens[0] }
+        if (-not $anchor) {
+            $why = $(if ($PrimaryPath) { 'the display that was to be primary is not on the desk' }
+                     else { 'no display was named primary' })
+            return (New-LayoutResult -Ok $true -Changed $false -Note ('layout: ' + $why + ' - nobody moved'))
+        }
 
         $dx = $modes[$anchor.ModeIdx].srcPosX
         $dy = $modes[$anchor.ModeIdx].srcPosY
@@ -3644,6 +3675,65 @@ function Format-SwitchResult {
     }
 }
 
+# Every answer a switch can give, in one shape, because for a while there was no shape at all: the
+# result carried Skipped and Ok and no word on whether the answer was temporary, and the two callers in
+# the tray each read the pieces and derived OPPOSITE retry policies out of them. The way back from a rule
+# let the desk go on any failure and left a person on the game display for good; the postponed rebuild,
+# reading the other field, threw its intent away when a monitor had not woken yet and put it back when
+# Windows had refused outright — a warning balloon every fifteen seconds, for good as well. Whoever
+# changes the policy now has one place to change it in.
+#
+# Two fields decide what a caller does next:
+#
+#   Ok    - the desk IS in the requested mode now. Nothing else means that: a switch that came to
+#           nothing ran to the end, has a summary and a duration, and is still not a success.
+#   Retry - asking again in a moment can change this answer. A busy mutex clears in about a second (the
+#           refresh-rate watchdog holds it after every switch — including ours), and a display still
+#           waking up attaches a moment later. Windows refusing the whole configuration, or a mode that
+#           is no longer in the settings, will not come right by being asked again.
+#
+# Outcome is the same answer as a word, for the log and for the caller that has to tell "we never
+# started" from "we tried and the screen stayed dark":
+#
+#   done    - everything landed.
+#   partial - it ran, and something did not: a display that never came up, a layout Windows refused.
+#   busy    - another switch is in progress; this one did not start.
+#   dryrun  - nothing was touched on purpose.
+#   refused - the switch threw. Built by the caller that catches it (see New-SwitchFailure), so that a
+#             failure speaks the same vocabulary as a success.
+function New-SwitchResult {
+    param(
+        # AllowEmptyString for the tray's starting value: "no switch in this run yet" names no mode.
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ModeKey,
+        [Parameter(Mandatory)][ValidateSet('done', 'partial', 'busy', 'dryrun', 'refused')][string]$Outcome,
+        [string]$Message = '',
+        [string[]]$Refused = @(),
+        [string[]]$Failed = @(),
+        [double]$Seconds = 0
+    )
+
+    return [pscustomobject]@{
+        Mode    = $ModeKey
+        Outcome = $Outcome
+        # Kept as a field of its own because the command line prints it differently and exits 2 by it.
+        Skipped = ($Outcome -eq 'busy')
+        Ok      = ($Outcome -eq 'done' -or $Outcome -eq 'dryrun')
+        Retry   = ($Outcome -eq 'busy' -or $Outcome -eq 'partial')
+        Message = $Message
+        Refused = @($Refused)
+        Failed  = @($Failed)
+        Seconds = $Seconds
+    }
+}
+
+# A switch that threw, in the same shape as one that did not. For the tray: Switch-DisplayMode reports a
+# refusal by throwing — the message is written for a person and belongs in a balloon — and the caller
+# that catches it still has to tell the rules and the postponed rebuild what happened.
+function New-SwitchFailure {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$ModeKey, [string]$Message = '')
+    return (New-SwitchResult -ModeKey $ModeKey -Outcome 'refused' -Message $Message)
+}
+
 # The per-phase time breakdown for the log: 'state 0.3, apply 1.2'. It answers the question "whose
 # second is this": state and layout are our own work, while apply, settle and modes are mostly waiting
 # on the system and the monitors. Phases shorter than 0.05 s are dropped: the zeroes would only hide
@@ -3915,13 +4005,23 @@ function Switch-DisplayMode {
     # each other: one was switching a monitor on while the other was changing its mode at the same
     # moment — and the result became unpredictable.
     $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
-    if (-not $mutex.WaitOne(0)) {
+    # WaitOne can THROW and hand us the mutex in the same breath: a previous holder that died without
+    # letting go raises AbandonedMutexException, and ownership passes to us all the same. Outside a try
+    # that meant an owned mutex nobody ever released, and in the tray — a process that lives for weeks —
+    # every switch after it would answer "a switch is already in progress" for good.
+    $held = $false
+    try { $held = $mutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] {
+        $held = $true
+        Write-DisplayLog 'warn: the previous switch died without letting go of the lock - taking it over'
+    }
+    if (-not $held) {
         Write-DisplayLog "skip: mode=$ModeKey - the previous switch has not finished yet"
         if (-not $Quiet) { Write-Host 'A switch is already in progress - skipping.' -ForegroundColor Yellow }
         # Dispose is required here too: in the tray the process lives for weeks, and every skipped
         # switch used to leave a kernel handle behind it.
         $mutex.Dispose()
-        return [pscustomobject]@{ Mode = $ModeKey; Skipped = $true; Message = 'A switch is already in progress.' }
+        return (New-SwitchResult -ModeKey $ModeKey -Outcome 'busy' -Message 'A switch is already in progress.')
     }
 
     # A switch's duration is written into the final done: and stays there forever. Three lines of code
@@ -4089,7 +4189,7 @@ function Switch-DisplayMode {
         }
 
 
-        if ($DryRun) { return [pscustomobject]@{ Mode = $ModeKey; Skipped = $false; Message = 'dry run'; Ok = $true } }
+        if ($DryRun) { return (New-SwitchResult -ModeKey $ModeKey -Outcome 'dryrun' -Message 'dry run') }
 
         # The layout is built here, once the set of active monitors is final: before the
         # switching-off there is nothing to arrange — some of the screens are about to vanish, and
@@ -4122,7 +4222,11 @@ function Switch-DisplayMode {
             $layoutChanged = $true
         }
         elseif ($laid.Ok) {
-            Write-DisplayLog 'layout: already correct'
+            # A Note is "nothing moved, and not because everything was already right" — the display that
+            # was to hold the taskbar never came up, say. Printing "already correct" over that would be
+            # the log agreeing with a desk it has not looked at.
+            if ($laid.Note) { Write-DisplayLog $laid.Note }
+            else            { Write-DisplayLog 'layout: already correct' }
         }
         else {
             # The reason is already in the log — Set-CcdLayout writes down every attempt. Here
@@ -4170,12 +4274,9 @@ function Switch-DisplayMode {
         Invoke-SwitchTail -Settings $settings -ModeKey $ModeKey -RestoreWindows $doWindows `
                           -WantedIds $wantedIds -LevelTargets $step.LevelTargets
 
-        return [pscustomobject]@{
-            Mode = $ModeKey; Skipped = $false; Message = $text
-            Refused = $refused; Failed = $step.Failed
-            Seconds = $watch.Elapsed.TotalSeconds
-            Ok = $verdict.Ok
-        }
+        return (New-SwitchResult -ModeKey $ModeKey -Message $text `
+                    -Outcome $(if ($verdict.Ok) { 'done' } else { 'partial' }) `
+                    -Refused $refused -Failed $step.Failed -Seconds $watch.Elapsed.TotalSeconds)
     }
     catch {
         Write-DisplayLog "ERROR: $($_.Exception.Message)"
@@ -4328,8 +4429,16 @@ function Restore-BestModes {
     }
 
     # During a switch we do not interfere — the modes are being set there anyway.
+    # The wait is inside a try for the same reason as in Switch-DisplayMode: an abandoned mutex arrives
+    # as an exception that has already handed us ownership, and out here that would have leaked it.
     $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
-    if (-not $mutex.WaitOne(0)) { $mutex.Dispose(); return @() }
+    $held = $false
+    try { $held = $mutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] {
+        $held = $true
+        Write-DisplayLog 'warn: watch - the previous holder of the lock died without letting go'
+    }
+    if (-not $held) { $mutex.Dispose(); return @() }
 
     try {
         # First we only gather the list — nothing is applied. A game manages to open after the
@@ -4705,21 +4814,63 @@ function Test-RuleMatch {
 #   release  the desk was switched by hand — let go, doing nothing;
 #   blocked  the rule fired, but there will be nowhere to go back to afterwards;
 #   none     do nothing.
+# What identifies a rule, as against where it happens to sit in the list. A claim on the desk used to be
+# the INDEX and nothing else, and the list is edited both by hand and from the Settings window while a
+# rule is holding the desk: delete a rule above the owner, and the claim quietly moves to whoever slides
+# into that slot — the desk gets handed back to a stranger's "back", or held by a condition nobody asked
+# about.
+#
+# The four fields are the whole of a rule as far as this question goes: what it watches, what for, where
+# it takes the desk and where it gives it back. Two rules alike in all four ARE one rule here — either of
+# them holding the desk gives the same answer.
+function Get-RuleSignature {
+    param($Rule)
+
+    if (-not $Rule) { return '' }
+    # Tab-joined: a tab cannot occur in a mode key or a process name, so no pair of different rules can
+    # collide by the separator landing inside a field.
+    return (@([string]$Rule.when, [string]$Rule.process, [int]$Rule.minutes,
+              [string]$Rule.mode, [string]$Rule.back) -join "`t")
+}
+
+# $OwnedSignature is who the holder IS (see Get-RuleSignature); $OwnedIndex is only where to look first.
+# $OwnedTaken is whether the switch that was to take the desk actually went through: a claim can be held
+# by a rule that never got the desk at all — see the tray, which holds one rather than nagging every
+# fifteen seconds over a refusal that will not come right.
 function Get-RuleDecision {
-    param($Rules, $Facts, [string]$CurrentMode, [int]$OwnedIndex = -1, [string]$OwnedBack = '')
+    param($Rules, $Facts, [string]$CurrentMode, [int]$OwnedIndex = -1, [string]$OwnedBack = '',
+          [string]$OwnedSignature = '', [bool]$OwnedTaken = $true)
 
     $list = @($Rules)
     $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Back = ''; RuleIndex = -1; Reason = '' }
 
     if ($OwnedIndex -ge 0) {
         $owned = $(if ($OwnedIndex -lt $list.Count) { $list[$OwnedIndex] } else { $null })
+        # Not the rule that took the desk any more: the list was edited underneath it. The index is a
+        # hint, the signature is the answer.
+        if ($OwnedSignature -and (Get-RuleSignature -Rule $owned) -ne $OwnedSignature) {
+            $owned = @($list | Where-Object { (Get-RuleSignature -Rule $_) -eq $OwnedSignature }) |
+                        Select-Object -First 1
+        }
         # The rule vanished from the settings while it was holding the desk (the file gets edited
         # by hand and from the Settings window) — we go back where we came from and let go.
         if (-not $owned) {
+            # Unless it never had the desk: then there is nothing to give back, and switching anywhere
+            # over a rule that is gone would be moving the screens on nobody's say-so.
+            if (-not $OwnedTaken) {
+                return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
+                                          Reason = 'the rule is gone from the settings, and it never took the desk' }
+            }
             return [pscustomobject]@{ Action = 'return'; Mode = [string]$OwnedBack; Back = ''; RuleIndex = -1
                                       Reason = 'the rule is gone from the settings' }
         }
         if (Test-RuleMatch -Rule $owned -Facts $Facts) {
+            # The switch that was to take the desk did not go through, so the desk is nobody's and there
+            # is nothing to hold it up against. The claim is kept only to keep from asking again every
+            # fifteen seconds for something that will not come right; we sit quiet until the condition
+            # ends. Without this the next tick read an unchanged desk as "the displays were changed by
+            # hand" and wrote that in the log about a person who had touched nothing.
+            if (-not $OwnedTaken) { return $none }
             # We do not fight people: the set of screens was changed past us, so that was a
             # deliberate decision, and putting it back is not ours to do.
             if ($CurrentMode -and $CurrentMode -ne [string]$owned.mode) {
@@ -4727,6 +4878,12 @@ function Get-RuleDecision {
                                           Reason = 'the displays were changed by hand' }
             }
             return $none
+        }
+        # The condition has ended. Nothing to give back if we never took anything: the desk is where the
+        # person left it, and a switch here would move it for the first time on the way OUT of a rule.
+        if (-not $OwnedTaken) {
+            return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
+                                      Reason = 'the condition ended, and the switch never went through' }
         }
         return [pscustomobject]@{ Action = 'return'; Mode = [string]$OwnedBack; Back = ''; RuleIndex = -1
                                   Reason = 'the condition ended' }
@@ -4809,7 +4966,6 @@ function Get-ReapplyDecision {
     # plan": combo:Work has no ASUS in it, and an ASUS switched on with the button would go out a
     # second later — the same fight, only now by configuration. For 'all' the members are
     # everything connected, so there the check changes nothing.
-    $echoReason = ''
     if ($appeared.Count -gt 0 -and [string]$Reapply.onPlug) {
         $ours = $true
         if ($null -ne $PlugModeMembers) {
@@ -4846,11 +5002,23 @@ function Get-ReapplyDecision {
         # steps backwards on the autumn hour and on any NTP correction; a negative gap satisfies
         # "less than QuietSeconds" just as well as a real echo does, and every genuine press of a
         # button would then be dismissed for as long as the jump lasted.
-        $recent = @($VanishedRecently | Where-Object { $_ })
-        $echo = ($null -ne $SecondsSinceVanish -and $recent.Count -gt 0 -and $vanished.Count -eq 0 -and
+        #
+        # Of $VanishedRecently only whether it holds ANYBODY is asked, never who: the two cases this
+        # tells apart — a display's own flap and a hand on its button — are told apart by the gap, and on
+        # 30 August the display that came back was the very one that had left.
+        $somethingVanishedRecently = (@($VanishedRecently | Where-Object { $_ }).Count -gt 0)
+        $echo = ($null -ne $SecondsSinceVanish -and $somethingVanishedRecently -and $vanished.Count -eq 0 -and
                  [double]$SecondsSinceVanish -ge 0 -and [double]$SecondsSinceVanish -lt $QuietSeconds)
 
-        if ($ours -and $echo) { $echoReason = 'a display came up right after one went away' }
+        if ($ours -and $echo) {
+            # Straight out, rather than through a flag read at the end of the function: an echo means
+            # nothing vanished in THIS event, and the only branch between here and there wants the
+            # opposite ($vanished.Count -gt 0). The flag could never have been read anywhere else, and it
+            # read like a fall-through that had a second destination.
+            return [pscustomobject]@{ Action = 'none'; Mode = ''
+                                      Reason = 'a display came up right after one went away'
+                                      Appeared = $appeared; Vanished = $vanished }
+        }
         elseif ($ours) {
             return [pscustomobject]@{ Action = 'mode'; Mode = [string]$Reapply.onPlug
                                       Reason = 'a display was plugged in'
@@ -4867,10 +5035,6 @@ function Get-ReapplyDecision {
                                   Appeared = $appeared; Vanished = $vanished }
     }
 
-    if ($echoReason) {
-        return [pscustomobject]@{ Action = 'none'; Mode = ''; Reason = $echoReason
-                                  Appeared = $appeared; Vanished = $vanished }
-    }
     return $none
 }
 

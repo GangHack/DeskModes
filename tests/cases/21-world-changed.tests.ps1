@@ -169,24 +169,17 @@ Test-Case 'reapply: a clock that stepped backwards does not arm the quarantine' 
 
 Test-Case 'reapply: the same display back long after is a hand on its button' {
     # "Switched off with the button and switched back on" is exactly what onPlug exists for, and the
-    # quarantine has to let it through. In the log these two cases are not neighbours but different
-    # worlds: its own flap is 1 s, a real switch-on is 17335 s and 35256 s.
+    # quarantine has to let it through once it has run out. In the log these two cases are not neighbours
+    # but different worlds: a display's own flap is 1 s, a real switch-on is 17335 s and 35256 s.
+    #
+    # The same display, deliberately: a different one coming back a minute later is the easy half of the
+    # question, and it used to have a case of its own that asserted the same two things this one does.
     $r = (Get-DefaultSettings).reapply
     $r.onPlug = 'combo:Work'
     $d = Get-ReapplyDecision -Reapply $r -Before @('uf') -Now @('uf', 'ug') `
                              -LastMode 'combo:Work' -PlugModeMembers @('ug', 'uf') `
                              -VanishedRecently @('ug') -SecondsSinceVanish 60
     Assert-Equal 'mode' $d.Action 'the same display came back, so the desk is assembled'
-    Assert-Equal 'combo:Work' $d.Mode ''
-}
-
-Test-Case 'reapply: the quarantine runs out and a later plug is honoured again' {
-    $r = (Get-DefaultSettings).reapply
-    $r.onPlug = 'combo:Work'
-    $d = Get-ReapplyDecision -Reapply $r -Before @('ug') -Now @('ug', 'uf') `
-                             -LastMode 'solo:asus' -PlugModeMembers @('ug', 'uf') `
-                             -VanishedRecently @('asus') -SecondsSinceVanish 60
-    Assert-Equal 'mode' $d.Action 'a minute later nobody is reshuffling the desk any more'
     Assert-Equal 'combo:Work' $d.Mode ''
 }
 

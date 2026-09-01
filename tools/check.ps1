@@ -82,7 +82,7 @@ function Get-CheckFiles {
 
 $files = Get-CheckFiles
 $code  = @($files | Where-Object { $_ -match '\.psd?1$' })
-$text  = @($files | Where-Object { $_ -match '\.(ps1|psd1|md|json)$' })
+$text  = @($files | Where-Object { $_ -match '\.(ps1|psd1|md|json|cmd)$' })
 
 function Get-Relative {
     param([string]$Path)
@@ -119,6 +119,15 @@ if ($parseBad -eq 0) { Write-CheckOk 'every script parses' }
 # Without a BOM, PowerShell 5.1 reads a file as Windows-1251 and every non-ASCII character
 # in it turns to rubbish — silently, without a single error. .gitattributes fixes line
 # endings at commit time, and this check catches them on the spot, before the commit.
+#
+# For a .cmd file the requirement is the opposite one, and the .cmd files were outside this gate
+# altogether until they broke. Measured rather than argued about, and the first way of measuring says
+# there is nothing wrong: `cmd /c file.cmd` tolerates a BOM, while ShellExecute — a double click, a
+# pinned shortcut — glues those three bytes to the first command, which fails as unrecognised
+# (ERRORLEVEL 9009) while the rest of the file runs on. Here the first line is `@echo off`, so a BOM
+# costs the quiet rather than the switch: an error message and every command echoed into a window that
+# closes the instant it is done. An editor set to "UTF-8" puts the BOM back on the next save, which is
+# why both this gate and .editorconfig say so.
 
 Write-CheckHead ("encoding ({0} files)" -f $text.Count)
 
@@ -126,12 +135,18 @@ $encBad = 0
 foreach ($file in $text) {
     $bytes = [System.IO.File]::ReadAllBytes($file)
     $rel = Get-Relative $file
+    $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
 
     if ($file -match '\.psd?1$') {
-        $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
         if (-not $hasBom) {
             $encBad++
             Write-CheckFail ("$rel - no UTF-8 BOM (PowerShell 5.1 would read it as Windows-1251)")
+        }
+    }
+    elseif ($file -match '\.cmd$') {
+        if ($hasBom) {
+            $encBad++
+            Write-CheckFail ("$rel - a UTF-8 BOM (on a double click those three bytes eat the first line)")
         }
     }
 
