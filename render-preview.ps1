@@ -236,6 +236,16 @@ try {
     $stats = New-StatsWindow -Store $(if ($Fake) { New-FakeDiary } else { Get-ActivityStore }) -Days 7
     try { Save-WindowSnapshot -Window $stats.Window -Path $statsOut }
     finally { $stats.Window.Close(); $script:ActiveStatsUi = $null }
+
+    # The fifth is the rule editor. An invented rule rather than the first real one: it has to
+    # show a condition, a target and a way back all filled in, and a desk with no rules on it
+    # would render three empty dropdowns.
+    $ruleOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-rule.png')
+    $rule = [ordered]@{ when = 'process'; process = 'cs2'; minutes = 20
+                        mode = [string]@($modes)[0].Key; back = ''; enabled = $true }
+    $ruleEd = New-RuleEditorWindow -Rule $rule -Modes (Get-RuleTargetModes -Ui $ui) -Dark (Test-DarkTheme)
+    try { Save-WindowSnapshot -Window $ruleEd.Window -Path $ruleOut }
+    finally { $ruleEd.Window.Close(); $script:ActiveRuleUi = $null }
 }
 finally {
     $ui.Window.Close()

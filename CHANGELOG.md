@@ -28,6 +28,21 @@ in the tray menu — that line is the right thing to paste into a bug report.
   away from any window, and an entry left behind by a mode that no longer exists gets its own
   removable row, the way a stranded shortcut always did.
 
+### Rules are a list you can see
+
+- **A Rules card** between Modes and Behavior: what each rule watches for, where it takes the
+  desk, where it puts it back, and a switch that turns one off without deleting it. A rule that
+  is off is dimmed, so the list explains why the desk is not moving.
+- **Add a rule** and **Edit** open a small window with four questions — when, what to watch,
+  where to go and where to come back to. It refuses a rule with no mode, a program rule with no
+  program, an idle rule of less than a minute, and one that goes back to the mode it switches to
+  (which would flicker the desk every fifteen seconds).
+- Renaming a combination carries the rules that point at it, in the window and at once; deleting
+  one drops the rules that needed it and clears the way back of the rest. That used to happen
+  in a rename map at Save time and is now the same path every other mode-keyed setting takes.
+- An edited rule **keeps its place** in the list, because that order is the order the tray checks
+  them in and the first match wins.
+
 ### Rebuilding the desk is three controls, not three keys in a file
 
 - **Rebuild after waking from sleep** and **Rebuild when a display is unplugged** are toggles in

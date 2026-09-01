@@ -744,6 +744,16 @@ $script:SettingsWindowXaml = @'
                 </Border>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
+                        <TextBlock Style="{StaticResource H2}" Text="Rules"/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Switch by itself when something happens; switch by hand and the rule lets go."/>
+                        <StackPanel x:Name="RulesPanel"/>
+                        <Button x:Name="AddRuleBtn" Style="{StaticResource Btn}" Content="Add a rule"
+                                HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
                         <TextBlock Style="{StaticResource H2}" Text="Behavior" Margin="0,0,0,4"/>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
@@ -946,6 +956,55 @@ $script:ModeEditorXaml = @'
                 <TextBox x:Name="HookBeforeBox" Style="{StaticResource Input}"/>
                 <TextBlock Style="{StaticResource RowSub}" Text="After switching" Margin="0,8,0,3"/>
                 <TextBox x:Name="HookAfterBox" Style="{StaticResource Input}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
+'@
+
+$script:RuleEditorXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ScreenDeck - Rule"
+        SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="%%BG%%" Foreground="%%TEXT%%"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        UseLayoutRounding="True">
+    <Window.Resources>
+%%RES%%
+    </Window.Resources>
+    <DockPanel LastChildFill="True">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="20,16,20,16">
+            <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="90" IsDefault="True"/>
+            <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="90" Margin="8,0,0,0" IsCancel="True"/>
+        </StackPanel>
+        <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,16,20,0" Width="400">
+                <TextBlock Style="{StaticResource H1}" Text="Rule"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="While the condition holds, the desk stays in that mode. Switch by hand and the rule lets go until the condition comes round again."/>
+                <TextBlock Style="{StaticResource H2}" Text="When" Margin="0,12,0,0"/>
+                <ComboBox x:Name="WhenBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                <!-- The two conditions want different questions, so only one panel is up at a
+                     time. Both are built: swapping visibility keeps what was typed in the other
+                     one, and a person who tries both ways round does not retype it. -->
+                <StackPanel x:Name="ProcessPanel" Margin="0,12,0,0">
+                    <TextBlock Style="{StaticResource RowSub}" Text="Process name, with or without .exe"/>
+                    <TextBox x:Name="ProcessBox" Style="{StaticResource Input}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <StackPanel x:Name="IdlePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource RowSub}" Text="Minutes with nobody at the keyboard"/>
+                    <TextBox x:Name="MinutesBox" Style="{StaticResource Input}" Width="90"
+                             HorizontalAlignment="Left" Margin="0,3,0,0"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource H2}" Text="Switch to" Margin="0,16,0,0"/>
+                <ComboBox x:Name="ModeBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="Go back to" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Where the desk goes when the condition ends."/>
+                <ComboBox x:Name="BackBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
@@ -1156,7 +1215,11 @@ function New-SettingsWindow {
         DeletedComboKeys  = @()
         DeskPanel         = $win.FindName('DeskPanel')
         ModesPanel        = $win.FindName('ModesPanel')
+        RulesPanel        = $win.FindName('RulesPanel')
         AddComboBtn       = $win.FindName('AddComboBtn')
+        AddRuleBtn        = $win.FindName('AddRuleBtn')
+        # The rules as the tray reads them, edited in place. Filled by Import-RuleSettings.
+        Rules             = (New-Object System.Collections.ArrayList)
         SaveBtn           = $win.FindName('SaveBtn')
         CancelBtn         = $win.FindName('CancelBtn')
         StartupBox        = $win.FindName('StartupBox')
@@ -1218,8 +1281,10 @@ function New-SettingsWindow {
     # a mode that no longer exists is what turns into an orphan row (see Resolve-PanelModes).
     Import-LevelSettings -Ui $ui -Settings $Settings
     Import-ModeExtras    -Ui $ui -Settings $Settings
-    # Before the mode list too: Update-ModesPanel builds the "switch to" dropdown out of it.
+    # Before the mode list too: Update-ModesPanel builds the "switch to" dropdown and the rule
+    # rows out of it.
     if ($Settings -and $Settings.reapply) { $ui.OnPlugKey = [string]$Settings.reapply.onPlug }
+    Import-RuleSettings -Ui $ui -Settings $Settings
     Update-DeskPanel  -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
@@ -1253,6 +1318,12 @@ function New-SettingsWindow {
         $ui = $script:ActiveUi
         if (-not $ui) { return }
         Invoke-ModeEditor -Ui $ui -Mode $null -Combo $null
+    })
+
+    $ui.AddRuleBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        Invoke-RuleEditor -Ui $ui -Rule $null
     })
 
     # Save validates the input BEFORE closing: the old window used to close on a duplicate key
@@ -2150,6 +2221,20 @@ function Remove-UiModeKey {
     # Not a map, but keyed by mode all the same: a rule pointing at a mode that no longer exists
     # would head for it on every hotplug and be answered with "combination no longer exists".
     if ([string]$Ui.OnPlugKey -eq $Key) { $Ui.OnPlugKey = '' }
+
+    # The rules the same way, and by the rule Move-RuleModeKeys used to apply at Save time. An
+    # empty "go back to" is legitimate — it means "wherever the desk was" — but a rule with
+    # nowhere to go is no longer a rule at all.
+    foreach ($rule in @($Ui.Rules)) {
+        if ([string]$rule['back'] -eq $Key) {
+            $rule['back'] = ''
+            Write-DisplayLog "settings dialog: cleared the way back of a rule for removed $Key"
+        }
+    }
+    foreach ($rule in @(@($Ui.Rules) | Where-Object { [string]$_['mode'] -eq $Key })) {
+        Write-DisplayLog "settings dialog: dropped a rule whose mode $Key was removed"
+        $Ui.Rules.Remove($rule)
+    }
 }
 
 # A rename: everything under the old key MOVES to the new one. Not "remove, and let the editor
@@ -2171,6 +2256,10 @@ function Move-UiModeKey {
         if (-not $map.Contains($To)) { $map[$To] = $value }
     }
     if ([string]$Ui.OnPlugKey -eq $From) { $Ui.OnPlugKey = $To }
+    foreach ($rule in @($Ui.Rules)) {
+        if ([string]$rule['mode'] -eq $From) { $rule['mode'] = $To }
+        if ([string]$rule['back'] -eq $From) { $rule['back'] = $To }
+    }
 }
 
 # Apply the editor's answer to the window's working state. Separate from the click handlers:
@@ -2989,10 +3078,12 @@ function Update-ModesPanel {
         [void]$Ui.ModesPanel.Children.Add($row)
     }
 
-    # The same list of modes drives "a display was plugged in — switch to", so it is rebuilt
-    # here: a combo renamed, added or deleted has to show up in that dropdown at once, and this
-    # is the one function every one of those goes through.
+    # Everything else that names a mode is rebuilt here too: this is the one function every
+    # rename, addition and deletion goes through, and a dropdown or a rule row still showing
+    # yesterday's name is how a person picks a mode that no longer exists.
+    $Ui.Modes = @($modes)
     Update-PlugModeBox -Ui $Ui -Modes $modes
+    Update-RulesPanel -Ui $Ui
 }
 
 # The "switch to" dropdown: "(do nothing)" and then every mode, by title. The mode KEY rides on
@@ -3037,6 +3128,364 @@ function Update-PlugModeBox {
         if (-not $want) { $box.SelectedIndex = 0 }
     }
     finally { $Ui.PlugBusy = $false }
+}
+
+# --- rules ------------------------------------------------------------------
+# "When this happens, become that." The deciding is in DisplayCore (Get-RuleDecision, a pure
+# function under tests); this is only the editing of the list.
+#
+# The rules live in the window as an ArrayList of the very shape ConvertTo-RuleSettings hands
+# back, so what a person edits here and what the tray reads every fifteen seconds are one thing
+# rather than two that have to be kept in step.
+
+$script:RuleWhenTitles = [ordered]@{
+    process = 'a program is running'
+    idle    = 'nobody is at the computer'
+}
+
+function Import-RuleSettings {
+    param($Ui, $Settings)
+
+    $Ui.Rules = New-Object System.Collections.ArrayList
+    $raw = $(if ($Settings) { $Settings.rules } else { @() })
+    foreach ($rule in @(ConvertTo-RuleSettings $raw)) { [void]$Ui.Rules.Add($rule) }
+}
+
+# What a rule's row says: the condition, then where it takes the desk. Both in the words the
+# rest of the window uses — a mode is named, never keyed, or the list reads like the file.
+function Get-RuleRowTitle {
+    param($Rule)
+
+    $mode = [string]$Rule['mode']
+    $where = $(if ($mode) { Get-ModeTitleFromKey $mode } else { 'nowhere' })
+    return (Format-RuleReason -Rule $Rule) + '   ->   ' + $where
+}
+
+# And the second line: where it puts the desk back. Empty means "wherever it was", which is the
+# common case and needs no line of its own.
+function Get-RuleRowSubtitle {
+    param($Rule)
+
+    $back = [string]$Rule['back']
+    if (-not $back) { return '' }
+    return 'back to ' + (Get-ModeTitleFromKey $back)
+}
+
+function Update-RulesPanel {
+    param($Ui)
+
+    $win = $Ui.Window
+    if (-not $Ui.RulesPanel) { return }
+    $Ui.RulesPanel.Children.Clear()
+
+    if (@($Ui.Rules).Count -eq 0) {
+        # An empty list has to SAY it is empty: a blank space above a button reads like something
+        # that failed to load.
+        $none = New-UiTextBlock -Text 'Nothing yet - the desk changes only when you say so.' `
+                                -Style 'RowSub' -Window $win
+        $none.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+        [void]$Ui.RulesPanel.Children.Add($none)
+        return
+    }
+
+    foreach ($rule in @($Ui.Rules)) {
+        $row = New-Object System.Windows.Controls.Grid
+        $row.Margin = New-Object System.Windows.Thickness 0, 2, 0, 2
+        foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                             [System.Windows.GridLength]::Auto,
+                             [System.Windows.GridLength]::Auto,
+                             [System.Windows.GridLength]::Auto)) {
+            $column = New-Object System.Windows.Controls.ColumnDefinition
+            $column.Width = $width
+            [void]$row.ColumnDefinitions.Add($column)
+        }
+
+        $textStack = New-Object System.Windows.Controls.StackPanel
+        $textStack.VerticalAlignment = 'Center'
+        $textStack.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
+        $title = New-UiTextBlock -Text (Get-RuleRowTitle -Rule $rule) -Style 'RowTitle' -Window $win
+        # A rule that is switched off is still a rule, and it has to look switched off: without
+        # this the list gives no hint why the desk is not moving.
+        if (-not $rule['enabled']) { $title.Foreground = $win.FindResource('DimBrush') }
+        [void]$textStack.Children.Add($title)
+        $subText = Get-RuleRowSubtitle -Rule $rule
+        if ($subText) {
+            $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
+            $sub.TextWrapping = 'NoWrap'
+            $sub.TextTrimming = 'CharacterEllipsis'
+            [void]$textStack.Children.Add($sub)
+        }
+        [void]$row.Children.Add($textStack)
+
+        # The rule itself rides on every control, never its place in the list: the list is
+        # rebuilt on each edit, and an index would point at whoever slid into that slot. The
+        # tray settles the same question the same way, by signature rather than by index.
+        $toggle = New-Object System.Windows.Controls.CheckBox
+        $toggle.Style = $win.FindResource('Toggle')
+        $toggle.VerticalAlignment = 'Center'
+        $toggle.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
+        $toggle.IsChecked = [bool]$rule['enabled']
+        $toggle.Tag = $rule
+        [System.Windows.Controls.Grid]::SetColumn($toggle, 1)
+        [void]$row.Children.Add($toggle)
+        $toggle.add_Click({
+            $ui = $script:ActiveUi
+            $rule = $this.Tag
+            if (-not $ui -or -not $rule) { return }
+            $rule['enabled'] = [bool]$this.IsChecked
+            Update-RulesPanel -Ui $ui
+        })
+
+        $edit = New-Object System.Windows.Controls.Button
+        $edit.Content = 'Edit'
+        $edit.Style = $win.FindResource('BtnSmall')
+        $edit.VerticalAlignment = 'Center'
+        $edit.Tag = $rule
+        [System.Windows.Controls.Grid]::SetColumn($edit, 2)
+        [void]$row.Children.Add($edit)
+        $edit.add_Click({
+            $ui = $script:ActiveUi
+            $rule = $this.Tag
+            if (-not $ui -or -not $rule) { return }
+            Invoke-RuleEditor -Ui $ui -Rule $rule
+        })
+
+        $remove = New-Object System.Windows.Controls.Button
+        $remove.Content = 'Remove'
+        $remove.Style = $win.FindResource('BtnSmall')
+        $remove.VerticalAlignment = 'Center'
+        $remove.Margin = New-Object System.Windows.Thickness 8, 0, 0, 0
+        $remove.Tag = $rule
+        [System.Windows.Controls.Grid]::SetColumn($remove, 3)
+        [void]$row.Children.Add($remove)
+        $remove.add_Click({
+            $ui = $script:ActiveUi
+            $rule = $this.Tag
+            if (-not $ui -or -not $rule) { return }
+            $ui.Rules.Remove($rule)
+            Update-RulesPanel -Ui $ui
+        })
+
+        [void]$Ui.RulesPanel.Children.Add($row)
+    }
+}
+
+# The modes a rule may point at: the real ones, never an orphan row. An orphan is a key nobody
+# can switch to, and offering it would let a person build a rule that fails every time it fires.
+function Get-RuleTargetModes {
+    param($Ui)
+
+    return @(@($Ui.Modes) | Where-Object { $_ -and [string]$_.Kind -ne 'orphan' })
+}
+
+# Fill one of the editor's mode dropdowns. $Empty is the wording of the first item when an empty
+# choice is allowed ("Go back to" permits one; "Switch to" does not).
+#
+# A key with no mode behind it gets a dimmed item of its own rather than being dropped: the mode
+# may belong to a monitor that is unplugged right now, and a rule silently losing its target
+# because a cable is out is a rule that quietly stops working.
+function Set-RuleModeItems {
+    param($Box, $Modes, [string]$Selected, [string]$Empty = '')
+
+    $Box.Items.Clear()
+    if ($Empty) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = $Empty
+        $item.Tag = ''
+        [void]$Box.Items.Add($item)
+    }
+
+    $found = $false
+    foreach ($mode in @($Modes)) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = [string]$mode.Title
+        $item.Tag = [string]$mode.Key
+        [void]$Box.Items.Add($item)
+        if ($Selected -and [string]$mode.Key -eq $Selected) { $Box.SelectedItem = $item; $found = $true }
+    }
+
+    if ($Selected -and -not $found) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = (Get-ModeTitleFromKey $Selected) + '   (not connected)'
+        $item.Tag = $Selected
+        [void]$Box.Items.Add($item)
+        $Box.SelectedItem = $item
+    }
+    if (-not $Selected -and $Box.Items.Count -gt 0) { $Box.SelectedIndex = 0 }
+}
+
+# The rule editor, built separately from being shown — for the same reason as every other window
+# here: a window built without being shown can be tested.
+function New-RuleEditorWindow {
+    param($Rule, $Modes, $Owner, [bool]$Dark)
+
+    Initialize-WpfRuntime
+    $palette = Get-UiPalette -Dark $Dark
+    $win = Convert-UiXaml -Xaml $script:RuleEditorXaml -Palette $palette
+    Register-WindowTheme -Window $win -Dark $Dark
+    if ($Owner) { $win.Owner = $Owner }
+    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 80 } catch { }   # no work area — no limit then
+
+    # A new rule starts on the shape everything downstream expects, not on an empty bag: then
+    # there is one shape of a rule in this file and not two.
+    if (-not $Rule) {
+        $Rule = [ordered]@{ when = 'process'; process = ''; minutes = 20; mode = ''; back = ''; enabled = $true }
+    }
+
+    $ed = [pscustomobject]@{
+        Window       = $win
+        WhenBox      = $win.FindName('WhenBox')
+        ProcessPanel = $win.FindName('ProcessPanel')
+        ProcessBox   = $win.FindName('ProcessBox')
+        IdlePanel    = $win.FindName('IdlePanel')
+        MinutesBox   = $win.FindName('MinutesBox')
+        ModeBox      = $win.FindName('ModeBox')
+        BackBox      = $win.FindName('BackBox')
+        # The rule being edited, so Save can write into the very entry the list holds rather than
+        # hand back a copy the caller has to find a place for.
+        Rule         = $Rule
+        Busy         = $false
+        Result       = $null
+    }
+    $script:ActiveRuleUi = $ed
+
+    $ed.Busy = $true
+    try {
+        foreach ($when in @($script:RuleWhenTitles.Keys)) {
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = [string]$script:RuleWhenTitles[$when]
+            $item.Tag = [string]$when
+            [void]$ed.WhenBox.Items.Add($item)
+            if ([string]$Rule['when'] -eq $when) { $ed.WhenBox.SelectedItem = $item }
+        }
+        if (-not $ed.WhenBox.SelectedItem) { $ed.WhenBox.SelectedIndex = 0 }
+
+        $ed.ProcessBox.Text = [string]$Rule['process']
+        $minutes = [int]$Rule['minutes']
+        $ed.MinutesBox.Text = [string]$(if ($minutes -gt 0) { $minutes } else { 20 })
+
+        Set-RuleModeItems -Box $ed.ModeBox -Modes $Modes -Selected ([string]$Rule['mode'])
+        Set-RuleModeItems -Box $ed.BackBox -Modes $Modes -Selected ([string]$Rule['back']) `
+                          -Empty 'wherever the desk was'
+    }
+    finally { $ed.Busy = $false }
+
+    Update-RuleEditorPanels -Editor $ed
+
+    $ed.WhenBox.add_SelectionChanged({
+        $ed = $script:ActiveRuleUi
+        if (-not $ed -or $ed.Busy) { return }
+        Update-RuleEditorPanels -Editor $ed
+    })
+
+    $win.FindName('OkBtn').add_Click({
+        $ed = $script:ActiveRuleUi
+        if (-not $ed) { return }
+        $got = Read-RuleFromUi -Editor $ed
+        if (-not $got.Ok) {
+            [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'ScreenDeck',
+                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+            return
+        }
+        $ed.Result = $got.Rule
+        $ed.Window.DialogResult = $true
+    })
+
+    return $ed
+}
+
+# Which question the condition asks. Both panels exist all along and only one is up: swapping
+# visibility keeps what was typed in the other, so trying it both ways round costs no retyping.
+function Update-RuleEditorPanels {
+    param($Editor)
+
+    $when = Get-RuleEditorWhen -Editor $Editor
+    $Editor.ProcessPanel.Visibility = $(if ($when -eq 'process') { 'Visible' } else { 'Collapsed' })
+    $Editor.IdlePanel.Visibility    = $(if ($when -eq 'idle')    { 'Visible' } else { 'Collapsed' })
+}
+
+function Get-RuleEditorWhen {
+    param($Editor)
+
+    $item = $Editor.WhenBox.SelectedItem
+    if (-not $item) { return 'process' }
+    return [string]$item.Tag
+}
+
+# What a person typed, with validation. A function of its own, as Read-ModeFromUi is: testable
+# without showing the window.
+function Read-RuleFromUi {
+    param($Editor)
+
+    $when = Get-RuleEditorWhen -Editor $Editor
+    $modeItem = $Editor.ModeBox.SelectedItem
+    $mode = [string]$(if ($modeItem) { $modeItem.Tag } else { '' })
+    $backItem = $Editor.BackBox.SelectedItem
+    $back = [string]$(if ($backItem) { $backItem.Tag } else { '' })
+
+    $process = ([string]$Editor.ProcessBox.Text).Trim()
+    $minutes = 0
+    $parsed = 0
+    if ([int]::TryParse(([string]$Editor.MinutesBox.Text).Trim(), [ref]$parsed)) { $minutes = $parsed }
+
+    $problem = ''
+    if (-not $mode) { $problem = 'Choose the mode this rule switches to.' }
+    elseif ($when -eq 'process' -and -not $process) {
+        $problem = 'Name the program to watch for - "cs2" or "cs2.exe", as it appears in Task Manager.'
+    }
+    elseif ($when -eq 'idle' -and $minutes -lt 1) {
+        $problem = 'Give the idle time in whole minutes, at least one.'
+    }
+    # "Go back to" where it already is would mean the rule undoes itself the moment the condition
+    # ends and then fires again — a desk that flickers every fifteen seconds.
+    elseif ($back -and $back -eq $mode) {
+        $problem = 'A rule cannot go back to the mode it switches to. Leave it as "wherever the desk was".'
+    }
+    if ($problem) { return [pscustomobject]@{ Ok = $false; Rule = $null; Problem = $problem } }
+
+    # The fields the other condition owns are kept rather than blanked: a person who tried it
+    # both ways round finds what they typed still there when they come back.
+    return [pscustomobject]@{
+        Ok = $true
+        Rule = [ordered]@{
+            when = $when; process = $process; minutes = $(if ($minutes -gt 0) { $minutes } else { 0 })
+            mode = $mode; back = $back; enabled = [bool]$Editor.Rule['enabled']
+        }
+        Problem = ''
+    }
+}
+
+function Show-RuleEditor {
+    param($Rule, $Modes, $Owner, [bool]$Dark)
+
+    $ed = New-RuleEditorWindow -Rule $Rule -Modes $Modes -Owner $Owner -Dark $Dark
+    try {
+        if ($ed.Window.ShowDialog()) { return $ed.Result }
+        return $null
+    }
+    finally {
+        $ed.Window.Close()
+        $script:ActiveRuleUi = $null
+    }
+}
+
+# Show the editor and put its answer back into the list. $Rule is $null for "Add a rule".
+function Invoke-RuleEditor {
+    param($Ui, $Rule)
+
+    $made = Show-RuleEditor -Rule $Rule -Modes (Get-RuleTargetModes -Ui $Ui) `
+                            -Owner $Ui.Window -Dark $Ui.Dark
+    if (-not $made) { return }
+
+    if ($Rule) {
+        # Edited IN PLACE, at the position it already holds: a rule's place in the list is the
+        # order the tray checks them in, and "the first that fits wins". Removing and appending
+        # would quietly move an edited rule to the bottom of that order.
+        foreach ($field in @($made.Keys)) { $Rule[$field] = $made[$field] }
+    }
+    else { [void]$Ui.Rules.Add($made) }
+
+    Update-RulesPanel -Ui $Ui
 }
 
 function ConvertTo-ComboSettings {
@@ -3113,43 +3562,6 @@ function Move-ModeKeyedEntries {
     return $moved
 }
 
-# The rules after the renames and deletions. REBUILT rather than edited in place: the result
-# of Save is a copy, and a failed write to disk must not leave an edit in the settings the
-# tray is living with.
-function Move-RuleModeKeys {
-    param($Rules, $Renames, [string[]]$Gone = @())
-
-    $out = @()
-    foreach ($r in @($Rules)) {
-        if (-not $r) { continue }
-        $copy = [ordered]@{}
-        if ($r -is [System.Collections.IDictionary]) {
-            foreach ($k in @($r.Keys)) { $copy[$k] = $r[$k] }
-        }
-        else {
-            foreach ($p in $r.PSObject.Properties) { $copy[$p.Name] = $p.Value }
-        }
-        foreach ($field in 'mode', 'back') {
-            $v = [string]$copy[$field]
-            if (-not $v) { continue }
-            if ($Renames.Contains($v)) { $copy[$field] = [string]$Renames[$v] }
-            elseif ($Gone -contains $v) {
-                # An empty "where to go back to" means "to wherever the desk was before it
-                # fired", a legitimate value (see Get-RuleDecision).
-                $copy[$field] = ''
-                Write-DisplayLog "settings: dropped the $field of a rule for removed $v"
-            }
-        }
-        # A rule with no mode, though, is no longer a rule: there is nowhere to go.
-        if (-not [string]$copy['mode']) {
-            Write-DisplayLog 'settings: dropped a rule whose mode was removed'
-            continue
-        }
-        $out += $copy
-    }
-    return @($out)
-}
-
 # --- collecting the settings out of the window ------------------------------
 # A function of its own, and without showing the window: this is the testable half of Save.
 # Returns Ok/Settings/Problem; on Problem the window stays open.
@@ -3192,7 +3604,7 @@ function Read-SettingsFromUi {
     # without an element of its own does not bring this bug back.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
                   'restoreLastMode', 'stats', 'layout', 'primary', 'combos',
-                  'audio', 'hooks', 'brightness', 'contrast', 'reapply')
+                  'audio', 'hooks', 'brightness', 'contrast', 'reapply', 'rules')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
@@ -3243,13 +3655,12 @@ function Read-SettingsFromUi {
                                                  -Gone $gone -What $field
     }
 
-    # The rules and "a monitor came up" refer to modes by THE SAME keys, so they have to move
-    # along with them: a combo was renamed — the rule has to look at the new name; deleted —
-    # the rule about it is no longer a rule. Otherwise a rule would be left that every
-    # fifteen seconds heads for a mode that does not exist, and the switch would answer
-    # "combination no longer exists".
-    # Update-HotkeyKeys does the same when a monitor has moved to another input.
-    $updated.rules = @(Move-RuleModeKeys -Rules $Settings.rules -Renames $renames -Gone $gone)
+    # The rules come out of the window's own list. No rename map here either: a combo renamed
+    # takes its rules along the moment it is renamed (Move-UiModeKey), and a combo deleted takes
+    # them with it (Remove-UiModeKey) — the same path every mode-keyed setting walks.
+    # Normalised once more on the way out: what the tray reads every fifteen seconds must have
+    # one shape, whoever wrote it.
+    $updated.rules = @(ConvertTo-RuleSettings $Ui.Rules)
 
     # "Rebuild when the world changes" comes out of the form now. Any other key a hand-edited
     # file put in this section is carried through untouched: the window edits three of them and

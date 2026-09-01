@@ -52,7 +52,8 @@ Every one of these exists because the naive version broke on a real desk:
 - **Runs your own command around a switch.** One line per mode: close an app, change the
   power plan, turn off the lights in the room. What it does is your business.
 - **Switches by itself on a rule.** A process started, or nobody has touched the computer
-  for twenty minutes — go to this mode, and come back when it is over.
+  for twenty minutes — go to this mode, and come back when it is over. Built in Settings,
+  and switched off there without being deleted.
 - **Turns the computer off on a timer.** From the tray menu — a ready length, or your own
   picked on a slider — with the countdown on the icon and a warning a minute before,
   movable and cancellable at any point.
@@ -71,7 +72,8 @@ accent color. Each mode is a row, and **Edit** opens the one place that mode is 
 ![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
 
 The mode editor holds everything one mode owns — which displays it turns on, where the
-taskbar goes, its shortcut, and the brightness of its monitors:
+taskbar goes, its shortcut, the brightness and contrast of its monitors, the playback device
+it switches the sound to, and the commands it runs around a switch:
 
 ![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-mode.png)
 
@@ -109,8 +111,8 @@ Then:
 3. Arrange the display cards as they stand on your desk and star the one that keeps the
    taskbar. Add a **combination** for every set of displays you switch between. Every mode
    is a row under **Modes** with an **Edit** button: that one window holds its displays, its
-   taskbar, its shortcut (click the box, press the keys; the cross removes a binding) and
-   the brightness of its monitors.
+   taskbar, its shortcut (click the box, press the keys; the cross removes a binding), the
+   brightness and contrast of its monitors, its playback device and its commands.
 4. Turn on **Start with Windows** if you want it back after a reboot.
 
 The Settings window follows the system theme — dark, light and your accent color — and
@@ -196,12 +198,12 @@ Written by the Settings window, and safe to edit by hand. See
 | `notifications` | show a balloon after switching |
 | `restoreWindows` | remember and restore window positions per display set |
 | `restoreLastMode` | re-apply the last chosen mode after the computer starts |
-| `reapply` | rebuild the desk when the world changes: `onResume`, `onUnplug`, `onPlug` |
-| `rules` | switch by itself when something happens. See [Rules](#rules) |
-| `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after* |
-| `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }` |
+| `reapply` | rebuild the desk when the world changes: `onResume`, `onUnplug`, `onPlug`. Edited in Settings |
+| `rules` | switch by itself when something happens. Edited in Settings. See [Rules](#rules) |
+| `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after*. Edited in the mode editor |
+| `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }`. Edited in the mode editor |
 | `stats` | keep the diary. Off by default |
-| `audio` | mode key → part of a playback device name |
+| `audio` | mode key → part of a playback device name. Edited in the mode editor |
 
 Names are matched by substring, in either direction: `UltraGear` finds `LG ULTRAGEAR`, and
 `ROG STRIX XG27AQDMGR` finds the `XG27AQDMGR` Windows reports. Matching is
@@ -277,6 +279,12 @@ confirm it.
 
 "This happened - become that." A rule watches for a condition and puts the desk into a
 mode while it holds.
+
+**Settings → Rules** lists them: what each one watches for, where it takes the desk, and a
+switch to turn it off without deleting it. **Add a rule** and **Edit** open a small window
+with four questions — when, what to watch, where to go, where to come back to. Renaming a
+combination carries the rules that point at it; deleting one takes them with it. The same
+list by hand:
 
 ```json
 "rules": [
@@ -580,7 +588,7 @@ break the "nothing is installed on your system" promise.
 | --- | --- |
 | `DisplayCore.ps1` | all the logic, definitions only — one source of truth for tray and CLI |
 | `Displays.ps1` | the app: tray icon, menu, hotkeys, rules, timers |
-| `SettingsDialog.ps1` | the windows (WPF, themed after the system): Settings, the mode editor, the timer popup and the diary, separate so they can be built in isolation |
+| `SettingsDialog.ps1` | the windows (WPF, themed after the system): Settings, the mode editor, the rule editor, the timer popup and the diary, separate so they can be built in isolation |
 | `WindowLayout.ps1` | window-position snapshots per display set |
 | `Activity.ps1` | the diary and its report |
 | `Set-Display.ps1` | the command line |
@@ -588,7 +596,7 @@ break the "nothing is installed on your system" promise.
 | `tests\live.ps1` | the same questions asked of your real desk, by hand (`-ReadOnly` changes nothing) |
 | `tools\check.ps1` | every gate in one command - run this before calling a change done |
 | `Make-Icon.ps1` | regenerates `app.ico` |
-| `render-preview.ps1` | renders the Settings window, a mode editor, the timer popup and the diary to PNGs without showing them, for checking the UI (`-Fake` invents a desk and a diary, `-EditorMode` picks whose editor) |
+| `render-preview.ps1` | renders the Settings window, a mode editor, the timer popup, the diary and a rule editor to PNGs without showing them, for checking the UI (`-Fake` invents a desk and a diary, `-EditorMode` picks whose editor) |
 | `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
 | `settings.example.json` | a `settings.json` with every key filled in, to copy from |
 | `last-run.log` | the log; rotates past 1 MB |

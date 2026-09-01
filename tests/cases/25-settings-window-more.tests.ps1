@@ -41,8 +41,8 @@ Test-Case 'dialog: renaming a combination carries its command and brightness' {
     $settings.brightness['combo:Work'] = 55
     $ui = New-DialogUi -Settings $settings
     try {
-        # Through the mode editor, as in the live window: the command moves on Save by the rename map,
-        # while the brightness moves at once, along with the edit.
+        # Through the mode editor, as in the live window: everything keyed to the mode moves at
+        # once, along with the edit, and the Save only writes down where it ended up.
         $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = ''
@@ -70,8 +70,8 @@ Test-Case 'dialog: removing a combination takes its command and brightness along
     finally { $ui.Window.Close() }
 }
 
-# The key moving itself goes through pure functions, separately from the window: there are three of
-# them for four settings, and testing them by building a WPF tree is both dearer and murkier.
+# The key moving itself goes through pure functions, separately from the window: one of them serves
+# every mode-keyed map, and testing it by building a WPF tree is both dearer and murkier.
 
 Test-Case 'mode keys: a rename moves the entry and keeps the file order' {
     $renames = Get-ComboRenames -Combos @(
@@ -113,25 +113,39 @@ Test-Case 'mode keys: a chain of renames is applied in the order of the list' {
     Assert-Equal 1 $moved['combo:B'] 'and only then A took the freed name'
 }
 
-Test-Case 'mode keys: a rule whose mode is gone is dropped, a way back is only cleared' {
-    $rules = @(
-        [ordered]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work'; back = ''; enabled = $true }
-        [ordered]@{ when = 'idle'; minutes = 20; mode = 'all'; back = 'combo:Work'; enabled = $true }
+Test-Case 'rules: a mode that is gone drops the rule, and only clears a way back' {
+    # The window owns the rules now, so this happens where the combination is deleted rather
+    # than in a rename map at Save time. An empty "go back to" is legal - it means "wherever
+    # the desk was" - but a rule with nowhere to GO is no longer a rule.
+    $settings = New-TestSettings -Combos @{ Work = @('LG ULTRAGEAR') }
+    $settings.rules = @(
+        [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true }
+        [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = 'combo:Work'; enabled = $true }
     )
-    $left = @(Move-RuleModeKeys -Rules $rules -Renames @{} -Gone @('combo:Work'))
-    Assert-Equal 1 $left.Count 'the rule with nowhere to go is dropped'
-    Assert-Equal 'all' ([string]$left[0].mode) 'the other one stays'
-    Assert-Equal '' ([string]$left[0].back) 'with an empty way back - that is legal'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 2 @($ui.Rules).Count 'both rules came up'
+        Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
+        Assert-Equal 1 @($ui.Rules).Count 'the rule with nowhere to go is dropped'
+        Assert-Equal 'all' ([string]$ui.Rules[0]['mode']) 'the other one stays'
+        Assert-Equal '' ([string]$ui.Rules[0]['back']) 'with an empty way back - that is legal'
+    }
+    finally { $ui.Window.Close() }
 }
 
-Test-Case 'mode keys: rules survive as objects, not just dictionaries' {
-    # Out of ConvertFrom-Json the rules arrive as PSCustomObjects.
-    $rules = @([pscustomobject]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work'; back = 'all' })
-    $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'Office'; OriginalName = 'Work' })
-    $left = @(Move-RuleModeKeys -Rules $rules -Renames $renames)
-    Assert-Equal 1 $left.Count 'kept'
-    Assert-Equal 'combo:Office' ([string]$left[0].mode) 'and renamed'
-    Assert-Equal 'cs2' ([string]$left[0].process) 'the rest of the rule came along'
+Test-Case 'rules: they arrive as objects out of the file and are brought to one shape' {
+    # Out of ConvertFrom-Json the rules arrive as PSCustomObjects, and half their fields may be
+    # missing. The tray reads them every fifteen seconds and cannot sort that out there.
+    $settings = Get-DefaultSettings
+    $settings.rules = @([pscustomobject]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work' })
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 1 @($ui.Rules).Count 'kept'
+        Assert-Equal 'cs2' ([string]$ui.Rules[0]['process']) 'the rest of the rule came along'
+        Assert-True ([bool]$ui.Rules[0]['enabled']) 'a rule with no "enabled" is on'
+        Assert-Equal 0 ([int]$ui.Rules[0]['minutes']) 'and a missing number is zero, not absent'
+    }
+    finally { $ui.Window.Close() }
 }
 
 # The rules and "a monitor came up" hold the same mode keys, and a rename in the window has to reach
@@ -194,7 +208,14 @@ Test-Case 'dialog: a save leaves the rules the tray is living with alone' {
     $settings.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true })
     $ui = New-DialogUi -Settings $settings
     try {
-        $ui.Combos[0].Name = 'Office'
+        # The window works on its own copies from the moment it opens: editing a rule here must
+        # not reach the list the tray is checking every fifteen seconds.
+        $ui.Rules[0]['process'] = 'dota2'
+        Assert-Equal 'cs2' ([string]$settings.rules[0].process) 'the tray still sees what it had'
+
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = '' })
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the copy moved'
         Assert-Equal 'combo:Work' ([string]$settings.rules[0].mode) 'the original did not'
