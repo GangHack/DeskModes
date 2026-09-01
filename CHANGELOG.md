@@ -7,6 +7,29 @@ something new appears, the last one when something is fixed.
 The version is printed by `.\Set-Display.ps1 status` and by **About ScreenDeck**
 in the tray menu — that line is the right thing to paste into a bug report.
 
+## Unreleased
+
+### The diary has a window
+
+- **Statistics…** opens a window of its own instead of a browser tab: the same numbers, in
+  the system theme and accent colour, all on one screen — six figures at the top, the
+  hour-of-the-day histogram, and top lists for displays, modes, apps and app-on-display.
+  Nothing scrolls; that is what the window is for.
+- **The period is chosen where the diary is read**: **Today**, **7 days**, **30 days** or
+  **All**. "All" means every day the diary still holds, however far back that goes.
+- **Modes are named, not keyed.** "Work" and "Only XG27AQDMGR" rather than `combo:Work` and
+  `solo:XG27AQDMGR` — in the window, on the page and in the console report alike.
+- The page has not gone anywhere. **Open as a page** at the bottom of the window writes
+  `stats.html` for the period on screen and opens it in the browser: a file to keep or send,
+  which a window is not.
+
+### Fixed
+
+- The Settings window no longer opens with a scrollbar it does not need. It had grown about
+  twenty points taller than the work area of a 1440p screen, so a window whose content fits
+  was scrolled all the same; it is a hundred points shorter now, and the desk picture lost a
+  caption that only repeated the section above it.
+
 ## 1.0.0 — 2026-09-01
 
 First public release. Everything below is what the tool does on day one, not a

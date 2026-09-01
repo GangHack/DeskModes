@@ -244,7 +244,11 @@ function Get-ActivityReport {
     }
     if (-not $Store -or -not $Store.days) { return $report }
 
-    $since = Format-DisplayStamp ($Today.AddDays(-1 * [math]::Max(0, $Days - 1))) 'yyyy-MM-dd'
+    # Nought days is "everything there is" — what the window's "All" asks for. An empty
+    # boundary lets every date through, so the whole pot is read without anybody having to
+    # invent a big enough number of days.
+    $since = ''
+    if ($Days -gt 0) { $since = Format-DisplayStamp ($Today.AddDays(-1 * ($Days - 1))) 'yyyy-MM-dd' }
     $dates = @($Store.days.Keys | Where-Object { [string]$_ -ge $since } | Sort-Object)
     if ($dates.Count -eq 0) { return $report }
 
@@ -319,6 +323,25 @@ function ConvertTo-ActivityRows {
     return @($rows | Sort-Object -Property Seconds -Descending)
 }
 
+# The diary writes a mode down by its key — "combo:Work", "solo:XG27AQDMGR" — because that is
+# what a switch is recorded as and a key is the only thing that stays the same shape for a year.
+# A report is read by a person, though, and a key is not what any of those modes is called
+# anywhere else in the app. Every place the diary is shown goes through this: the window, the
+# page and the console.
+function ConvertTo-ModeTitleRows {
+    param($Rows)
+
+    $out = @()
+    foreach ($row in @($Rows)) {
+        $out += [pscustomobject]@{
+            Name    = Get-ModeTitleFromKey -Key ([string]$row.Name)
+            Seconds = [int]$row.Seconds
+            Share   = [double]$row.Share
+        }
+    }
+    return @($out)
+}
+
 # The average hour of arrival and of leaving: "08:42". HH:mm strings are added in minutes.
 function Get-AverageClock {
     param($Times)
@@ -388,7 +411,7 @@ function Format-ActivityReport {
 
     foreach ($section in @(
         @{ Title = 'Displays'; Rows = $Report.Displays },
-        @{ Title = 'Modes';    Rows = $Report.Modes },
+        @{ Title = 'Modes';    Rows = (ConvertTo-ModeTitleRows $Report.Modes) },
         @{ Title = 'Apps';     Rows = $Report.Apps },
         @{ Title = 'App on display'; Rows = $Report.Pairs })) {
 
@@ -411,12 +434,16 @@ function Format-ActivityReport {
     return $out
 }
 
-# --- the report as a picture ------------------------------------------------
-# The same report, but with bars and in the theme's colours. It gets no window of its
-# own: a WPF window with charts is a day of work and another thousand lines, whereas a
-# page in the browser reads better, opens anywhere, and goes to a person as a file they
-# can keep. There is not one external reference inside it — no font, no script: the file
-# has to open on a machine with no internet and must not invite anybody in.
+# --- the report as a page ---------------------------------------------------
+# The same report as a file: bars, the theme's colours, and nothing else. Since 2026-09-01
+# the everyday way to read the diary is the window (New-StatsWindow in SettingsDialog.ps1)
+# — a browser tab is a detour when the question is "where did today go". The page stayed
+# for the other half of the job: it is a FILE, so it can be kept, sent, or opened on a
+# machine that has never heard of this tool. The button at the bottom of the window writes
+# it, and `Set-Display.ps1 stats` prints the same numbers into the console.
+#
+# There is not one external reference inside it — no font, no script: the file has to open
+# on a machine with no internet and must not invite anybody in.
 
 function Format-ActivityHtmlRows {
     param($Rows, [int]$Top = 10)
@@ -529,7 +556,7 @@ function New-ActivityHtml {
 <div class="cards">$cards</div>
 <section><h2>Time of day</h2><div class="hours">$hours</div></section>
 <section><h2>Displays</h2><table>$(Format-ActivityHtmlRows $Report.Displays)</table></section>
-<section><h2>Modes</h2><table>$(Format-ActivityHtmlRows $Report.Modes)</table></section>
+<section><h2>Modes</h2><table>$(Format-ActivityHtmlRows (ConvertTo-ModeTitleRows $Report.Modes))</table></section>
 <section><h2>Apps</h2><table>$(Format-ActivityHtmlRows $Report.Apps 12)</table></section>
 <section><h2>App on display</h2><table>$(Format-ActivityHtmlRows $Report.Pairs 12)</table></section>
 <footer>Window titles are never recorded - only process names. Delete activity.json to forget everything.</footer>

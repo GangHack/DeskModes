@@ -140,8 +140,11 @@ your accent color:
   A minute before, a notification says so — that minute is the whole difference between a
   handy timer and lost work. The countdown lives in memory only: a computer that switches
   itself off a day after you asked would be worse than no timer.
-- **Statistics…** — the diary as a page in your browser, in your theme and accent colour.
-  Greyed out with `(diary is off)` until you turn the diary on in Settings.
+- **Statistics…** — the diary in a window of its own, in your theme and accent colour:
+  **Today**, **7 days**, **30 days** or **All**, and everything on one screen without a
+  scrollbar. **Open as a page** at the bottom writes the same report to `stats.html` and
+  opens it in the browser — a file you can keep or send. Greyed out with `(diary is off)`
+  until you turn the diary on in Settings.
 - **Settings…**, **Open log**, **Open folder**, **Exit**.
 
 ## Combinations
@@ -383,9 +386,12 @@ and a hung `before` would mean a black screen.
 
 Off by default. Turn on **Keep a diary** in Settings and the tray starts counting, every ten
 seconds, which app is in front, which display it is on and which mode the desk is in.
-**Statistics…** in the menu turns that into a page: time at the computer, per display, per
+**Statistics…** in the menu opens that as a window: time at the computer, per display, per
 mode, per app, which app on which display, an hour-of-the-day histogram, your usual day
-from first to last, longest single session, switches, days in a row.
+from first to last, longest single session, switches, days in a row. The period is a row of
+pills — **Today**, **7 days**, **30 days**, **All** — and the whole thing is one screen: no
+scrolling, and nothing hidden a fold below. **Open as a page** writes the same report to
+`stats.html` and opens it in the browser, for when you want it as a file rather than a look.
 
 Three decisions matter more than the code:
 
@@ -539,7 +545,8 @@ including how mode keys follow a rename or a removal (the window is built but ne
 window-layout keys, the remembered mode, the startup-restore decision, rule decisions, the
 rebuild-the-desk decision, brightness plans and the sliders that write them (rows really
 built, not just the model), hook launching, duration parsing, the timer window (typing moves
-its slider and the slider rewrites its field), the desk preview, and the whole
+its slider and the slider rewrites its field), the desk preview, the diary window (each
+period picks its own days, and the bars stay inside their tracks), and the whole
 diary — sums, report, streaks and the page it produces. **No test touches your displays, your
 `settings.json`, your log or your diary** — those are redirected to temporary files. Non-zero
 exit on failure.
@@ -564,7 +571,7 @@ break the "nothing is installed on your system" promise.
 | --- | --- |
 | `DisplayCore.ps1` | all the logic, definitions only — one source of truth for tray and CLI |
 | `Displays.ps1` | the app: tray icon, menu, hotkeys, rules, timers |
-| `SettingsDialog.ps1` | the windows (WPF, themed after the system): Settings, the mode editor and the timer popup, separate so they can be built in isolation |
+| `SettingsDialog.ps1` | the windows (WPF, themed after the system): Settings, the mode editor, the timer popup and the diary, separate so they can be built in isolation |
 | `WindowLayout.ps1` | window-position snapshots per display set |
 | `Activity.ps1` | the diary and its report |
 | `Set-Display.ps1` | the command line |
@@ -572,7 +579,7 @@ break the "nothing is installed on your system" promise.
 | `tests\live.ps1` | the same questions asked of your real desk, by hand (`-ReadOnly` changes nothing) |
 | `tools\check.ps1` | every gate in one command - run this before calling a change done |
 | `Make-Icon.ps1` | regenerates `app.ico` |
-| `render-preview.ps1` | renders the Settings window, a mode editor and the timer popup to PNGs without showing them, for checking the UI (`-Fake` invents a desk, `-EditorMode` picks whose editor) |
+| `render-preview.ps1` | renders the Settings window, a mode editor, the timer popup and the diary to PNGs without showing them, for checking the UI (`-Fake` invents a desk and a diary, `-EditorMode` picks whose editor) |
 | `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
 | `settings.example.json` | a `settings.json` with every key filled in, to copy from |
 | `last-run.log` | the log; rotates past 1 MB |

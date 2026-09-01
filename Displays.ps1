@@ -1257,15 +1257,17 @@ $menu.add_Opening({
     else {
         $statsItem.add_Click({
             try {
-                # The pot is written to disk before the report: the last few minutes live in
+                # The pot is written to disk before the window: the last few minutes live in
                 # memory, and without this the report would lag two minutes behind life.
                 Save-ActivityStore -Force
-                [void](Show-ActivityReport -Days 30)
+                Show-ActivityStats
             }
             catch {
-                Write-DisplayLog "stats: report failed - $($_.Exception.Message)"
-                Show-Balloon 'Could not build the report' $_.Exception.Message 'Error'
+                Write-DisplayLog "stats: the diary window failed - $($_.Exception.Message)"
+                Show-Balloon 'Could not open the diary' $_.Exception.Message 'Error'
             }
+            # A WPF window, like the settings one, leaves a working set behind it.
+            Optimize-TrayMemory
         })
     }
     [void]$menu.Items.Add($statsItem)

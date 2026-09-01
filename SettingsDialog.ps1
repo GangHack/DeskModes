@@ -1,6 +1,6 @@
 ﻿<#
-    SettingsDialog.ps1 — ScreenDeck's windows, in WPF: the settings, the mode editor and the
-    time picker for the timer.
+    SettingsDialog.ps1 — ScreenDeck's windows, in WPF: the settings, the mode editor, the time
+    picker for the timer and the diary.
 
     WPF and not WinForms: WinForms has no templates, and "modern" there means drawing every
     button by hand in Paint. In WPF rounded corners, toggles and a dark theme are markup
@@ -15,9 +15,11 @@
         Show-SettingsDialog   show it and hand back the changed settings, or $null
         New-TimerWindow       build the timer window (testable)
         Show-TimerDialog      show it and hand back the minutes, or 0
+        New-StatsWindow       build the diary window over a pot of days (testable)
+        Show-ActivityStats    show it
 
-    What they share is the palette, the markup resources and Convert-UiXaml: three windows of
-    one application have to look like one, not like three.
+    What they share is the palette, the markup resources and Convert-UiXaml: four windows of
+    one application have to look like one, not like four.
 
     The theme is the system's: dark/light and the accent colour are read out of the registry on
     every open (Test-DarkTheme and Get-AccentColor in DisplayCore.ps1).
@@ -615,6 +617,23 @@ $script:UiResourcesXaml = @'
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- The same pill, chosen. Filled, because here the row IS a choice of one out of four
+             (the diary's period) rather than four separate offers: an outline would say "under the
+             cursor" and not "this is the one you are looking at". -->
+        <Style x:Key="ChipOn" TargetType="Button" BasedOn="{StaticResource Chip}">
+            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border CornerRadius="13" Background="{StaticResource AccentBrush}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 '@
 
 $script:SettingsWindowXaml = @'
@@ -645,15 +664,14 @@ $script:SettingsWindowXaml = @'
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Arrange the cards from left to right; the star marks the display that keeps the taskbar."/>
                         <WrapPanel x:Name="DeskPanel"/>
-                        <Border x:Name="PreviewBox" CornerRadius="4" Padding="12,12" Margin="0,4,0,0"
+                        <!-- The picture has no caption of its own: it stands right under the cards
+                             it is drawn from, and the section's hint already says what the order
+                             means. A line repeating "this is how they will be arranged" cost 24
+                             points of height, and those are the points the window scrolls over. -->
+                        <Border x:Name="PreviewBox" CornerRadius="4" Padding="10,10" Margin="0,4,0,0"
                                 Background="{StaticResource MiniBrush}"
                                 BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1">
-                            <StackPanel>
-                                <Canvas x:Name="PreviewCanvas" Width="540" Height="132" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="PreviewHint" Style="{StaticResource Hint}" Margin="0,8,0,0"
-                                           TextAlignment="Center"
-                                           Text="How Windows will arrange the displays."/>
-                            </StackPanel>
+                            <Canvas x:Name="PreviewCanvas" Width="540" Height="112" HorizontalAlignment="Center"/>
                         </Border>
                     </StackPanel>
                 </Border>
@@ -681,7 +699,7 @@ $script:SettingsWindowXaml = @'
                             </StackPanel>
                             <CheckBox x:Name="StartupBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -692,7 +710,7 @@ $script:SettingsWindowXaml = @'
                             </StackPanel>
                             <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -703,7 +721,7 @@ $script:SettingsWindowXaml = @'
                             </StackPanel>
                             <CheckBox x:Name="NotifyBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -714,18 +732,21 @@ $script:SettingsWindowXaml = @'
                             </StackPanel>
                             <CheckBox x:Name="WindowsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Restore the last mode"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="After turning the computer on, return to the mode you chose last - not to whatever Windows picked."/>
+                                <!-- One line, and deliberately: at 640 points of width the longer
+                                     wording wrapped, and the second line pushed the window past the
+                                     screen into a scrollbar it did not otherwise need. -->
+                                <TextBlock Style="{StaticResource RowSub}" Text="Come back to the mode you chose last, not to whatever Windows picked."/>
                             </StackPanel>
                             <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0">
+                        <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -1022,7 +1043,6 @@ function New-SettingsWindow {
         LastModeBox       = $win.FindName('LastModeBox')
         StatsBox          = $win.FindName('StatsBox')
         PreviewCanvas     = $win.FindName('PreviewCanvas')
-        PreviewHint       = $win.FindName('PreviewHint')
         # Mode key -> the brightness model (see ConvertTo-LevelModel). Edited in the mode editor,
         # leaves for settings.json on Save.
         Levels            = [ordered]@{}
@@ -2403,7 +2423,9 @@ function Update-ModesPanel {
     foreach ($mode in $modes) {
         $key = [string]$mode.Key
         $row = New-Object System.Windows.Controls.Grid
-        $row.Margin = New-Object System.Windows.Thickness 0, 4, 0, 4
+        # Two points, not four: the list is as long as the desk has modes, and every point here
+        # is paid six times over. The rows are still told apart by their two lines of text.
+        $row.Margin = New-Object System.Windows.Thickness 0, 2, 0, 2
         foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
                              [System.Windows.GridLength]::Auto,
                              [System.Windows.GridLength]::Auto,
@@ -3095,5 +3117,445 @@ function Show-TimerDialog {
     finally {
         $ui.Window.Close()
         $script:ActiveTimerUi = $null
+    }
+}
+
+# --- the diary window -------------------------------------------------------
+# What the diary counted, as a window instead of a page in the browser. The page has not gone
+# anywhere — the button at the bottom writes it and opens it — but for the everyday question
+# ("where did today go?") a browser tab is a detour: a file on the disk, a second application,
+# and a step away from what you were doing.
+#
+# Two rules hold this window's shape:
+#
+#   * IT IS ONE SCREEN. The number of sections is fixed and each shows its top few rows, so on
+#     any ordinary desk the whole diary is visible at once — a report you have to scroll is one
+#     nobody reads to the end. The viewer around it is insurance for a small screen, not a
+#     design: on this desk it never appears.
+#   * The period is chosen HERE, not in the settings. "Today" and "all of it" are different
+#     questions, and both get asked in the same minute.
+
+$script:StatsPeriods = @(
+    [pscustomobject]@{ Days = 1;  Title = 'Today' }
+    [pscustomobject]@{ Days = 7;  Title = '7 days' }
+    [pscustomobject]@{ Days = 30; Title = '30 days' }
+    # Nought days is "everything there is" — see Get-ActivityReport.
+    [pscustomobject]@{ Days = 0;  Title = 'All' }
+)
+
+# How many rows a section shows. Five, not ten: four sections share one screen, height is what
+# a sixth row costs, and the tail of a top list is noise. The MinHeight in the markup is worth
+# four of them — a desk has two or three displays, and without it that card would be a caption
+# with a gap under it.
+$script:StatsTopRows = 5
+
+$script:StatsWindowXaml = @'
+<!-- The width is a number and the height follows the content: everything in here is fixed in
+     count, so the window comes out the same height every time — about 780 points, whatever the
+     diary holds. ResizeMode NoResize for the same reason: there is nothing to resize towards. -->
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ScreenDeck - Diary"
+        Width="880" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        Background="%%BG%%" Foreground="%%TEXT%%"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        UseLayoutRounding="True">
+    <Window.Resources>
+%%RES%%
+    </Window.Resources>
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource FooterBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="20,10">
+            <Grid>
+                <!-- What the diary does NOT hold is worth saying where the diary is read, not only
+                     where it is switched on. -->
+                <TextBlock Style="{StaticResource RowSub}" Margin="0,0,16,0" VerticalAlignment="Center"
+                           Text="No window titles are ever recorded - only process names. Delete activity.json to forget everything."/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="PageBtn" Style="{StaticResource Btn}" Content="Open as a page" Width="140"
+                            ToolTip="Write the same report to stats.html and open it - a file you can keep or send."/>
+                    <Button x:Name="CloseBtn" Style="{StaticResource BtnAccent}" Content="Close" Width="96"
+                            Margin="8,0,0,0" IsCancel="True" IsDefault="True"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- Auto, and it never shows on a desk with room: the window asks for about 780 points
+             and gets them. On a small screen at 150% the work area is 720, and there the viewer is
+             the difference between scrolling to the last row and having it cut off — SizeToContent
+             stops at the screen's edge and clips whatever did not fit. -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,16,20,8">
+                <Grid Margin="0,0,0,12">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource H2}" Text="Diary" Margin="0"/>
+                        <TextBlock x:Name="RangeText" Style="{StaticResource Hint}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="PeriodRow" Orientation="Horizontal"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+                <!-- The cards carry a margin of their own, and the row pulls itself out by the same
+                     amount: otherwise the first and the last card would stand inside the sections
+                     below them instead of over them. -->
+                <UniformGrid x:Name="CardsPanel" Rows="1" Columns="6" Margin="-4,0,-4,12"/>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource H2}" Text="Time of day"/>
+                        <UniformGrid x:Name="HoursPanel" Rows="1" Columns="24" Height="88"/>
+                        <UniformGrid x:Name="HourLabels" Rows="1" Columns="24" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource Card}" Margin="0,0,6,12">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H2}" Text="Displays"/>
+                            <StackPanel x:Name="DisplayRows" MinHeight="92"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Margin="6,0,0,12">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H2}" Text="Modes"/>
+                            <StackPanel x:Name="ModeRows" MinHeight="92"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,6,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H2}" Text="Apps"/>
+                            <StackPanel x:Name="AppRows" MinHeight="92"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}" Margin="6,0,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H2}" Text="App on display"/>
+                            <StackPanel x:Name="PairRows" MinHeight="92"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
+'@
+
+# The window being worked with right now (see the comment about handlers above: the pills and the
+# button take their state from here, not from a closure).
+$script:ActiveStatsUi = $null
+
+# The line under the title: what is being looked at. A pure function — the window's one piece of
+# prose, and the one thing a test can read back without a screenshot.
+function Get-StatsRangeText {
+    param($Report)
+
+    if (-not $Report -or [int]$Report.DaysRecorded -eq 0) {
+        # Not "turn the diary on": by the time this window is open it IS on (the tray offers
+        # nothing else). An empty report here means nothing has been counted yet.
+        return 'Nothing counted for this period yet.'
+    }
+    if ([string]$Report.From -eq [string]$Report.To) { return [string]$Report.From }
+    return '{0} .. {1}   -   {2} days with something in them' -f $Report.From, $Report.To, $Report.DaysRecorded
+}
+
+# One fact, big: the number first, what it is underneath. The caption carries a ToolTip of its
+# own — six cards share 840 points, and a long value trims rather than pushing its neighbours.
+function New-StatsCard {
+    param($Window, [string]$Value, [string]$Caption)
+
+    $box = New-Object System.Windows.Controls.Border
+    $box.Background = $Window.FindResource('CardBrush')
+    $box.BorderBrush = $Window.FindResource('CardBorderBrush')
+    $box.BorderThickness = New-Object System.Windows.Thickness 1
+    $box.CornerRadius = New-Object System.Windows.CornerRadius 4
+    $box.Padding = New-Object System.Windows.Thickness 10, 8, 10, 8
+    $box.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+    $box.ToolTip = '{0} - {1}' -f $Value, $Caption
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $box.Child = $stack
+
+    $big = New-Object System.Windows.Controls.TextBlock
+    $big.Text = $Value
+    $big.FontSize = 16
+    $big.FontWeight = 'SemiBold'
+    $big.TextTrimming = 'CharacterEllipsis'
+    [void]$stack.Children.Add($big)
+
+    $small = New-Object System.Windows.Controls.TextBlock
+    $small.Text = $Caption
+    $small.FontSize = 11
+    $small.Foreground = $Window.FindResource('DimBrush')
+    $small.TextTrimming = 'CharacterEllipsis'
+    $small.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+    [void]$stack.Children.Add($small)
+
+    return $box
+}
+
+# A row of a section: name, time, bar, share. The bar is two Borders — a track and what is
+# filled in — rather than a Slider or a ProgressBar: both of those bring a template, a theme and
+# a hover state along with them, and none of that is wanted on a figure.
+function New-StatsRow {
+    param($Window, $Row, [double]$BarWidth = 96)
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 0, 3, 0, 3
+    foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                         [System.Windows.GridLength]::Auto,
+                         [System.Windows.GridLength]::Auto,
+                         [System.Windows.GridLength]::Auto)) {
+        $column = New-Object System.Windows.Controls.ColumnDefinition
+        $column.Width = $width
+        [void]$grid.ColumnDefinitions.Add($column)
+    }
+
+    # "chrome|LG ULTRAFINE" is a pair, and it is read as one: the separator becomes a word. The
+    # name itself comes from the process list and out of EDID, so it can be anything at all — it
+    # is put into a TextBlock as text and never becomes markup (which is the whole difference
+    # from the HTML page, where Format-HtmlText has to do that work).
+    $name = New-Object System.Windows.Controls.TextBlock
+    $name.Text = [string]$Row.Name -replace '\|', ' on '
+    $name.FontSize = 13
+    $name.TextTrimming = 'CharacterEllipsis'
+    $name.VerticalAlignment = 'Center'
+    $name.Margin = New-Object System.Windows.Thickness 0, 0, 8, 0
+    $name.ToolTip = $name.Text
+    [void]$grid.Children.Add($name)
+
+    $time = New-Object System.Windows.Controls.TextBlock
+    $time.Text = Format-ActivitySpan ([int]$Row.Seconds)
+    $time.FontSize = 12
+    $time.Foreground = $Window.FindResource('DimBrush')
+    $time.TextAlignment = 'Right'
+    $time.MinWidth = 72
+    $time.VerticalAlignment = 'Center'
+    $time.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+    [System.Windows.Controls.Grid]::SetColumn($time, 1)
+    [void]$grid.Children.Add($time)
+
+    $track = New-Object System.Windows.Controls.Border
+    $track.Width = $BarWidth
+    $track.Height = 6
+    $track.CornerRadius = New-Object System.Windows.CornerRadius 3
+    $track.Background = $Window.FindResource('MiniBrush')
+    $track.VerticalAlignment = 'Center'
+    $fill = New-Object System.Windows.Controls.Border
+    # Clamped: one application sits on two monitors, so a share is worked out against the time at
+    # the computer and can come out above a hundred (see ConvertTo-ActivityRows). A bar wider than
+    # its track would draw over the percentage beside it.
+    $share = [math]::Min(100, [math]::Max(0, [double]$Row.Share))
+    $fill.Width = [math]::Max(3, $BarWidth * $share / 100.0)
+    $fill.Height = 6
+    $fill.CornerRadius = New-Object System.Windows.CornerRadius 3
+    $fill.Background = $Window.FindResource('AccentBrush')
+    $fill.HorizontalAlignment = 'Left'
+    $track.Child = $fill
+    [System.Windows.Controls.Grid]::SetColumn($track, 2)
+    [void]$grid.Children.Add($track)
+
+    $percent = New-Object System.Windows.Controls.TextBlock
+    $percent.Text = '{0}%' -f (Format-ActivityPercent ([double]$Row.Share))
+    $percent.FontSize = 12
+    $percent.Foreground = $Window.FindResource('DimBrush')
+    $percent.TextAlignment = 'Right'
+    $percent.MinWidth = 40
+    $percent.VerticalAlignment = 'Center'
+    $percent.Margin = New-Object System.Windows.Thickness 10, 0, 0, 0
+    [System.Windows.Controls.Grid]::SetColumn($percent, 3)
+    [void]$grid.Children.Add($percent)
+
+    return $grid
+}
+
+function Update-StatsRows {
+    param($Ui, $Panel, $Rows)
+
+    $Panel.Children.Clear()
+    $list = @($Rows | Select-Object -First $script:StatsTopRows)
+    if ($list.Count -eq 0) {
+        [void]$Panel.Children.Add((New-UiTextBlock -Text 'nothing yet' -Style 'RowSub' -Window $Ui.Window))
+        return
+    }
+    foreach ($row in $list) {
+        [void]$Panel.Children.Add((New-StatsRow -Window $Ui.Window -Row $row))
+    }
+}
+
+# Twenty-four bars, empty hours included: the dip at lunch and the wall at bedtime are what this
+# is looked at for, and they are only visible against the hours that have nothing in them.
+function Update-StatsHours {
+    param($Ui, $Report)
+
+    $Ui.HoursPanel.Children.Clear()
+    $Ui.HourLabels.Children.Clear()
+    $win = $Ui.Window
+    # The height comes from the markup rather than from a constant here: the panel is what the
+    # bar has to fit inside, and two numbers that have to agree are one too many.
+    $room = [double]$Ui.HoursPanel.Height
+
+    $hours = @($Report.Hours)
+    if ($hours.Count -eq 0) {
+        # A report with no days in it hands back no hours either (see Get-ActivityReport). The day
+        # is still a day: a row of ticks says "nothing happened here", an empty rectangle says the
+        # drawing is broken.
+        $hours = @(0..23 | ForEach-Object { [pscustomobject]@{ Name = '{0:00}' -f $_; Seconds = 0; Share = 0 } })
+    }
+
+    foreach ($hour in $hours) {
+        $bar = New-Object System.Windows.Controls.Border
+        $bar.VerticalAlignment = 'Bottom'
+        $bar.Margin = New-Object System.Windows.Thickness 3, 0, 3, 0
+        $bar.CornerRadius = New-Object System.Windows.CornerRadius 3, 3, 0, 0
+        $bar.Background = $win.FindResource('AccentBrush')
+        # An hour with nothing in it still gets two points of bar: a row of ticks reads as a scale,
+        # a gap in the middle of one reads as a fault in the drawing.
+        $bar.Height = [math]::Max(2, $room * [double]$hour.Share / 100.0)
+        # The busiest hour at full strength, the rest faded: one accent colour, two weights. A
+        # second colour would have to mean something, and there is nothing here for it to mean.
+        $bar.Opacity = $(if ([int]$hour.Name -eq [int]$Report.BusiestHour) { 1.0 } else { 0.55 })
+        $bar.ToolTip = '{0}:00   {1}' -f $hour.Name, (Format-ActivitySpan ([int]$hour.Seconds))
+        [void]$Ui.HoursPanel.Children.Add($bar)
+
+        $label = New-Object System.Windows.Controls.TextBlock
+        # Every third hour: twenty-four numbers under twenty-four bars is a fence, not a scale.
+        $label.Text = $(if (([int]$hour.Name % 3) -eq 0) { [string]$hour.Name } else { '' })
+        $label.FontSize = 10
+        $label.Foreground = $win.FindResource('DimBrush')
+        $label.TextAlignment = 'Center'
+        [void]$Ui.HourLabels.Children.Add($label)
+    }
+}
+
+# The one place the window's contents come from: the period changes, everything is redrawn out of
+# a fresh report. There is no partial update — the whole window is four lists and six numbers, and
+# rebuilding it costs less than keeping track of what changed.
+function Update-StatsView {
+    param($Ui)
+
+    $win = $Ui.Window
+    $report = Get-ActivityReport -Store $Ui.Store -Days $Ui.Days -Today $Ui.Today
+    $Ui.Report = $report
+
+    foreach ($chip in @($Ui.Chips)) {
+        $chip.Style = $win.FindResource($(if ([int]$chip.Tag -eq [int]$Ui.Days) { 'ChipOn' } else { 'Chip' }))
+    }
+
+    $Ui.RangeText.Text = Get-StatsRangeText -Report $report
+
+    $Ui.CardsPanel.Children.Clear()
+    foreach ($fact in @(
+        @{ V = (Format-ActivitySpan $report.Active);     K = 'at the computer' }
+        @{ V = (Format-ActivitySpan $report.AverageDay); K = 'a day on average' }
+        @{ V = (Format-ActivitySpan $report.Longest);    K = 'longest session' }
+        @{ V = [string]$report.Switches;                 K = 'mode switches' }
+        @{ V = $(if ($report.AverageStart) { '{0}-{1}' -f $report.AverageStart, $report.AverageEnd } else { '-' })
+           K = 'usual day' }
+        @{ V = [string]$report.Streak;                   K = 'days in a row' })) {
+        [void]$Ui.CardsPanel.Children.Add(
+            (New-StatsCard -Window $win -Value ([string]$fact.V) -Caption ([string]$fact.K)))
+    }
+
+    Update-StatsHours -Ui $Ui -Report $report
+    Update-StatsRows -Ui $Ui -Panel $Ui.DisplayRows -Rows $report.Displays
+    # By title rather than by key: "Work", not "combo:Work" (see ConvertTo-ModeTitleRows).
+    Update-StatsRows -Ui $Ui -Panel $Ui.ModeRows    -Rows (ConvertTo-ModeTitleRows $report.Modes)
+    Update-StatsRows -Ui $Ui -Panel $Ui.AppRows     -Rows $report.Apps
+    Update-StatsRows -Ui $Ui -Panel $Ui.PairRows    -Rows $report.Pairs
+}
+
+function Set-StatsPeriod {
+    param($Ui, [int]$Days)
+
+    if ([int]$Ui.Days -eq $Days) { return }
+    $Ui.Days = $Days
+    Update-StatsView -Ui $Ui
+}
+
+function New-StatsWindow {
+    param($Store, [int]$Days = 7, [datetime]$Today = (Get-Date))
+
+    Initialize-WpfRuntime
+
+    $dark = Test-DarkTheme
+    $palette = Get-UiPalette -Dark $dark
+    $win = Convert-UiXaml -Xaml $script:StatsWindowXaml -Palette $palette
+    Register-WindowTheme -Window $win -Dark $dark
+
+    $ui = [pscustomobject]@{
+        Window      = $win
+        Dark        = $dark
+        # The pot as it was when the window opened. The diary goes on counting while it is up, and
+        # a window that redrew itself under the reader's eyes would be worse than one that does not.
+        Store       = $Store
+        Days        = $Days
+        Today       = $Today
+        Report      = $null
+        RangeText   = $win.FindName('RangeText')
+        CardsPanel  = $win.FindName('CardsPanel')
+        HoursPanel  = $win.FindName('HoursPanel')
+        HourLabels  = $win.FindName('HourLabels')
+        DisplayRows = $win.FindName('DisplayRows')
+        ModeRows    = $win.FindName('ModeRows')
+        AppRows     = $win.FindName('AppRows')
+        PairRows    = $win.FindName('PairRows')
+        Chips       = @()
+    }
+
+    $chips = @()
+    foreach ($period in $script:StatsPeriods) {
+        $chip = New-Object System.Windows.Controls.Button
+        $chip.Content = $period.Title
+        # Which period a pill stands for is on the pill itself: this window's handlers hold no
+        # closures (see the comment about handlers above).
+        $chip.Tag = [int]$period.Days
+        $chip.Style = $win.FindResource('Chip')
+        $chip.add_Click({
+            $ui = $script:ActiveStatsUi
+            if ($ui) { Set-StatsPeriod -Ui $ui -Days ([int]$this.Tag) }
+        })
+        [void]$win.FindName('PeriodRow').Children.Add($chip)
+        $chips += $chip
+    }
+    # The last pill's own right margin would leave the row standing off the window's edge, out of
+    # line with the cards underneath it.
+    if ($chips.Count -gt 0) {
+        $chips[-1].Margin = New-Object System.Windows.Thickness 0, 0, 0, 0
+    }
+    $ui.Chips = $chips
+
+    $win.FindName('PageBtn').add_Click({
+        $ui = $script:ActiveStatsUi
+        if (-not $ui) { return }
+        try { [void](Show-ActivityReport -Days ([int]$ui.Days)) }
+        catch {
+            Write-DisplayLog "stats: the page failed - $($_.Exception.Message)"
+            [void][System.Windows.MessageBox]::Show(
+                "Could not write stats.html." + [environment]::NewLine +
+                "Check that the folder ScreenDeck sits in can be written to. Details are in the log.",
+                'ScreenDeck', [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Warning)
+        }
+    })
+
+    # The window is built — from this point on the handlers find it here.
+    $script:ActiveStatsUi = $ui
+    Update-StatsView -Ui $ui
+    return $ui
+}
+
+function Show-ActivityStats {
+    param([int]$Days = 7)
+
+    $ui = New-StatsWindow -Store (Get-ActivityStore) -Days $Days
+    try { [void]$ui.Window.ShowDialog() }
+    finally {
+        $ui.Window.Close()
+        $script:ActiveStatsUi = $null
     }
 }

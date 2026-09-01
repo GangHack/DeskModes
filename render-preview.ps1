@@ -78,6 +78,39 @@ function New-FakeState {
     )
 }
 
+function New-FakeDiary {
+    # Ten days of an invented fortnight. Enough that every section of the diary window has
+    # something in it and the hour histogram has a shape rather than one spike — an empty diary
+    # renders as an empty window, and an empty window shows nothing about the layout.
+    $store = [ordered]@{ days = [ordered]@{} }
+    $today = (Get-Date).Date
+    $work = @(
+        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 10; Seconds = 7200; Time = '09:40' }
+        @{ App = 'chrome';  Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 12; Seconds = 3600; Time = '12:10' }
+        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 15; Seconds = 5400; Time = '15:05' }
+        @{ App = 'Teams';   Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 17; Seconds = 1800; Time = '17:20' }
+        @{ App = 'cs2';     Display = 'XG27AQDMGR';   Mode = 'solo:XG27AQDMGR'; Hour = 21; Seconds = 4200; Time = '21:30' }
+        @{ App = 'spotify'; Display = 'LG ULTRAGEAR'; Mode = 'all'; Hour = 23; Seconds = 900; Time = '23:15' }
+    )
+    foreach ($offset in 0..9) {
+        # The key is assembled by the same function the code uses: on a calendar other than the
+        # Gregorian one, ToString without a culture writes a year the report would then look for
+        # in vain (see Format-DisplayStamp).
+        $date = Format-DisplayStamp $today.AddDays(-$offset) 'yyyy-MM-dd'
+        $day = Get-ActivityDay -Store $store -Date $date
+        foreach ($span in $work) {
+            # The days are not identical: a diary where every bar is the same height says nothing
+            # about whether the drawing works.
+            $seconds = [int]([int]$span.Seconds * (1.0 - 0.05 * ($offset % 4)))
+            Add-ActivitySpan -Day $day -Process $span.App -Display $span.Display -Mode $span.Mode `
+                             -Seconds $seconds -Time ([string]$span.Time) -Hour ([int]$span.Hour)
+        }
+        $day.switches = 6 + ($offset % 3)
+        $day.longest = 9000
+    }
+    return $store
+}
+
 $settings = Get-DisplaySettings
 if ($Fake) {
     $state = @(New-FakeState)
@@ -195,6 +228,13 @@ try {
     $timer = New-TimerWindow -Action 'sleep' -Minutes 90
     try { Save-WindowSnapshot -Window $timer.Window -Path $timerOut }
     finally { $timer.Window.Close(); $script:ActiveTimerUi = $null }
+
+    # The fourth window is the diary. With -Fake it gets an invented pot: on a machine where the
+    # diary has never been turned on the real one is empty, and an empty window shows nothing.
+    $statsOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-stats.png')
+    $stats = New-StatsWindow -Store $(if ($Fake) { New-FakeDiary } else { Get-ActivityStore }) -Days 7
+    try { Save-WindowSnapshot -Window $stats.Window -Path $statsOut }
+    finally { $stats.Window.Close(); $script:ActiveStatsUi = $null }
 }
 finally {
     $ui.Window.Close()

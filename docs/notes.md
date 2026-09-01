@@ -2151,3 +2151,64 @@ command line, `render-preview.ps1` and the test runner all dot-source, and it is
 and no new entry point can forget it. The test does not spawn a shell; it reads the source and asserts
 the guard still stands **before** the `Add-Type` it protects, because below it the refusal would arrive
 after the error it exists to replace.
+## The scrollbar was fifteen points wide, and the diary moved out of the browser (2026-09-01)
+
+Two complaints, and only the second one sounded like a feature: *there is a scrollbar in the settings
+though everything fits*, and *show the statistics somewhere other than the browser, with a period I can
+choose*.
+
+The first was arithmetic. `render-preview.ps1` writes at 192 dpi, so its numbers halve into WPF points:
+the Settings window measured **1375** points of content. This desk's primary is the 1440p panel at 100%,
+work area 1392 pixels, and a window carries a title bar of about 31 on top of its content. 1375 + 31 =
+1406 against 1392: fourteen points over, `SizeToContent` stops at the screen's edge, and the viewer that
+had nothing to scroll grew a bar and took another seventeen points of width for it. A window that *fits*
+was scrolled because it missed by half a line of text.
+
+So the height was spent down rather than the bar hidden — hiding it would have clipped the last row
+instead:
+
+| what | points |
+| --- | --- |
+| the caption under the desk picture ("How Windows will arrange the displays.") | 24 |
+| the desk canvas, 132 → 112, and its padding 12 → 10 | 24 |
+| the six behaviour rows, gaps 12 → 10 | 20 |
+| "Restore the last mode", reworded so it stops wrapping to a second line | 16 |
+| the six mode rows, margins 4 → 2 | 24 |
+
+1277 now — about 80 points of room, which is two more modes before this comes back. The caption was the
+only *thing* removed, and it was the right one: it stood under a picture of three named rectangles and
+said that the picture was of three rectangles.
+
+The second complaint was the interesting one. `Activity.ps1` had carried a note since August saying the
+report gets no window of its own — "a WPF window with charts is a day of work and another thousand lines,
+whereas a page in the browser reads better". Half of that stayed true. What broke it is the period: the
+page is a **static file with no script in it**, deliberately, so choosing "today" in it means writing the
+file again and reloading the tab. Four periods that way are four round trips through the browser to answer
+a question you asked from the tray icon. In a window, four pills.
+
+So both exist, and each does what it is for. The window is the everyday look: 880 by 750 points, six
+figures, the hour histogram, four top-five lists, one screen, no scrolling on any desk with 780 points of
+height. The page is the artefact: **Open as a page** writes `stats.html` for whatever period is on screen
+— a file to keep or to send, which a window will never be. Both are built from the same
+`Get-ActivityReport`, so they cannot disagree.
+
+Three small things fell out of the work:
+
+- **"All" is nought days, not a big number.** `Get-ActivityReport` builds a `yyyy-MM-dd` boundary and
+  compares dates as strings; the empty string is below every date there can be, so `-Days 0` reads the
+  whole pot without anybody having to guess how far back "far enough" is.
+- **The diary keeps mode keys; nobody should have to read them.** `combo:Work` is what a switch is
+  recorded as and it must stay that way — but `Get-ModeTitleFromKey` already turns a key into the name
+  the mode has everywhere else in the app, and now all three places the diary is shown (window, page,
+  console) go through one `ConvertTo-ModeTitleRows`. It cost eight lines and removed the last place where
+  the tool spoke to a person in its own storage format.
+- **An empty report hands back no hours at all** — `Get-ActivityReport` returns early before it fills the
+  twenty-four. The page never showed it because nobody opens a report of nothing; the window would have
+  drawn a blank rectangle under "Time of day" and looked broken. It draws the twenty-four ticks itself in
+  that case: a flat row says "nothing happened", empty space says "this is not finished".
+
+The window is the fourth in `SettingsDialog.ps1` and follows the same three rules as the other three: it
+is built separately from being shown (`New-StatsWindow` / `Show-ActivityStats`), not one handler holds a
+closure (the period lives on the pill's `.Tag`, the window in `$script:ActiveStatsUi`), and
+`render-preview.ps1` renders it to a PNG without showing it — which is how its layout was measured at
+every step above, on a desk that does not exist.

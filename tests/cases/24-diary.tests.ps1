@@ -122,6 +122,26 @@ Test-Case 'diary: the report reads like a report' {
     Assert-True ($text -like '*chrome on LG ULTRAGEAR*') 'and which display it was on'
 }
 
+Test-Case 'diary: a period of nought days is every day there is' {
+    # What the window's "All" asks for. Today is months past the last day in the pot, so every
+    # bounded period comes back empty and only "everything" finds anything at all.
+    $far = [datetime]'2027-01-01'
+    Assert-Equal 0 (Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today $far).DaysRecorded 'a month reaches nothing'
+    $all = Get-ActivityReport -Store (New-TestDiary) -Days 0 -Today $far
+    Assert-Equal 4 $all.DaysRecorded 'and nought days reaches all four'
+    Assert-Equal 43200 $all.Active 'with their time'
+}
+
+Test-Case 'diary: a report names modes the way the app does, not the way the file does' {
+    $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
+    $text = (Format-ActivityReport -Report $rep) -join "`n"
+    Assert-True ($text -like '*Work*') 'the combination by its name'
+    Assert-Equal $false ($text -like '*combo:Work*') 'and not by its key'
+    $html = New-ActivityHtml -Report $rep
+    Assert-True ($html -like '*Only XG27AQDMGR*') 'the page says the same'
+    Assert-Equal $false ($html -like '*solo:XG27AQDMGR*') 'and no key gets through to it either'
+}
+
 Test-Case 'diary: time reads as hours and minutes' {
     Assert-Equal '-' (Format-ActivitySpan 0)
     Assert-Equal '30 min' (Format-ActivitySpan 1800)
