@@ -360,7 +360,8 @@ Test-Case 'dialog: a mode keeping its own shortcut is not a conflict with itself
     try {
         $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
         $ed = New-ModeEditorWindow -Mode $mode -Combo $ui.Combos[0] -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             $got = Read-ModeFromUi -Editor $ed
             Assert-True $got.Ok 'its own binding, left alone, goes through'

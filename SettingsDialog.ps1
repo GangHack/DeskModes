@@ -499,6 +499,63 @@ $script:UiResourcesXaml = @'
             </Setter>
         </Style>
 
+        <!-- The same dropdown, but what it holds can also be typed. For the audio device
+             specifically: what is stored is a PIECE of a device's name, and the list can only
+             offer the whole one — a person shortens "Speakers (Realtek High Definition Audio)"
+             to "Realtek" by hand so the setting survives a driver renaming the rest. An
+             editable ComboBox needs PART_EditableTextBox by that exact name in the template:
+             without it WPF finds nothing to type into and the box is silently read-only. -->
+        <Style x:Key="SelectEdit" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="IsEditable" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="Bd" CornerRadius="4" Background="{StaticResource InputBrush}"
+                                    BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1"/>
+                            <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                          HorizontalAlignment="Right" Width="26" Cursor="Hand"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent">
+                                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Data="M 0,0 L 4,4 L 8,0" Stroke="{StaticResource DimBrush}"
+                                                  StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <TextBox x:Name="PART_EditableTextBox" Margin="9,0,26,0"
+                                     VerticalContentAlignment="Center" BorderThickness="0" Padding="0"
+                                     Background="Transparent" Foreground="{StaticResource TextBrush}"
+                                     CaretBrush="{StaticResource TextBrush}"
+                                     SelectionBrush="{StaticResource AccentBrush}"
+                                     FocusVisualStyle="{x:Null}"/>
+                            <Popup x:Name="PART_Popup" Placement="Bottom"
+                                   IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                   AllowsTransparency="True">
+                                <Border CornerRadius="8" Background="{StaticResource CardBrush}"
+                                        BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1"
+                                        Margin="0,4,0,0" MinWidth="{TemplateBinding ActualWidth}">
+                                    <ScrollViewer MaxHeight="220">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ScrollThumb" TargetType="Thumb">
             <Setter Property="Template">
                 <Setter.Value>
@@ -820,9 +877,36 @@ $script:ModeEditorXaml = @'
                                VerticalAlignment="Center" Margin="12,0,0,0"/>
                 </Grid>
                 <StackPanel x:Name="LevelRowsPanel" Margin="0,8,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="Contrast" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="The same, down the same channel in the cable. Fewer monitors answer for contrast than for brightness."/>
+                <ComboBox x:Name="ContrastKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                <Grid x:Name="ContrastOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="ContrastOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ContrastOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
+                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+                </Grid>
+                <StackPanel x:Name="ContrastRowsPanel" Margin="0,8,0,0"/>
+                <!-- One button for both cards: a single walk of the bus answers for brightness
+                     and contrast at once, and two buttons would pay for that walk twice. -->
                 <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
                         HorizontalAlignment="Left" Margin="0,12,0,0"/>
                 <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
+                <ComboBox x:Name="AudioBox" Style="{StaticResource SelectEdit}" Height="30" Margin="0,4,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="Commands" Margin="0,16,0,0"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Run something around the switch. The command is started and not waited for - switching never hangs on it."/>
+                <TextBlock Style="{StaticResource RowSub}" Text="Before switching" Margin="0,4,0,3"/>
+                <TextBox x:Name="HookBeforeBox" Style="{StaticResource Input}"/>
+                <TextBlock Style="{StaticResource RowSub}" Text="After switching" Margin="0,8,0,3"/>
+                <TextBox x:Name="HookAfterBox" Style="{StaticResource Input}"/>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
@@ -1043,9 +1127,14 @@ function New-SettingsWindow {
         LastModeBox       = $win.FindName('LastModeBox')
         StatsBox          = $win.FindName('StatsBox')
         PreviewCanvas     = $win.FindName('PreviewCanvas')
-        # Mode key -> the brightness model (see ConvertTo-LevelModel). Edited in the mode editor,
-        # leaves for settings.json on Save.
+        # Mode key -> the brightness and contrast models (see ConvertTo-LevelModel), the audio
+        # device (a piece of a name) and the pair of commands. All four are edited in the mode
+        # editor and leave for settings.json on Save — the window owns them, so they must not
+        # also be carried blindly from the file (see the loop in Read-SettingsFromUi).
         Levels            = [ordered]@{}
+        Contrast          = [ordered]@{}
+        Audio             = [ordered]@{}
+        Hooks             = [ordered]@{}
         Modes             = @($Modes)
         Settings          = $Settings
         State             = @($State)
@@ -1074,7 +1163,10 @@ function New-SettingsWindow {
         }
     }
 
+    # Before the mode list is built: the rows read these maps, and an entry left in the file for
+    # a mode that no longer exists is what turns into an orphan row (see Resolve-PanelModes).
     Import-LevelSettings -Ui $ui -Settings $Settings
+    Import-ModeExtras    -Ui $ui -Settings $Settings
     Update-DeskPanel  -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
@@ -1511,16 +1603,35 @@ function ConvertFrom-LevelModel {
     }
 }
 
-# Every model of the window -> what leaves for settings.json. Modes with no brightness do not
-# reach the file at all: a key with a dummy dictionary in it would look like a setting that
-# does not exist. A pure function.
-function ConvertTo-BrightnessSettings {
-    param($Levels)
+# A whole "mode key -> model" map out of a whole section of settings.json. Brightness and
+# contrast are the same shape and go through the same pair of functions: a second copy of this
+# would drift away from the first the day one of them was fixed.
+#
+# No empty models are created here: "the key exists but has no level in it" is not a setting
+# but rubbish out of the file ({} or a number that is not a number). Since it is never put
+# there, "empty means absent" does not have to be checked by everyone who looks at the map.
+function ConvertTo-LevelModels {
+    param($Section)
 
     $out = [ordered]@{}
-    if (-not $Levels) { return $out }
-    foreach ($key in @($Levels.Keys)) {
-        $value = ConvertFrom-LevelModel $Levels[$key]
+    if (-not $Section) { return $out }
+    foreach ($key in @($Section.Keys)) {
+        $model = ConvertTo-LevelModel $Section[$key]
+        if ($null -ne (ConvertFrom-LevelModel $model)) { $out[[string]$key] = $model }
+    }
+    return $out
+}
+
+# Every model of the window -> what leaves for settings.json. Modes with no level do not reach
+# the file at all: a key with a dummy dictionary in it would look like a setting that does not
+# exist. A pure function.
+function ConvertFrom-LevelModels {
+    param($Models)
+
+    $out = [ordered]@{}
+    if (-not $Models) { return $out }
+    foreach ($key in @($Models.Keys)) {
+        $value = ConvertFrom-LevelModel $Models[$key]
         if ($null -ne $value) { $out[[string]$key] = $value }
     }
     return $out
@@ -1549,28 +1660,101 @@ function Get-LevelRowNames {
     return @($rows | Where-Object { $_ })
 }
 
-$script:LevelKindTitles = [ordered]@{
-    none = 'leave the brightness alone'
-    one  = 'one level for every display of this mode'
-    each = 'a level for each display'
+# The forms a level can be entered in. The ORDER of this list is the order of the items in the
+# box, and Update-LevelGroup picks the selected item by the index of the kind in it — so it is
+# not free to rearrange.
+$script:LevelKinds = @('none', 'one', 'each')
+
+# The same three lines for brightness and for contrast, differing in one noun. "Leave the
+# brightness alone" standing under the Contrast heading is the kind of thing nobody notices
+# until they have set the wrong one.
+function Get-LevelKindTitle {
+    param([string]$Kind, [string]$Noun)
+
+    switch ($Kind) {
+        'none' { return "leave the $Noun alone" }
+        'one'  { return 'one level for every display of this mode' }
+        'each' { return 'a level for each display' }
+    }
+    return $Kind
 }
 
-# Brightness from the settings into the window's working models, keyed by mode. The mode editor
-# edits them, and they leave on Save (see ConvertTo-BrightnessSettings).
-#
-# No empty models are created here: "the key exists but has no brightness in it" is not a
-# setting but rubbish out of the file ({} or a number that is not a number). Since it is never
-# put there, "empty means absent" does not have to be checked by everyone who looks at the map.
+# Brightness and contrast from the settings into the window's working models, keyed by mode.
+# The mode editor edits them, and they leave on Save (see ConvertFrom-LevelModels).
 function Import-LevelSettings {
     param($Ui, $Settings)
 
-    $Ui.Levels = [ordered]@{}
-    if ($Settings -and $Settings.brightness) {
-        foreach ($key in @($Settings.brightness.Keys)) {
-            $model = ConvertTo-LevelModel $Settings.brightness[$key]
-            if ($null -ne (ConvertFrom-LevelModel $model)) { $Ui.Levels[[string]$key] = $model }
+    $Ui.Levels   = ConvertTo-LevelModels -Section $(if ($Settings) { $Settings.brightness } else { $null })
+    $Ui.Contrast = ConvertTo-LevelModels -Section $(if ($Settings) { $Settings.contrast }   else { $null })
+}
+
+# The audio device and the commands out of the settings into the window's working maps. Both
+# are edited in the mode editor now, so both have to be in the window rather than carried
+# blindly from the file — see the loop in Read-SettingsFromUi.
+#
+# The entries are normalised on the way in (an empty device, a hook that is a bare string) so
+# that everything downstream sees one shape and not four.
+function Import-ModeExtras {
+    param($Ui, $Settings)
+
+    $Ui.Audio = [ordered]@{}
+    if ($Settings -and $Settings.audio) {
+        foreach ($key in @($Settings.audio.Keys)) {
+            $device = ([string]$Settings.audio[$key]).Trim()
+            if ($device) { $Ui.Audio[[string]$key] = $device }
         }
     }
+
+    $Ui.Hooks = [ordered]@{}
+    if ($Settings -and $Settings.hooks) {
+        foreach ($key in @($Settings.hooks.Keys)) {
+            $hook = ConvertTo-HookSetting $Settings.hooks[$key]
+            if ($hook) { $Ui.Hooks[[string]$key] = $hook }
+        }
+    }
+}
+
+# The window's audio map -> what leaves for settings.json. An empty device does not reach the
+# file: a key holding an empty string would look like a device that cannot be found, and the
+# log would complain about it on every switch.
+function ConvertTo-AudioSettings {
+    param($Audio)
+
+    $out = [ordered]@{}
+    if (-not $Audio) { return $out }
+    foreach ($key in @($Audio.Keys)) {
+        $device = ([string]$Audio[$key]).Trim()
+        if ($device) { $out[[string]$key] = $device }
+    }
+    return $out
+}
+
+# The same for the commands. ConvertTo-HookSetting hands back $null for a pair that is empty on
+# both sides, and that is exactly "there is no entry".
+function ConvertTo-HookSettings {
+    param($Hooks)
+
+    $out = [ordered]@{}
+    if (-not $Hooks) { return $out }
+    foreach ($key in @($Hooks.Keys)) {
+        $hook = ConvertTo-HookSetting $Hooks[$key]
+        if ($hook) { $out[[string]$key] = $hook }
+    }
+    return $out
+}
+
+# A pair of commands as one string, so that two of them can be compared. Empty means "there is
+# no command" — the same rule Get-LevelFingerprint lives by, and for the same reason (see
+# Sync-EditorInheritance).
+function Get-HookFingerprint {
+    param([string]$Before, [string]$After)
+
+    $b = ([string]$Before).Trim()
+    $a = ([string]$After).Trim()
+    if (-not $b -and -not $a) { return '' }
+    # Tab-joined: a tab cannot occur in a command line typed into a one-line box, so no two
+    # different pairs can collide by the separator landing inside a field.
+    return ($b + "`t" + $a)
 }
 
 # A copy of the model: the editor edits it in place, and Cancel has to leave the window with
@@ -1603,57 +1787,126 @@ function Get-EditorDisplayNames {
     return @(Get-ModeMembers -Mode $Editor.Mode -State $Editor.State | ForEach-Object { [string]$_.Label })
 }
 
-# The list of entry forms, for the editor. The order of the items IS the order of
-# $script:LevelKindTitles: the item in Update-EditorLevel is picked by it as well.
-function Initialize-EditorLevel {
-    param($Editor)
+# One level card of the editor: brightness or contrast. The two are the same machinery over the
+# same model and differ in exactly two things — the noun they print and the map they inherit
+# from — so they are one set of functions with a group object handed in, not two copies. The
+# copies were the first version, and the contrast card was already a fix behind on the day it
+# was written.
+#
+# $Prefix is the x:Name prefix its controls carry in the markup ("Level" for brightness,
+# "Contrast" for contrast); $Source is the whole "mode key -> model" map it inherits from while
+# the combo's name is being typed (see Sync-EditorInheritance).
+function New-LevelGroup {
+    param($Editor, [string]$Prefix, [string]$Noun, $Source, $Model)
 
-    $Editor.LevelBusy = $true
-    try {
-        $Editor.LevelKindBox.Items.Clear()
-        foreach ($kind in @($script:LevelKindTitles.Keys)) {
-            $item = New-Object System.Windows.Controls.ComboBoxItem
-            $item.Content = [string]$script:LevelKindTitles[$kind]
-            $item.Tag = [string]$kind
-            [void]$Editor.LevelKindBox.Items.Add($item)
-        }
+    $win = $Editor.Window
+    $group = [pscustomobject]@{
+        # The editor, for the window, the mode's displays and its answer on Save. A group cannot
+        # work out its own display list: that depends on the ticked members of the combo.
+        Owner     = $Editor
+        Noun      = $Noun
+        Source    = $(if ($Source) { $Source } else { [ordered]@{} })
+        # A COPY of the model: the editor edits it in place, and Cancel has to leave the window
+        # with what was there.
+        Model     = (Copy-LevelModel $Model)
+        KindBox   = $win.FindName($Prefix + 'KindBox')
+        OnePanel  = $win.FindName($Prefix + 'OnePanel')
+        OneSlider = $win.FindName($Prefix + 'OneSlider')
+        OneValue  = $win.FindName($Prefix + 'OneValue')
+        RowsPanel = $win.FindName($Prefix + 'RowsPanel')
+        # While the panel is being rebuilt the handlers keep quiet: otherwise setting a value in
+        # code would immediately count as a person's edit.
+        Busy      = $false
+        # What we filled in ourselves, so a person's own edit is not overwritten by a name.
+        Auto      = ''
     }
-    finally { $Editor.LevelBusy = $false }
 
-    Update-EditorLevel -Editor $Editor
+    # Which group a control answers for is on the control itself: this window's handlers hold no
+    # closures (see the header). The Tag goes on BEFORE the handlers, or the first event would
+    # find nothing there.
+    $group.KindBox.Tag = $group
+    $group.OneSlider.Tag = $group
+
+    $group.KindBox.add_SelectionChanged({
+        $group = $this.Tag
+        if (-not $group -or $group.Busy) { return }
+        $item = $this.SelectedItem
+        if (-not $item) { return }
+        $group.Model.Kind = [string]$item.Tag
+        # The move from "one number" to "one each": we fill the mode's monitors with that very
+        # number. That way a person gets what they were looking at and edits from there rather
+        # than from an empty list. The move back does not erase the map — coming back, they
+        # will find their values in place.
+        if ($group.Model.Kind -eq 'each' -and $group.Model.Map.Count -eq 0) {
+            foreach ($name in @(Get-EditorDisplayNames -Editor $group.Owner)) {
+                $group.Model.Map[[string]$name] = [int]$group.Model.Value
+            }
+        }
+        Update-LevelGroup -Group $group
+    })
+
+    $group.OneSlider.add_ValueChanged({
+        $group = $this.Tag
+        if (-not $group -or $group.Busy) { return }
+        $group.Model.Value = [int]$this.Value
+        $group.OneValue.Text = [string][int]$this.Value
+    })
+
+    return $group
 }
 
-# Show the editor's model: the form choice, one slider, or a row per monitor.
-function Update-EditorLevel {
-    param($Editor)
+# The list of entry forms, for one card. The order of the items IS the order of
+# $script:LevelKinds: the item in Update-LevelGroup is picked by it as well.
+function Initialize-LevelGroup {
+    param($Group)
 
-    $model = $Editor.Level
+    $Group.Busy = $true
+    try {
+        $Group.KindBox.Items.Clear()
+        foreach ($kind in @($script:LevelKinds)) {
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = Get-LevelKindTitle -Kind $kind -Noun $Group.Noun
+            $item.Tag = [string]$kind
+            [void]$Group.KindBox.Items.Add($item)
+        }
+    }
+    finally { $Group.Busy = $false }
+
+    Update-LevelGroup -Group $Group
+}
+
+# Show the card's model: the form choice, one slider, or a row per monitor.
+function Update-LevelGroup {
+    param($Group)
+
+    $model = $Group.Model
     if (-not $model) { return }
 
-    $Editor.LevelBusy = $true
+    $Group.Busy = $true
     try {
-        $index = @($script:LevelKindTitles.Keys).IndexOf([string]$model.Kind)
+        $index = @($script:LevelKinds).IndexOf([string]$model.Kind)
         if ($index -lt 0) { $index = 0 }
-        $Editor.LevelKindBox.SelectedIndex = $index
+        $Group.KindBox.SelectedIndex = $index
 
-        $Editor.LevelOnePanel.Visibility = $(if ($model.Kind -eq 'one') { 'Visible' } else { 'Collapsed' })
-        $Editor.LevelOneSlider.Value = [double][int]$model.Value
-        $Editor.LevelOneValue.Text = [string][int]$model.Value
+        $Group.OnePanel.Visibility = $(if ($model.Kind -eq 'one') { 'Visible' } else { 'Collapsed' })
+        $Group.OneSlider.Value = [double][int]$model.Value
+        $Group.OneValue.Text = [string][int]$model.Value
 
-        $Editor.LevelRowsPanel.Children.Clear()
+        $Group.RowsPanel.Children.Clear()
         if ($model.Kind -eq 'each') {
-            foreach ($name in @(Get-LevelRowNames -Displays (Get-EditorDisplayNames -Editor $Editor) -Map $model.Map)) {
-                Add-LevelRow -Editor $Editor -Model $model -Name $name
+            foreach ($name in @(Get-LevelRowNames -Displays (Get-EditorDisplayNames -Editor $Group.Owner) -Map $model.Map)) {
+                Add-LevelRow -Group $Group -Name $name
             }
         }
     }
-    finally { $Editor.LevelBusy = $false }
+    finally { $Group.Busy = $false }
 }
 
 function Add-LevelRow {
-    param($Editor, $Model, [string]$Name)
+    param($Group, [string]$Name)
 
-    $win = $Editor.Window
+    $Model = $Group.Model
+    $win = $Group.Owner.Window
     $set = $Model.Map.Contains($Name)
 
     $grid = New-Object System.Windows.Controls.Grid
@@ -1697,37 +1950,64 @@ function Add-LevelRow {
     [void]$grid.Children.Add($value)
 
     # A row's state lives on the elements themselves (.Tag), as it does in every other handler
-    # of this window: .GetNewClosure() is banned here (see the header).
-    $row = [pscustomobject]@{ Owner = $Editor; Model = $Model; Name = $Name; Slider = $slider; Value = $value; Check = $check }
+    # of this window: .GetNewClosure() is banned here (see the header). The window is carried on
+    # the row rather than reached for through the group's owner: a handler that has to walk two
+    # links to find a brush is one rename away from a null.
+    $row = [pscustomobject]@{ Group = $Group; Model = $Model; Name = $Name; Window = $win
+                              Slider = $slider; Value = $value; Check = $check }
     $check.Tag = $row
     $slider.Tag = $row
 
     $check.add_Click({
         $row = $this.Tag
-        if ($row.Owner.LevelBusy) { return }
+        if ($row.Group.Busy) { return }
         if ($this.IsChecked) {
             $row.Model.Map[$row.Name] = [int]$row.Slider.Value
             $row.Slider.IsEnabled = $true
             $row.Value.Text = [string][int]$row.Slider.Value
-            $row.Value.Foreground = $row.Owner.Window.FindResource('TextBrush')
+            $row.Value.Foreground = $row.Window.FindResource('TextBrush')
         }
         else {
             $row.Model.Map.Remove($row.Name)
             $row.Slider.IsEnabled = $false
             $row.Value.Text = 'off'
-            $row.Value.Foreground = $row.Owner.Window.FindResource('DimBrush')
+            $row.Value.Foreground = $row.Window.FindResource('DimBrush')
         }
     })
 
     $slider.add_ValueChanged({
         $row = $this.Tag
-        if ($row.Owner.LevelBusy) { return }
+        if ($row.Group.Busy) { return }
         if (-not $row.Check.IsChecked) { return }
         $row.Model.Map[$row.Name] = [int]$this.Value
         $row.Value.Text = [string][int]$this.Value
     })
 
-    [void]$Editor.LevelRowsPanel.Children.Add($grid)
+    [void]$Group.RowsPanel.Children.Add($grid)
+}
+
+# The output devices, into the dropdown, once. Fetched on the first opening of the list and
+# never on building the window: enumerating the endpoints goes out to COM, and there is no
+# reason to pay that for every Edit click — the same reason "Ask the monitors" below is a button
+# of its own rather than something the editor does on the way up.
+#
+# What is STORED is a piece of a device's name, not the name and not an id: a driver update
+# renames "Speakers (Realtek High Definition Audio)" and the setting has to survive it. So the
+# list only fills the box in, and whatever is left in the box is what gets saved.
+#
+# A refusal is written to the log and nothing more: the box can be typed into by hand, so a
+# machine whose audio service is unwell loses the convenience and not the setting.
+function Add-AudioDeviceItems {
+    param($Editor)
+
+    if ($Editor.AudioListed) { return }
+    $Editor.AudioListed = $true
+    try {
+        foreach ($device in @(Get-AudioDevices)) {
+            if ([string]$device.Name) { [void]$Editor.AudioBox.Items.Add([string]$device.Name) }
+        }
+    }
+    catch { Write-DisplayLog "settings dialog: could not list the audio devices - $($_.Exception.Message)" }
 }
 
 # "Ask the monitors" — query DDC/CI right now. As a button of its own rather than on opening
@@ -1759,11 +2039,17 @@ function Invoke-LevelProbe {
     $byOutput = @{}
     foreach ($m in @($Editor.State)) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
 
+    # Both cards are answered by one walk of the bus, so both are reported. A monitor that does
+    # brightness and refuses contrast is common, and without naming which is which the Contrast
+    # card above would look broken rather than unsupported.
     $good = @()
     $bad = @()
     foreach ($a in $answers) {
         $label = $(if ($byOutput.Contains([string]$a.Device)) { $byOutput[[string]$a.Device] } else { [string]$a.Device })
-        if ($a.CanBrightness) { $good += ('{0} ({1})' -f $label, $a.Brightness) } else { $bad += $label }
+        $can = @()
+        if ($a.CanBrightness) { $can += ('brightness {0}' -f $a.Brightness) }
+        if ($a.CanContrast)   { $can += ('contrast {0}' -f $a.Contrast) }
+        if ($can.Count -gt 0) { $good += ('{0} ({1})' -f $label, ($can -join ', ')) } else { $bad += $label }
     }
 
     $parts = @()
@@ -1789,8 +2075,32 @@ function Invoke-LevelProbe {
 function Remove-UiModeKey {
     param($Ui, [string]$Key)
 
-    if ($Ui.Hotkeys.Contains($Key)) { $Ui.Hotkeys.Remove($Key) }
-    if ($Ui.Levels.Contains($Key))  { $Ui.Levels.Remove($Key) }
+    # Every map the window keys by mode. A new one added above and forgotten here is exactly the
+    # ghost setting this function exists to prevent, which is why they are listed in one loop
+    # rather than in five lines somebody can add a sixth beside.
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Audio, $Ui.Hooks)) {
+        if ($map -and $map.Contains($Key)) { $map.Remove($Key) }
+    }
+}
+
+# A rename: everything under the old key MOVES to the new one. Not "remove, and let the editor
+# write back what it carries" — that was the first version, and it silently ate any setting the
+# caller's answer happened not to mention. A property missing from an edit means "not touched"
+# everywhere else in this window, and a rename must not be the one place where it means "throw
+# it away".
+#
+# A value already sitting on the new key stays: it is its own, and it owes its place to nobody
+# who is moving. Move-ModeKeyedEntries settles the same question the same way.
+function Move-UiModeKey {
+    param($Ui, [string]$From, [string]$To)
+
+    if (-not $From -or -not $To -or $From -eq $To) { return }
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Audio, $Ui.Hooks)) {
+        if (-not $map -or -not $map.Contains($From)) { continue }
+        $value = $map[$From]
+        $map.Remove($From)
+        if (-not $map.Contains($To)) { $map[$To] = $value }
+    }
 }
 
 # Apply the editor's answer to the window's working state. Separate from the click handlers:
@@ -1825,11 +2135,11 @@ function Set-UiMode {
         $Ui.DeletedComboKeys = @($Ui.DeletedComboKeys | Where-Object { $_ -ne $newKey })
     }
 
-    # A rename takes the shortcut and the brightness away to the new key: under the old one a
-    # ghost setting would be left that shows up in no window. Read-SettingsFromUi does the same
-    # for the audio and the commands — there the key is only known at Save time.
+    # A rename carries everything the window keys by mode over to the new key: under the old one
+    # a ghost setting would be left that shows up in no window. All five maps travel together,
+    # and they travel WHOLE — what the edit below does not mention keeps the value it had.
     if ($oldKey -and $newKey -and $oldKey -ne $newKey) {
-        Remove-UiModeKey -Ui $Ui -Key $oldKey
+        Move-UiModeKey -Ui $Ui -From $oldKey -To $newKey
     }
 
     # What the editor showed is what we save — the empty included. An empty shortcut honestly
@@ -1843,11 +2153,27 @@ function Set-UiMode {
             if ($parsed) { $Ui.Hotkeys[$newKey] = $parsed.Text }
             elseif ($Ui.Hotkeys.Contains($newKey)) { $Ui.Hotkeys.Remove($newKey) }
         }
-        # A model with no brightness is not a setting: a key holding one must not be in the map
-        # (see Import-LevelSettings).
+        # A model with no level is not a setting: a key holding one must not be in the map (see
+        # ConvertTo-LevelModels).
         if ($null -ne $Edited.PSObject.Properties['Level']) {
             if ($null -ne (ConvertFrom-LevelModel $Edited.Level)) { $Ui.Levels[$newKey] = $Edited.Level }
             elseif ($Ui.Levels.Contains($newKey)) { $Ui.Levels.Remove($newKey) }
+        }
+        if ($null -ne $Edited.PSObject.Properties['Contrast']) {
+            if ($null -ne (ConvertFrom-LevelModel $Edited.Contrast)) { $Ui.Contrast[$newKey] = $Edited.Contrast }
+            elseif ($Ui.Contrast.Contains($newKey)) { $Ui.Contrast.Remove($newKey) }
+        }
+        # An empty device is not a setting either: the switch would look for a device called
+        # nothing and write a warning into the log every time.
+        if ($null -ne $Edited.PSObject.Properties['Audio']) {
+            $device = ([string]$Edited.Audio).Trim()
+            if ($device) { $Ui.Audio[$newKey] = $device }
+            elseif ($Ui.Audio.Contains($newKey)) { $Ui.Audio.Remove($newKey) }
+        }
+        # $null from Read-ModeFromUi means both boxes were empty (see ConvertTo-HookSetting).
+        if ($null -ne $Edited.PSObject.Properties['Hook']) {
+            if ($Edited.Hook) { $Ui.Hooks[$newKey] = $Edited.Hook }
+            elseif ($Ui.Hooks.Contains($newKey)) { $Ui.Hooks.Remove($newKey) }
         }
     }
 
@@ -2032,12 +2358,33 @@ function Sync-EditorInheritance {
         $Editor.HotkeyBox.Text = $(if ($inherited) { $inherited.Text } else { $script:NoHotkeyText })
     }
 
-    $level = $(if ($key -and $Editor.Levels.Contains($key)) { $Editor.Levels[$key] } else { $null })
-    $shownLevel = Get-LevelFingerprint $Editor.Level
-    if (-not $shownLevel -or $shownLevel -eq $Editor.AutoLevel) {
-        $Editor.Level = Copy-LevelModel $level
-        $Editor.AutoLevel = Get-LevelFingerprint $Editor.Level
-        Update-EditorLevel -Editor $Editor
+    # Brightness and contrast by the same rule, from the map each card was built with.
+    foreach ($group in @($Editor.Brightness, $Editor.Contrast)) {
+        $inherited = $(if ($key -and $group.Source.Contains($key)) { $group.Source[$key] } else { $null })
+        $shown = Get-LevelFingerprint $group.Model
+        if ($shown -and $shown -ne $group.Auto) { continue }
+        $group.Model = Copy-LevelModel $inherited
+        $group.Auto = Get-LevelFingerprint $group.Model
+        Update-LevelGroup -Group $group
+    }
+
+    $device = [string]$(if ($key -and $Editor.Audio.Contains($key)) { $Editor.Audio[$key] } else { '' })
+    $shownDevice = ([string]$Editor.AudioBox.Text).Trim()
+    if (-not $shownDevice -or $shownDevice -eq $Editor.AutoAudio) {
+        $Editor.AutoAudio = $device
+        $Editor.AudioBox.Text = $device
+    }
+
+    # The two command boxes move as one pair: a name that carries a "before" and an "after"
+    # cannot hand over half of itself.
+    $hook = $(if ($key -and $Editor.Hooks.Contains($key)) { $Editor.Hooks[$key] } else { $null })
+    $before = [string]$(if ($hook) { $hook.before } else { '' })
+    $after  = [string]$(if ($hook) { $hook.after }  else { '' })
+    $shownHook = Get-HookFingerprint -Before $Editor.HookBeforeBox.Text -After $Editor.HookAfterBox.Text
+    if (-not $shownHook -or $shownHook -eq $Editor.AutoHook) {
+        $Editor.HookBeforeBox.Text = $before
+        $Editor.HookAfterBox.Text = $after
+        $Editor.AutoHook = Get-HookFingerprint -Before $before -After $after
     }
 }
 
@@ -2049,13 +2396,16 @@ function New-ModeEditorWindow {
         # or the combo has not been created yet.
         $Combo,
         $State,
-        # The shortcuts and the brightness of ALL the window's modes, as "mode key -> value"
-        # pairs. Not two ready values: a combo's key follows the name in the field, and while
-        # the name is being typed the editor has to find both what will go to this name and
-        # what to count as somebody else's shortcut. Brightness is edited as a COPY: Cancel
-        # has to leave the window with what was there.
+        # Everything the window keys by mode, as whole "mode key -> value" maps. Not ready
+        # values: a combo's key follows the name in the field, and while the name is being typed
+        # the editor has to find both what will go to this name and what to count as somebody
+        # else's shortcut. The levels are edited as a COPY: Cancel has to leave the window with
+        # what was there.
         $Hotkeys,
         $Levels,
+        $Contrast,
+        $Audio,
+        $Hooks,
         [string[]]$TakenNames = @(),
         $Owner,
         [bool]$Dark
@@ -2085,10 +2435,15 @@ function New-ModeEditorWindow {
     # The key the mode sits under on the way in. A new combo does not have one yet — it will
     # come from the name that gets typed into the field.
     $key = $(if ($Mode) { [string]$Mode.Key } else { '' })
-    if (-not $Hotkeys) { $Hotkeys = [ordered]@{} }
-    if (-not $Levels)  { $Levels  = [ordered]@{} }
+    if (-not $Hotkeys)  { $Hotkeys  = [ordered]@{} }
+    if (-not $Levels)   { $Levels   = [ordered]@{} }
+    if (-not $Contrast) { $Contrast = [ordered]@{} }
+    if (-not $Audio)    { $Audio    = [ordered]@{} }
+    if (-not $Hooks)    { $Hooks    = [ordered]@{} }
     $hotkeyText = $(if ($key -and $Hotkeys.Contains($key)) { [string]$Hotkeys[$key] } else { '' })
     $level = $(if ($key -and $Levels.Contains($key)) { $Levels[$key] } else { $null })
+    $contrastLevel = $(if ($key -and $Contrast.Contains($key)) { $Contrast[$key] } else { $null })
+    $hook = $(if ($key -and $Hooks.Contains($key)) { $Hooks[$key] } else { $null })
 
     $hotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
     Register-HotkeyCapture -Box $hotkeyBox
@@ -2116,33 +2471,51 @@ function New-ModeEditorWindow {
         Checks         = $checks
         PrimaryBox     = $primaryBox
         HotkeyBox      = $hotkeyBox
-        LevelKindBox   = $win.FindName('LevelKindBox')
-        LevelOnePanel  = $win.FindName('LevelOnePanel')
-        LevelOneSlider = $win.FindName('LevelOneSlider')
-        LevelOneValue  = $win.FindName('LevelOneValue')
-        LevelRowsPanel = $win.FindName('LevelRowsPanel')
         LevelTestBtn   = $win.FindName('LevelTestBtn')
         LevelNote      = $win.FindName('LevelNote')
-        # While the panel is being rebuilt the sliders' handlers keep quiet: otherwise setting
-        # a value in code would immediately count as a person's edit.
-        LevelBusy      = $false
-        Level          = (Copy-LevelModel $level)
+        AudioBox       = $win.FindName('AudioBox')
+        HookBeforeBox  = $win.FindName('HookBeforeBox')
+        HookAfterBox   = $win.FindName('HookAfterBox')
+        # The two level cards. Filled in below: a card needs the editor it belongs to, and the
+        # editor is only an object once this literal is closed.
+        Brightness     = $null
+        Contrast       = $null
+        # Whether the device list has already been fetched. It is fetched on the first opening
+        # of the dropdown and never on building the window: enumerating the endpoints goes to
+        # COM, and the tests build editors headless.
+        AudioListed    = $false
         State          = @($State)
         TakenNames     = @($TakenNames)
         Hotkeys        = $Hotkeys
-        Levels         = $Levels
+        Audio          = $Audio
+        Hooks          = $Hooks
         # Whose key is in the fields right now, and what we filled into them ourselves: we do
         # not overwrite a person's edit with a name (see Sync-EditorInheritance).
         ShownKey       = $key
         AutoHotkey     = ''
-        AutoLevel      = ''
+        AutoAudio      = ''
+        AutoHook       = ''
         Result         = $null
     }
     # The handlers find the editor here rather than in a closure: see the comment about
     # handlers above. The editor is modal, so one place is enough.
     $script:ActiveEditor = $ed
 
-    Initialize-EditorLevel -Editor $ed
+    $ed.Brightness = New-LevelGroup -Editor $ed -Prefix 'Level' -Noun 'brightness' `
+                                    -Source $Levels -Model $level
+    $ed.Contrast   = New-LevelGroup -Editor $ed -Prefix 'Contrast' -Noun 'contrast' `
+                                    -Source $Contrast -Model $contrastLevel
+    Initialize-LevelGroup -Group $ed.Brightness
+    Initialize-LevelGroup -Group $ed.Contrast
+
+    $ed.AudioBox.Text = [string]$(if ($key -and $Audio.Contains($key)) { $Audio[$key] } else { '' })
+    $ed.HookBeforeBox.Text = [string]$(if ($hook) { $hook.before } else { '' })
+    $ed.HookAfterBox.Text  = [string]$(if ($hook) { $hook.after }  else { '' })
+
+    $ed.AudioBox.add_DropDownOpened({
+        $ed = $script:ActiveEditor
+        if ($ed) { Add-AudioDeviceItems -Editor $ed }
+    })
 
     # The name is watched rather than asked for on OK: the name is the mode key, and whose
     # settings the editor shows and what it counts as a foreign shortcut both depend on it.
@@ -2152,44 +2525,23 @@ function New-ModeEditorWindow {
         Sync-EditorInheritance -Editor $ed
     })
 
-    $ed.LevelKindBox.add_SelectionChanged({
-        $ed = $script:ActiveEditor
-        if (-not $ed -or $ed.LevelBusy) { return }
-        $item = $ed.LevelKindBox.SelectedItem
-        if (-not $item) { return }
-        $ed.Level.Kind = [string]$item.Tag
-        # The move from "one number" to "one each": we fill the mode's monitors with that very
-        # number. That way a person gets what they were looking at and edits from there rather
-        # than from an empty list. The move back does not erase the map — coming back, they
-        # will find their values in place.
-        if ($ed.Level.Kind -eq 'each' -and $ed.Level.Map.Count -eq 0) {
-            foreach ($name in @(Get-EditorDisplayNames -Editor $ed)) {
-                $ed.Level.Map[[string]$name] = [int]$ed.Level.Value
-            }
-        }
-        Update-EditorLevel -Editor $ed
-    })
-
-    $ed.LevelOneSlider.add_ValueChanged({
-        $ed = $script:ActiveEditor
-        if (-not $ed -or $ed.LevelBusy) { return }
-        $ed.Level.Value = [int]$ed.LevelOneSlider.Value
-        $ed.LevelOneValue.Text = [string][int]$ed.LevelOneSlider.Value
-    })
-
     $ed.LevelTestBtn.add_Click({
         $ed = $script:ActiveEditor
         if (-not $ed) { return }
         Invoke-LevelProbe -Editor $ed
     })
 
-    # A monitor was taken off the combo — its brightness row follows, without waiting for
-    # Save: otherwise a slider would stand under a monitor the mode no longer has.
+    # A monitor was taken off the combo — its rows follow, without waiting for Save: otherwise a
+    # slider would stand under a monitor the mode no longer has. Both cards, or the contrast
+    # rows would keep a monitor the brightness rows have already let go of.
     foreach ($cb in $checks) {
         $cb.add_Click({
             $ed = $script:ActiveEditor
-            if (-not $ed -or $ed.LevelBusy) { return }
-            if ([string]$ed.Level.Kind -eq 'each') { Update-EditorLevel -Editor $ed }
+            if (-not $ed) { return }
+            foreach ($group in @($ed.Brightness, $ed.Contrast)) {
+                if ($group.Busy) { continue }
+                if ([string]$group.Model.Kind -eq 'each') { Update-LevelGroup -Group $group }
+            }
         })
     }
 
@@ -2237,12 +2589,25 @@ function Read-ModeFromUi {
         }
     }
 
-    # For a monitor mode and for "all" the membership is set by the desk: only the shortcut and
-    # the brightness are edited, and there is nothing more to check.
+    # Everything the editor owns that is not the combo's own name and membership. Handed back
+    # for BOTH kinds of mode and always, even untouched: a property that is present but empty
+    # means "cleared", and one that is absent means "not edited" (see Set-UiMode). Leaving a
+    # field out when a person emptied it would make clearing a setting impossible.
+    $device = ([string]$Editor.AudioBox.Text).Trim()
+    $hook = ConvertTo-HookSetting ([ordered]@{
+        before = ([string]$Editor.HookBeforeBox.Text).Trim()
+        after  = ([string]$Editor.HookAfterBox.Text).Trim()
+    })
+
+    # For a monitor mode and for "all" the membership is set by the desk: only the settings
+    # above are edited, and there is nothing more to check.
     if ($Editor.Kind -ne 'combo') {
         return [pscustomobject]@{
             Ok = $true
-            Mode = [pscustomobject]@{ Hotkey = $hk; Level = $Editor.Level }
+            Mode = [pscustomobject]@{
+                Hotkey = $hk; Level = $Editor.Brightness.Model
+                Contrast = $Editor.Contrast.Model; Audio = $device; Hook = $hook
+            }
             Problem = ''
         }
     }
@@ -2265,7 +2630,11 @@ function Read-ModeFromUi {
 
     return [pscustomobject]@{
         Ok = $true
-        Mode = [pscustomobject]@{ Name = $name; Patterns = $chosen; Primary = $prim; Hotkey = $hk; Level = $Editor.Level }
+        Mode = [pscustomobject]@{
+            Name = $name; Patterns = $chosen; Primary = $prim
+            Hotkey = $hk; Level = $Editor.Brightness.Model
+            Contrast = $Editor.Contrast.Model; Audio = $device; Hook = $hook
+        }
         Problem = ''
     }
 }
@@ -2278,13 +2647,17 @@ function Show-ModeEditor {
         $State,
         $Hotkeys,
         $Levels,
+        $Contrast,
+        $Audio,
+        $Hooks,
         [string[]]$TakenNames = @(),
         $Owner,
         [bool]$Dark
     )
 
     $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State `
-                               -Hotkeys $Hotkeys -Levels $Levels -TakenNames $TakenNames `
+                               -Hotkeys $Hotkeys -Levels $Levels -Contrast $Contrast `
+                               -Audio $Audio -Hooks $Hooks -TakenNames $TakenNames `
                                -Owner $Owner -Dark $Dark
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
@@ -2302,12 +2675,13 @@ function Show-ModeEditor {
 function Invoke-ModeEditor {
     param($Ui, $Mode, $Combo)
 
-    # The shortcuts and the brightness are handed over as whole maps: the editor finds its own
-    # record by key itself, and that key changes along with the name while the window is open.
+    # Everything keyed by mode is handed over as whole maps: the editor finds its own record by
+    # key itself, and that key changes along with the name while the window is open.
     $taken = @($Ui.Combos | Where-Object { -not $Combo -or $_ -ne $Combo } | ForEach-Object { [string]$_.Name })
 
     $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State `
-                            -Hotkeys $Ui.Hotkeys -Levels $Ui.Levels -TakenNames $taken `
+                            -Hotkeys $Ui.Hotkeys -Levels $Ui.Levels -Contrast $Ui.Contrast `
+                            -Audio $Ui.Audio -Hooks $Ui.Hooks -TakenNames $taken `
                             -Owner $Ui.Window -Dark $Ui.Dark
     if ($made) { Set-UiMode -Ui $Ui -Mode $Mode -Combo $Combo -Edited $made }
 }
@@ -2320,17 +2694,34 @@ function Invoke-ModeEditor {
 # The short truth about a mode's brightness goes into the row's caption. Otherwise a setting
 # hidden behind an Edit button is invisible until every mode has been opened in turn.
 function Get-LevelSummary {
-    param($Model)
+    param($Model, [string]$Noun = 'brightness')
 
     if (-not $Model) { return '' }
     switch ([string]$Model.Kind) {
-        'one'  { return 'brightness ' + [string][int]$Model.Value }
+        'one'  { return $Noun + ' ' + [string][int]$Model.Value }
         'each' {
             if (-not $Model.Map -or $Model.Map.Count -eq 0) { return '' }
-            return 'brightness per display'
+            return $Noun + ' per display'
         }
     }
     return ''
+}
+
+# The whole caption of a mode's row: what the mode is, then one short word per setting hidden
+# behind its Edit button. One word each and no more — the row must not wrap, and the list is as
+# long as the desk has modes.
+function Get-ModeRowSubtitle {
+    param($Ui, $Mode)
+
+    $key = [string]$Mode.Key
+    $parts = @(Get-ModeSubtitle -Mode $Mode)
+    if ($Ui.Levels.Contains($key))   { $parts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun 'brightness' }
+    if ($Ui.Contrast.Contains($key)) { $parts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun 'contrast' }
+    # The device's name is not printed: it is long enough to push the row into a second line,
+    # and the row's job is to say that the setting is there at all.
+    if ($Ui.Audio.Contains($key))    { $parts += 'audio' }
+    if ($Ui.Hooks.Contains($key))    { $parts += 'command' }
+    return (@($parts | Where-Object { $_ }) -join '  -  ')
 }
 
 # Entries tied to modes, in the order of the modes themselves. What does not match that order
@@ -2369,12 +2760,15 @@ function Resolve-PanelModes {
     $modes = @($modes)
 
     # A setting with no mode gets a row of its own. The shortcut is claimed globally
-    # (RegisterHotKey works whether a monitor is there or not), and the brightness hangs on a
-    # key that no longer exists; both can only be seen and cleared from here. The window's maps
-    # hold only real settings (see Import-LevelSettings), so any unfamiliar key here is a row.
+    # (RegisterHotKey works whether a monitor is there or not), and the rest hang on a key that
+    # no longer exists; all of them can only be seen and cleared from here. The window's maps
+    # hold only real settings (see ConvertTo-LevelModels and Import-ModeExtras), so any
+    # unfamiliar key here is a row. Every map is asked, or a hand-written audio entry for a
+    # monitor that has left would get no row and could never be cleared.
     $known = @($modes | ForEach-Object { [string]$_.Key })
     $strays = @()
-    foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys))) {
+    foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys) + @($Ui.Contrast.Keys) +
+                       @($Ui.Audio.Keys) + @($Ui.Hooks.Keys))) {
         $key = [string]$key
         if (-not $key -or $known -contains $key -or $strays -contains $key) { continue }
         $strays += $key
@@ -2391,8 +2785,11 @@ function Resolve-PanelModes {
     # The entries are lined up in the order of the modes: otherwise settings.json would get
     # reshuffled by the order in which a person happened to open the editors, and every edit of
     # one shortcut would rewrite half the file.
-    $Ui.Hotkeys = Get-MapInModeOrder -Map $Ui.Hotkeys -Modes $modes
-    $Ui.Levels  = Get-MapInModeOrder -Map $Ui.Levels  -Modes $modes
+    $Ui.Hotkeys  = Get-MapInModeOrder -Map $Ui.Hotkeys  -Modes $modes
+    $Ui.Levels   = Get-MapInModeOrder -Map $Ui.Levels   -Modes $modes
+    $Ui.Contrast = Get-MapInModeOrder -Map $Ui.Contrast -Modes $modes
+    $Ui.Audio    = Get-MapInModeOrder -Map $Ui.Audio    -Modes $modes
+    $Ui.Hooks    = Get-MapInModeOrder -Map $Ui.Hooks    -Modes $modes
 
     return @($modes)
 }
@@ -2446,10 +2843,7 @@ function Update-ModesPanel {
         if ($mode.Kind -eq 'orphan') { $title.Foreground = $win.FindResource('DimBrush') }
         [void]$textStack.Children.Add($title)
 
-        $subText = Get-ModeSubtitle -Mode $mode
-        $levelText = ''
-        if ($Ui.Levels.Contains($key)) { $levelText = Get-LevelSummary -Model $Ui.Levels[$key] }
-        if ($levelText) { $subText = $(if ($subText) { $subText + '  -  ' + $levelText } else { $levelText }) }
+        $subText = Get-ModeRowSubtitle -Ui $Ui -Mode $mode
         if ($subText) {
             $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
             [void]$textStack.Children.Add($sub)
@@ -2670,7 +3064,8 @@ function Read-SettingsFromUi {
     # field is carried over except the ones holding form elements, so that each new setting
     # without an element of its own does not bring this bug back.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
-                  'restoreLastMode', 'stats', 'layout', 'primary', 'combos', 'audio')
+                  'restoreLastMode', 'stats', 'layout', 'primary', 'combos',
+                  'audio', 'hooks', 'brightness', 'contrast')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
@@ -2700,21 +3095,25 @@ function Read-SettingsFromUi {
     $renames = Get-ComboRenames -Combos $Ui.Combos
     $gone = @(@($Ui.DeletedComboKeys) | Where-Object { $_ -and $currentComboKeys -notcontains $_ })
 
-    foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
-        # Brightness arrives from the card with the sliders, the rest from the settings as
-        # they were: the window does not edit those. Hence the two different move maps.
-        # Audio, commands and contrast sit under THE keys that are in the file — those need
-        # renaming. Brightness, though, Set-UiMode moves onto the new key the moment it is
-        # edited, and applying the map a second time is not merely redundant: a combo that
-        # took over the freed name would coincide with the renaming's SOURCE and silently
-        # lose its own brightness.
-        $source = $Settings[$field]
-        $map = $renames
-        if ($field -eq 'brightness') {
-            $source = ConvertTo-BrightnessSettings -Levels $Ui.Levels
-            $map = [ordered]@{}
-        }
-        $updated[$field] = Move-ModeKeyedEntries -Source $source -Renames $map -Gone $gone -What $field
+    # All four are edited in the mode editor now, so all four come out of the window rather than
+    # out of the file — and NONE of them gets the rename map applied. Set-UiMode already moved
+    # every one of them onto the new key the moment the name was changed, and applying the map a
+    # second time is not merely redundant: a combo that took over the freed name would coincide
+    # with the renaming's SOURCE and silently lose its own settings. That bug cost an evening
+    # when only brightness was in the window; the other three joined it on the same terms.
+    #
+    # $gone is still applied: a combo deleted in this session is dropped by Remove-UiCombo
+    # already, and this is the second lock on the door — plus the line in the log that says a
+    # setting went away with its mode rather than by itself.
+    $sources = [ordered]@{
+        audio      = (ConvertTo-AudioSettings  -Audio  $Ui.Audio)
+        hooks      = (ConvertTo-HookSettings   -Hooks  $Ui.Hooks)
+        brightness = (ConvertFrom-LevelModels  -Models $Ui.Levels)
+        contrast   = (ConvertFrom-LevelModels  -Models $Ui.Contrast)
+    }
+    foreach ($field in @($sources.Keys)) {
+        $updated[$field] = Move-ModeKeyedEntries -Source $sources[$field] -Renames ([ordered]@{}) `
+                                                 -Gone $gone -What $field
     }
 
     # The rules and "a monitor came up" refer to modes by THE SAME keys, so they have to move

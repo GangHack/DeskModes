@@ -23,15 +23,16 @@ Test-Case 'orphan: a new combination with that name is shown what it inherits' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'nothing to inherit until there is a name'
-            Assert-Equal 'none' ([string]$ed.Level.Kind) 'and no brightness either'
+            Assert-Equal 'none' ([string]$ed.Brightness.Model.Kind) 'and no brightness either'
 
             $ed.NameBox.Text = 'Movie'
             Assert-Equal 'Ctrl+Alt+F4' $ed.HotkeyBox.Text 'the shortcut left under that name is shown, not hidden'
-            Assert-Equal 55 ([int]$ed.Level.Value) 'and so is the brightness'
-            Assert-Equal 'one' ([string]$ed.Level.Kind) 'in the shape it was written in'
+            Assert-Equal 55 ([int]$ed.Brightness.Model.Value) 'and so is the brightness'
+            Assert-Equal 'one' ([string]$ed.Brightness.Model.Kind) 'in the shape it was written in'
         }
         finally { $ed.Window.Close() }
     }
@@ -45,7 +46,8 @@ Test-Case 'orphan: its own shortcut is not somebody else - the editor takes it' 
     $ui = New-DialogUi -Settings $settings
     try {
         $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             $ed.NameBox.Text = 'Movie'
             $ed.Checks[0].IsChecked = $true
@@ -64,7 +66,8 @@ Test-Case 'orphan: all four settings come back, none of them quietly killed' {
     $ui = New-DialogUi -Settings $settings
     try {
         $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             $ed.NameBox.Text = 'Movie'
             $ed.Checks[0].IsChecked = $true
@@ -88,15 +91,16 @@ Test-Case 'orphan: what the person set himself beats what the name would bring' 
     $ui = New-DialogUi -Settings $settings
     try {
         $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             # First its own shortcut and its own brightness, and only then the name.
             $ed.HotkeyBox.Text = 'Ctrl+Alt+F7'
-            $ed.LevelKindBox.SelectedIndex = 1
-            $ed.LevelOneSlider.Value = 20
+            $ed.Brightness.KindBox.SelectedIndex = 1
+            $ed.Brightness.OneSlider.Value = 20
             $ed.NameBox.Text = 'Movie'
             Assert-Equal 'Ctrl+Alt+F7' $ed.HotkeyBox.Text 'his shortcut stayed'
-            Assert-Equal 20 ([int]$ed.Level.Value) 'and his brightness too'
+            Assert-Equal 20 ([int]$ed.Brightness.Model.Value) 'and his brightness too'
         }
         finally { $ed.Window.Close() }
     }
@@ -114,7 +118,8 @@ Test-Case 'orphan: renaming a combination onto that name does not wipe the short
     try {
         $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
         $ed = New-ModeEditorWindow -Mode $mode -Combo $ui.Combos[0] -State $ui.State `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
             Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'Work has no shortcut of its own'
             $ed.NameBox.Text = 'Movie'

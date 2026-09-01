@@ -53,7 +53,7 @@ Test-Case 'level settings: modes without brightness stay out of the file' {
         'all'        = (ConvertTo-LevelModel 80)
         'combo:Work' = (ConvertTo-LevelModel $null)
     }
-    $out = ConvertTo-BrightnessSettings -Levels $levels
+    $out = ConvertFrom-LevelModels -Models $levels
     Assert-Equal 1 $out.Count 'only the one that has a level'
     Assert-Equal 80 $out['all'] 'and it is the number as written'
 }
@@ -114,8 +114,8 @@ Test-Case 'mode editor: brightness is offered for every kind of mode' {
     )) {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false
         try {
-            Assert-Equal 3 $ed.LevelKindBox.Items.Count "leave alone / one level / each display for $($mode.Key)"
-            Assert-Equal 'none' ([string]$ed.Level.Kind) 'nothing set until asked'
+            Assert-Equal 3 $ed.Brightness.KindBox.Items.Count "leave alone / one level / each display for $($mode.Key)"
+            Assert-Equal 'none' ([string]$ed.Brightness.Model.Kind) 'nothing set until asked'
         }
         finally { $ed.Window.Close() }
     }
@@ -177,9 +177,9 @@ Test-Case 'mode editor: moving the one-level slider is what gets saved' {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Dark $false
         try {
             # The way a person does it: pick the form, move the slider, Save.
-            $ed.LevelKindBox.SelectedIndex = 1
-            $ed.LevelOneSlider.Value = 35
-            Assert-Equal 'Visible' ([string]$ed.LevelOnePanel.Visibility) 'the slider showed up'
+            $ed.Brightness.KindBox.SelectedIndex = 1
+            $ed.Brightness.OneSlider.Value = 35
+            Assert-Equal 'Visible' ([string]$ed.Brightness.OnePanel.Visibility) 'the slider showed up'
             $got = Read-ModeFromUi -Editor $ed
             Assert-True $got.Ok 'accepted'
             Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
@@ -202,8 +202,8 @@ Test-Case 'mode editor: Cancel leaves the brightness the window already had' {
     try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
-            $ed.LevelOneSlider.Value = 20
-            Assert-Equal 20 ([int]$ed.Level.Value) 'the editor moved'
+            $ed.Brightness.OneSlider.Value = 20
+            Assert-Equal 20 ([int]$ed.Brightness.Model.Value) 'the editor moved'
         }
         finally { $ed.Window.Close() }
         # The editor's answer was not applied — the window has to keep what it had.
@@ -232,9 +232,9 @@ Test-Case 'mode editor: switching to per-display seeds it from the level it had'
     try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
-            Assert-Equal 'one' ([string]$ed.Level.Kind) 'started as one level'
+            Assert-Equal 'one' ([string]$ed.Brightness.Model.Kind) 'started as one level'
             # The person saw 70 and has to edit from seventy rather than from an empty list.
-            $ed.LevelKindBox.SelectedIndex = 2
+            $ed.Brightness.KindBox.SelectedIndex = 2
             $got = Read-ModeFromUi -Editor $ed
             Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
         }
@@ -259,10 +259,10 @@ Test-Case 'mode editor: the per-display rows are really built' {
     try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
-            Assert-Equal 'Collapsed' ([string]$ed.LevelOnePanel.Visibility) 'the single slider is out of the way'
-            Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'a row per display'
+            Assert-Equal 'Collapsed' ([string]$ed.Brightness.OnePanel.Visibility) 'the single slider is out of the way'
+            Assert-Equal 2 $ed.Brightness.RowsPanel.Children.Count 'a row per display'
             # A row's first column is the "set" checkbox, and it carries the name as its label.
-            $first = $ed.LevelRowsPanel.Children[0]
+            $first = $ed.Brightness.RowsPanel.Children[0]
             Assert-Equal 'LG ULTRAGEAR' ([string]$first.Children[0].Content) 'named after the display'
             Assert-True ([bool]$first.Children[0].IsChecked) 'ticked, because a level is set'
             Assert-Equal 60 ([int]$first.Children[1].Value) 'and the slider stands where the setting says'
@@ -280,7 +280,7 @@ Test-Case 'mode editor: a display with no level gets an unticked, disabled row' 
     try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
-            $rows = @($ed.LevelRowsPanel.Children)
+            $rows = @($ed.Brightness.RowsPanel.Children)
             $off = @($rows | Where-Object { [string]$_.Children[0].Content -eq 'LG ULTRAFINE' })
             Assert-Equal 1 $off.Count 'the display without a level still has a row'
             Assert-Equal $false ([bool]$off[0].Children[0].IsChecked) 'unticked'
@@ -300,11 +300,11 @@ Test-Case 'mode editor: unticking a display drops its brightness row with it' {
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState `
                                -Levels ([ordered]@{ 'combo:Work' = $level }) -Dark $false
     try {
-        Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'both displays have a row'
+        Assert-Equal 2 $ed.Brightness.RowsPanel.Children.Count 'both displays have a row'
         $uf = @($ed.Checks | Where-Object { [string]$_.Tag -eq 'LG ULTRAFINE' })[0]
         $uf.IsChecked = $false
         $uf.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
-        $names = @($ed.LevelRowsPanel.Children | ForEach-Object { [string]$_.Children[0].Content })
+        $names = @($ed.Brightness.RowsPanel.Children | ForEach-Object { [string]$_.Children[0].Content })
         # The row stays, but as an orphan now: the value is set, and it can only be cleared by seeing it.
         Assert-True ($names -contains 'LG ULTRAGEAR') 'the display that stayed keeps its row'
         $got = Read-ModeFromUi -Editor $ed

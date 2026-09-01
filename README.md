@@ -44,7 +44,8 @@ Every one of these exists because the naive version broke on a real desk:
   monitor switched on by its own button — Windows rearranges the desk on every one of
   those. The set you chose comes back by itself.
 - **Follows with audio, optionally.** A mode can carry a default playback device — handy
-  when the gaming monitor has the speakers.
+  when the gaming monitor has the speakers. Pick it from the list in the mode's editor, or
+  type part of a name so the setting survives a driver renaming the rest.
 - **Carries brightness with the mode.** Over DDC/CI — the same channel inside the cable
   that the buttons on the monitor's own bezel use. The evening mode dims the 4K panel to
   25%, the work mode puts it back to 80%, and you stop reaching for the bezel.
@@ -162,13 +163,15 @@ different.
 
 The same **Edit** sits on every other mode too. A display's mode and "all displays" have no
 name or membership to argue about — the desk decides those — so their editor holds the
-shortcut and the brightness, and nothing else. Only combinations have **Remove**.
+shortcut, the brightness, the contrast, the playback device and the commands, and nothing
+else. Only combinations have **Remove**.
 
 Each combination shows up in the tray menu under its own name, takes a hotkey like any other
 mode, resolves from the command line (`.\Set-Display.ps1 "Movie night"`), and is a valid
 target for `rules`, `hooks`, `brightness` and `audio`. The mode key is `combo:<name>`.
 
-Renaming a combination moves its hotkey and audio binding along; removing it removes them.
+Renaming a combination carries everything tied to it — hotkey, brightness, contrast,
+playback device and commands; removing it removes them.
 A combination whose displays are all unplugged stays in the menu, greyed out — you made it,
 so only you remove it.
 
@@ -334,7 +337,9 @@ changing what the setting means for a monitor you buy tomorrow. Switching shapes
 the list at the top of Brightness, which is your decision — and switching to per-display seeds every slider with
 the number you were looking at.
 
-Contrast has no sliders: it is the same idea and stays in `settings.json`.
+**Contrast** is a card of its own right below, with the same three choices and the same
+sliders. Fewer monitors answer for contrast than for brightness, which is what **Ask the
+monitors** is for — one walk of the bus reports both.
 
 Only displays that are **on** in that mode are set: a sleeping monitor does not answer.
 Run `.\Set-Display.ps1 brightness` to see which of yours answer at all and what they
@@ -364,7 +369,8 @@ levels: LG ULTRAGEAR did not take brightness 95 - DDC/CI may be off in its own m
 
 ## Commands around a switch
 
-One line per mode, and what it does is your business:
+**Settings → Edit** on any mode has two boxes, **Before switching** and **After switching**.
+What they run is your business:
 
 ```json
 "hooks": {

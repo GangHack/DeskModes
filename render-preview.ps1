@@ -202,7 +202,8 @@ try {
         $combo = Get-UiCombo -Ui $ui -Key ([string]$mode.Key)
 
         $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state `
-                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark (Test-DarkTheme)
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark (Test-DarkTheme)
         try {
             # Next to the first image, with a suffix. ChangeExtension($Out, $null) is no
             # good here: PowerShell hands back an empty string instead of $null, and the

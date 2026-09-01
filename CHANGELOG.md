@@ -9,6 +9,32 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
 
+### A mode's editor holds all of a mode
+
+- **Contrast has a card**, right under Brightness and working exactly like it: leave it alone,
+  one level for the whole mode, or one per display. **Ask the monitors** reports both in one
+  walk of the bus — fewer monitors answer for contrast, and now you can see which.
+- **The playback device is picked from a list.** Open the dropdown and it offers what Windows
+  has; what gets stored is still a *piece* of the name, so shortening "Speakers (Realtek High
+  Definition Audio)" to "Realtek" by hand keeps working when a driver update renames the rest.
+  The list is fetched when you first open it, never when the window is built.
+- **Commands got their two boxes** — *Before switching* and *After switching*, with the promise
+  written above them: the command is started and not waited for.
+- **A mode's row says what is set on it.** `brightness 80  -  contrast 65  -  audio  -  command`,
+  so a setting hidden behind an Edit button is no longer invisible until you have opened every
+  mode in turn.
+- All four are now **edited** rather than merely carried: emptying a box clears the setting.
+  Until now a device or a command could be added to `settings.json` by hand and never taken
+  away from any window, and an entry left behind by a mode that no longer exists gets its own
+  removable row, the way a stranded shortcut always did.
+
+### Fixed
+
+- **Renaming a combination no longer drops what the rename was not told about.** Everything
+  keyed to a mode now *moves* to the new key instead of being cleared and rewritten from the
+  edit — a setting the edit did not mention kept its value everywhere else in the window, and
+  a rename was the one place that meant "throw it away".
+
 ### The diary has a window
 
 - **Statistics…** opens a window of its own instead of a browser tab: the same numbers, in
