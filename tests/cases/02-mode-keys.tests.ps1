@@ -1,12 +1,11 @@
-﻿# --- ключи режимов ----------------------------------------------------------
+﻿# --- mode keys --------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'mode keys' -ForegroundColor White
 
 Test-Case 'modes: a fresh desk gets one mode per display plus all, and nothing else' {
-    # Что видит человек, впервые подключивший три монитора: три отдельных режима и
-    # «все». Ничего не угадывается: наборы появляются только после того, как он сам
-    # их создаст.
+    # What a person sees the first time they plug in three monitors: three separate modes and
+    # "all". Nothing is guessed at: sets appear only after they have created them themselves.
     $state = @(
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
@@ -34,9 +33,9 @@ Test-Case 'modes: two identical models get the short id appended' {
 }
 
 Test-Case 'modes: full twins get numbered, and the keys stay distinct' {
-    # Одинаковая модель на одинаковом входе: короткий ID это модель, не экземпляр.
-    # Без нумерации оба соло-режима получили бы ОДИН ключ, и «включить только этот»
-    # зажигало бы оба монитора.
+    # An identical model on an identical input: the short ID is the model, not the instance.
+    # Without numbering, both solo modes would get ONE key, and "switch on only this one" would
+    # light both monitors.
     $state = @(
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-a')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-b')
@@ -47,7 +46,7 @@ Test-Case 'modes: full twins get numbered, and the keys stay distinct' {
     Assert-Equal 2 (@($keys | Sort-Object -Unique)).Count 'keys are distinct'
     Assert-True ($keys[0] -like '*#1') 'first numbered'
     Assert-True ($keys[1] -like '*#2') 'second numbered'
-    # И каждый ключ ведёт к своему монитору, а не к обоим.
+    # And each key leads to its own monitor rather than to both.
     Assert-Equal 'path-a' $solo[0].Id 'first points at its own display'
     Assert-Equal 'path-b' $solo[1].Id 'second points at its own display'
 }
@@ -66,7 +65,7 @@ Test-Case 'modes: a disconnected display still gets a mode, marked unavailable' 
 Test-Case 'ModeTitleFromKey: every shape' {
     Assert-Equal 'Only LG ULTRAGEAR' (Get-ModeTitleFromKey 'solo:LG ULTRAGEAR') 'solo'
     Assert-Equal 'Only AUSAA1D' (Get-ModeTitleFromKey 'solo:AUSAA1D') 'solo by short id'
-    # Имя комбинации задаёт человек, поэтому заголовок берётся из ключа как есть.
+    # A combo's name is set by a person, so the title is taken from the key as it is.
     Assert-Equal 'Movie night' (Get-ModeTitleFromKey 'combo:Movie night') 'combo'
     Assert-Equal 'All displays' (Get-ModeTitleFromKey 'all') 'all'
     Assert-Equal 'something else' (Get-ModeTitleFromKey 'something else') 'unknown falls through'

@@ -1,11 +1,11 @@
-﻿# --- Resolve-ModeKey из Set-Display.ps1 -------------------------------------
+﻿# --- Resolve-ModeKey out of Set-Display.ps1 ---------------------------------
 
 Write-Host ''
 Write-Host 'command line mode resolution' -ForegroundColor White
 
-# Set-Display.ps1 дот-сорснуть нельзя — он сразу начинает работать. Достаём из
-# него только определение функции, по разбору файла: так тест не зависит от
-# копии кода, которая разошлась бы с оригиналом.
+# Set-Display.ps1 cannot be dot-sourced — it starts working straight away. We pull only the
+# function's definition out of it, by parsing the file: that way the test does not depend on a copy
+# of the code that would drift apart from the original.
 $sdPath = Join-Path $root 'Set-Display.ps1'
 $sdAst = [System.Management.Automation.Language.Parser]::ParseFile($sdPath, [ref]$null, [ref]$null)
 $fnAst = $sdAst.FindAll({ param($n)
@@ -35,8 +35,8 @@ Test-Case 'resolve: a combination by name, case and spaces aside' {
 }
 
 Test-Case 'resolve: work.cmd and game.cmd find their combinations' {
-    # Обёртки зовут `Set-Display.ps1 work` и `game`, а комбинации названы «Work» и
-    # «Game»: сравнение имени регистр не различает.
+    # The wrappers call `Set-Display.ps1 work` and `game`, while the combos are named "Work" and
+    # "Game": the name comparison ignores case.
     Assert-Equal 'combo:Work' (Resolve-ModeKey 'work' $script:ResolveModes).Key 'work'
     Assert-Equal 'combo:Game' (Resolve-ModeKey 'game' $script:ResolveModes).Key 'game, a set of one'
 }

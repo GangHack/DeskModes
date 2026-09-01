@@ -1,40 +1,40 @@
 ﻿<#
-    Activity.ps1 — дневник: что, где и сколько.
+    Activity.ps1 — the diary: what, where, and for how long.
 
-    Раз в несколько секунд смотрим, какое приложение на переднем плане, на каком
-    оно мониторе и какой сейчас режим стола, и складываем секунды в копилку по
-    дням. Из копилки потом собирается отчёт — в консоль и в HTML.
+    Every few seconds we look at which application is in the foreground, which
+    monitor it is on and which desk mode is current, and add the seconds to a
+    per-day pot. The report — for the console and for HTML — is built from the pot.
 
-    Три решения, которые здесь важнее кода:
+    Three decisions that matter more here than the code does:
 
-      * НАЗВАНИЯ ОКОН НЕ ЧИТАЮТСЯ. В заголовке окна лежит имя документа, адрес
-        страницы и тема письма; для «сколько времени в чём» достаточно имени
-        процесса. Того, чего нет в файле, из него не утечёт.
-      * Копится сумма, а не события. В файле лежат итоги по дню («chrome — 3600
-        секунд»), а не поток «в 14:03:10 был chrome». Файл остаётся крошечным
-        навсегда, и по нему нельзя восстановить, что человек делал в четверг в
-        три часа дня.
-      * Выключено по умолчанию (settings.stats). Это данные о человеке, и
-        включать их за него нельзя.
+      * WINDOW TITLES ARE NEVER READ. A window title holds the document's name,
+        the page address and the subject of an email; for "how much time in what"
+        the process name is enough. What is not in the file cannot leak out of it.
+      * A sum is accumulated, not events. The file holds the day's totals
+        ("chrome — 3600 seconds"), not a stream of "at 14:03:10 it was chrome".
+        The file stays tiny forever, and it cannot be used to reconstruct what
+        somebody was doing on Thursday at three in the afternoon.
+      * Off by default (settings.stats). This is data about a person, and it is
+        not ours to turn on for them.
 
-    Файл — activity.json рядом со скриптами, его можно удалить в любой момент.
+    The file is activity.json next to the scripts, and it can be deleted at any moment.
 #>
 
 $script:ActivityFile = Join-Path $PSScriptRoot 'activity.json'
 
-# Простой дольше этого — человека за компьютером нет, секунды не копим. Полторы
-# минуты, а не пять: у 10-секундного опроса это три пустых замера, и обеденный
-# перерыв не попадёт в «время за компьютером».
+# Idle for longer than this and there is nobody at the computer, so no seconds are
+# collected. A minute and a half rather than five: at a 10-second poll that is three
+# empty samples, and a lunch break will not end up in "time at the computer".
 $script:ActivityIdleLimit = 90
 
-# Копилка в памяти. На диск уходит редко (см. Save-ActivityStore): дневник — не
-# та вещь, ради которой стоит будить SSD каждые десять секунд.
+# The pot, in memory. It goes to disk rarely (see Save-ActivityStore): a diary is not
+# the sort of thing worth waking an SSD for every ten seconds.
 $script:ActivityStore = $null
 $script:ActivityDirty = $false
 
-# Незаконченный отрезок непрерывной работы: с него считается «самый долгий
-# сеанс». Живёт только в памяти — после перезапуска трея отрезок начинается
-# заново, и это честно: мы не знаем, что было, пока нас не было.
+# The unfinished stretch of continuous work: the "longest session" is counted from it.
+# It lives in memory only — after the tray restarts the stretch begins again, and that
+# is honest: we do not know what happened while we were not there.
 $script:ActivityRunStart = $null
 $script:ActivityRunLast = $null
 
@@ -52,8 +52,8 @@ function Get-ActivityStore {
             }
         }
         catch {
-            # Дневник — не настройки: терять его не страшно, и портить из-за него
-            # запуск приложения тем более незачем.
+            # A diary is not the settings: losing it is no disaster, and taking the
+            # app's startup down over it even less warranted.
             Write-DisplayLog "stats: activity.json is damaged, starting a new one - $($_.Exception.Message)"
             $store = [ordered]@{ days = [ordered]@{} }
         }
@@ -62,9 +62,9 @@ function Get-ActivityStore {
     return $store
 }
 
-# Из того, что вернул ConvertFrom-Json (объекты), в то, с чем работает код
-# (словари). Заодно проставляет отсутствующие разделы: файл мог быть записан
-# прошлой версией, и «нет ключа» не должно превращаться в падение отчёта.
+# From what ConvertFrom-Json handed back (objects) into what the code works with
+# (dictionaries). It fills in missing sections along the way: the file could have been
+# written by an older version, and "no such key" must not turn into a dead report.
 function ConvertTo-ActivityDay {
     param($Raw)
 
@@ -87,16 +87,16 @@ function ConvertTo-ActivityDay {
 
 function New-ActivityDay {
     return [ordered]@{
-        active   = 0            # секунд за компьютером (без простоя)
-        switches = 0            # переключений режима
-        longest  = 0            # самый долгий непрерывный отрезок, секунд
-        first    = ''           # когда сели, HH:mm
-        last     = ''           # когда последний раз что-то делали
-        modes    = [ordered]@{} # ключ режима -> секунды
-        apps     = [ordered]@{} # имя процесса -> секунды
-        displays = [ordered]@{} # название монитора -> секунды
-        pairs    = [ordered]@{} # «процесс|монитор» -> секунды
-        hours    = [ordered]@{} # час суток (00..23) -> секунды
+        active   = 0            # seconds at the computer (idle excluded)
+        switches = 0            # mode switches
+        longest  = 0            # the longest unbroken stretch, in seconds
+        first    = ''           # when they sat down, HH:mm
+        last     = ''           # when they last did anything
+        modes    = [ordered]@{} # mode key -> seconds
+        apps     = [ordered]@{} # process name -> seconds
+        displays = [ordered]@{} # monitor name -> seconds
+        pairs    = [ordered]@{} # "process|monitor" -> seconds
+        hours    = [ordered]@{} # hour of the day (00..23) -> seconds
     }
 }
 
@@ -107,8 +107,8 @@ function Get-ActivityDay {
     return $Store.days[$Date]
 }
 
-# Чистая функция: добавить отрезок в день. Всё, что знает о структуре копилки,
-# собрано здесь — и потому проверяется тестами без единого монитора.
+# A pure function: add a stretch to a day. Everything that knows the shape of the pot
+# is gathered here — which is why it is tested without a single monitor.
 function Add-ActivitySpan {
     param($Day, [string]$Process, [string]$Display, [string]$Mode, [int]$Seconds, [string]$Time = '', [int]$Hour = -1)
 
@@ -137,8 +137,8 @@ function Save-ActivityStore {
     if ($null -eq $script:ActivityStore) { return }
     if (-not $script:ActivityDirty -and -not $Force) { return }
     try {
-        # Дни старше года выбрасываем: годовой отчёт — это уже всё, что кто-то
-        # станет читать, а файл должен оставаться маленьким без чужого участия.
+        # Days older than a year are thrown away: a yearly report is already all
+        # anyone will read, and the file must stay small without anybody's help.
         $limit = Format-DisplayStamp ((Get-Date).AddDays(-400)) 'yyyy-MM-dd'
         foreach ($key in @($script:ActivityStore.days.Keys)) {
             if ($key -lt $limit) { $script:ActivityStore.days.Remove($key) }
@@ -149,17 +149,17 @@ function Save-ActivityStore {
     catch { Write-DisplayLog "stats: could not save activity.json - $($_.Exception.Message)" }
 }
 
-# Дешёвая половина замера: кто перед компьютером. Отделена от записи, чтобы
-# вызывающий не готовил карту мониторов и ключ режима для замера, который тут же
-# выбросится: ночью и в обед таких тиков большинство, а пересчёт режимов — это
-# миллисекунда каждые десять секунд. $null — за компьютером никого.
+# The cheap half of a sample: who is at the computer. Separated from the recording so
+# that the caller does not have to prepare a monitor map and a mode key for a sample
+# that is about to be thrown away: at night and over lunch most ticks are like that,
+# and recomputing the modes is a millisecond every ten seconds. $null — nobody is there.
 function Get-ActivitySample {
     $sample = $null
     try { $sample = [NativeActivity]::Sample() }
     catch { return $null }
     if (-not $sample) { return $null }
 
-    # За компьютером никого — отрезок непрерывной работы кончился.
+    # Nobody at the computer — the stretch of continuous work has ended.
     if ($sample.IdleSeconds -gt $script:ActivityIdleLimit) {
         $script:ActivityRunStart = $null
         $script:ActivityRunLast = $null
@@ -168,9 +168,9 @@ function Get-ActivitySample {
     return $sample
 }
 
-# Записать замер. $Sample — от Get-ActivitySample; $DisplayMap —
-# «\\.\DISPLAY1» -> название монитора, его отдаёт вызывающий: состояние стола у
-# трея уже в руках, и спрашивать систему второй раз из-за дневника незачем.
+# Record a sample. $Sample comes from Get-ActivitySample; $DisplayMap is
+# "\\.\DISPLAY1" -> monitor name, and the caller supplies it: the tray already holds
+# the desk state, and there is no point asking the system twice for the diary's sake.
 function Add-ActivitySample {
     param($Sample, $DisplayMap, [string]$Mode, [int]$IntervalSeconds = 10)
 
@@ -179,13 +179,13 @@ function Add-ActivitySample {
 
     $now = Get-Date
 
-    # Сколько времени прошло с прошлого замера — по часам, а не по шагу таймера:
-    # таймер трея может опоздать (система занята, компьютер спал). Но и целиком
-    # верить разрыву нельзя, поэтому он ограничен тремя шагами: минута, которую
-    # компьютер проспал, не должна достаться приложению, оказавшемуся на экране.
+    # How much time has passed since the last sample — by the clock, not by the timer's
+    # step: the tray timer can be late (the system was busy, the computer slept). But the
+    # gap cannot be trusted whole either, so it is capped at three steps: a minute the
+    # computer slept through must not be credited to whatever app happened to be on screen.
     #
-    # Первый замер после перерыва — ровно один шаг: сколько человек сидел до
-    # него, мы не знаем, и выдумывать здесь нечего.
+    # The first sample after a break is exactly one step: how long the person had been
+    # sitting there before it, we do not know, and there is nothing to invent here.
     $seconds = $IntervalSeconds
     if ($script:ActivityRunLast) {
         $gap = [int]($now - $script:ActivityRunLast).TotalSeconds
@@ -202,8 +202,8 @@ function Add-ActivitySample {
     Add-ActivitySpan -Day $day -Process ([string]$sample.Process) -Display $display -Mode $Mode `
                      -Seconds $seconds -Time (Format-DisplayStamp $now 'HH:mm') -Hour $now.Hour
 
-    # Самый долгий непрерывный отрезок. Считаем на ходу, чтобы не хранить в файле
-    # поток событий: длина текущего отрезка — это «сейчас минус его начало».
+    # The longest unbroken stretch. Counted on the fly so the file need not hold a
+    # stream of events: the current stretch's length is "now minus where it started".
     if (-not $script:ActivityRunStart) { $script:ActivityRunStart = $now }
     $script:ActivityRunLast = $now
     $run = [int]($now - $script:ActivityRunStart).TotalSeconds
@@ -212,8 +212,8 @@ function Add-ActivitySample {
     $script:ActivityDirty = $true
 }
 
-# Переключение режима — единственное событие, которое дневник записывает
-# отдельно: остальное он суммирует.
+# A mode switch is the only event the diary writes down separately: everything else it
+# sums up.
 function Add-ActivitySwitch {
     param([string]$Mode)
 
@@ -223,9 +223,9 @@ function Add-ActivitySwitch {
     $script:ActivityDirty = $true
 }
 
-# --- отчёт ------------------------------------------------------------------
-# Чистая функция над копилкой: складывает дни, сортирует, считает проценты.
-# Ничего не читает и никуда не пишет — поэтому проверяется тестами целиком.
+# --- the report -------------------------------------------------------------
+# A pure function over the pot: it adds the days up, sorts, and works out the shares.
+# It reads nothing and writes nowhere — which is why it is tested end to end.
 
 function Get-ActivityReport {
     param($Store, [int]$Days = 30, [datetime]$Today = (Get-Date))
@@ -275,8 +275,8 @@ function Get-ActivityReport {
     $report.Modes = @(ConvertTo-ActivityRows -Map $modes -Total $report.Active)
     $report.Pairs = @(ConvertTo-ActivityRows -Map $pairs -Total $report.Active)
 
-    # Часы отдаём все двадцать четыре, включая пустые: гистограмма с провалом на
-    # обед — это и есть то, ради чего её смотрят.
+    # All twenty-four hours are handed back, empty ones included: a histogram with a
+    # dip at lunchtime is exactly what it gets looked at for.
     $peak = 0
     $rows = @()
     for ($h = 0; $h -lt 24; $h++) {
@@ -297,9 +297,9 @@ function Get-ActivityReport {
     return $report
 }
 
-# Словарь «имя -> секунды» в отсортированный список с долями. Доля считается от
-# общего времени, а не от суммы строк: одно приложение может стоять на двух
-# мониторах, и сумма пар больше времени за компьютером.
+# A "name -> seconds" dictionary into a sorted list with shares. The share is worked
+# out against the total time, not against the sum of the rows: one application can sit
+# on two monitors, and the sum of the pairs is larger than the time at the computer.
 function ConvertTo-ActivityRows {
     param($Map, [int]$Total)
 
@@ -314,7 +314,7 @@ function ConvertTo-ActivityRows {
     return @($rows | Sort-Object -Property Seconds -Descending)
 }
 
-# Средний час прихода и ухода: «08:42». Строки HH:mm складываем в минутах.
+# The average hour of arrival and of leaving: "08:42". HH:mm strings are added in minutes.
 function Get-AverageClock {
     param($Times)
 
@@ -329,8 +329,8 @@ function Get-AverageClock {
     return '{0:00}:{1:00}' -f [int][math]::Floor($avg / 60), ($avg % 60)
 }
 
-# Сколько дней подряд, считая назад от сегодня, компьютером пользовались. Разрыв
-# в один день обрывает счёт — иначе это не «подряд».
+# How many days in a row, counting back from today, the computer was used. A gap of one
+# day breaks the count — otherwise it is not "in a row".
 function Get-ActivityStreak {
     param($Dates, [datetime]$Today = (Get-Date))
 
@@ -345,8 +345,8 @@ function Get-ActivityStreak {
     return $streak
 }
 
-# «3 h 20 min» — для отчёта. Своя, а не Format-Duration из DisplayCore: там
-# секунды нужны для обратного отсчёта, здесь они только мешают.
+# "3 h 20 min" — for the report. Its own, not Format-Duration from DisplayCore: there
+# the seconds are needed for a countdown, here they only get in the way.
 function Format-ActivitySpan {
     param([int]$Seconds)
 
@@ -356,17 +356,17 @@ function Format-ActivitySpan {
     return ('{0} h {1:00} min' -f [int][math]::Floor($minutes / 60), ($minutes % 60))
 }
 
-# Отчёт в консоль. Чистая функция: отдаёт массив строк, ничего не печатает — так
-# её можно проверить тестом.
+# The console report. A pure function: it hands back an array of lines and prints
+# nothing — that is how it can be tested.
 function Format-ActivityReport {
     param($Report, [int]$Top = 8)
 
     $out = @()
     if (-not $Report -or $Report.DaysRecorded -eq 0) {
-        # Про «включите дневник» здесь не пишем: эта функция не знает настройки, а
-        # с включённым дневником такой совет был бы неправдой — пустой отчёт
-        # означает всего лишь, что за компьютером ещё не работали. Про
-        # выключенный дневник говорит тот, кто это знает (см. Set-Display.ps1).
+        # We do not say "turn the diary on" here: this function does not know the
+        # settings, and with the diary already on that advice would be a lie — an empty
+        # report only means nobody has worked at the computer yet. Whoever does know the
+        # diary is off is the one who says so (see Set-Display.ps1).
         return @('Nothing in the diary yet - it fills up while you use the computer.')
     }
 
@@ -393,11 +393,11 @@ function Format-ActivityReport {
         $out += $section.Title
         foreach ($r in $rows) {
             $name = [string]$r.Name -replace '\|', ' on '
-            # Полоска из решёток: двадцать знаков на сто процентов. В консоли без
-            # цвета это единственный способ увидеть пропорцию, не читая цифры.
+            # A bar of hashes: twenty marks to a hundred percent. In a console without
+            # colour this is the only way to see a proportion without reading the digits.
             $bar = '#' * [int][math]::Round($r.Share / 5)
-            # Ширина колонки времени — под «12 h 00 min» целиком: на десяти
-            # знаках трёхчасовые строки съезжали относительно двузначных.
+            # The width of the time column fits "12 h 00 min" whole: at ten marks the
+            # three-hour rows slid out of line against the two-digit ones.
             $out += ('  {0,-28} {1,11}  {2,5}%  {3}' -f $name, (Format-ActivitySpan $r.Seconds), (Format-ActivityPercent $r.Share), $bar)
         }
     }
@@ -406,22 +406,22 @@ function Format-ActivityReport {
     return $out
 }
 
-# --- отчёт картинкой --------------------------------------------------------
-# Тот же отчёт, но с полосками и в цвете темы. Своего окна не заводим: WPF-окно
-# с графиками — это день работы и лишняя тысяча строк, а страница в браузере
-# читается лучше, открывается везде и уходит человеку файлом, который можно
-# сохранить. Внутри нет ни одной внешней ссылки — ни шрифта, ни скрипта: файл
-# должен открываться на машине без интернета и не звать никого в гости.
+# --- the report as a picture ------------------------------------------------
+# The same report, but with bars and in the theme's colours. It gets no window of its
+# own: a WPF window with charts is a day of work and another thousand lines, whereas a
+# page in the browser reads better, opens anywhere, and goes to a person as a file they
+# can keep. There is not one external reference inside it — no font, no script: the file
+# has to open on a machine with no internet and must not invite anybody in.
 
 function Format-ActivityHtmlRows {
     param($Rows, [int]$Top = 10)
 
     $html = ''
     foreach ($r in @($Rows | Select-Object -First $Top)) {
-        # Экранируем ДО того, как добавим свою разметку: имя процесса и название
-        # монитора приходят извне (название — прямо из EDID, а туда производитель
-        # пишет что угодно), поэтому пара «процесс|монитор» обрабатывается как две
-        # отдельные строки, а не как одна с заменой разделителя.
+        # Escaped BEFORE our own markup is added: the process name and the monitor name
+        # come from outside (the name straight out of EDID, where the manufacturer writes
+        # whatever it likes), which is why a "process|monitor" pair is handled as two
+        # separate strings rather than as one with the separator swapped out.
         $name = (@([string]$r.Name -split '\|') | ForEach-Object { Format-HtmlText $_ }) -join
                 ' <span class="dim">on</span> '
         $html += ('<tr><td class="name">{0}</td><td class="time">{1}</td>' -f
@@ -433,21 +433,20 @@ function Format-ActivityHtmlRows {
     return $html
 }
 
-# Всё, что пришло от системы, попадает в разметку только через эту функцию.
-# Название монитора читается из EDID, а туда производитель пишет что угодно —
-# сломать страницу угловой скобкой в имени монитора не должно быть возможно.
+# Everything that came from the system reaches the markup only through this function.
+# The monitor name is read out of EDID, where the manufacturer writes whatever it likes
+# — breaking the page with an angle bracket in a monitor's name must not be possible.
 function Format-HtmlText {
     param([string]$Text)
 
     return ([string]$Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
 }
 
-# Число в разметку — ВСЕГДА с точкой. `-f` берёт разделитель у текущей локали, и
-# на русской «width:12,5%» — это не двенадцать с половиной процентов, а
-# выброшенное правило CSS: полоска рисуется нулевой ширины, гистограмма часов
-# становится плоской, и виноватым выглядит дневник, а не запятая. Проценты здесь
-# считаются с одним знаком после точки (см. ConvertTo-ActivityRows), поэтому
-# формат ровно на него.
+# A number into the markup — ALWAYS with a dot. `-f` takes the separator from the
+# current locale, and on a Russian one "width:12,5%" is not twelve and a half percent
+# but a thrown-away CSS rule: the bar is drawn zero wide, the hour histogram goes flat,
+# and the diary is what looks guilty rather than the comma. Percentages here are worked
+# out to one decimal place (see ConvertTo-ActivityRows), so the format is exactly that.
 function Format-ActivityPercent {
     param([double]$Value)
 
@@ -533,8 +532,8 @@ function New-ActivityHtml {
 "@
 }
 
-# Собрать отчёт, положить рядом со скриптами и открыть в браузере. Файл
-# перезаписывается каждый раз: это не архив, а взгляд на сейчас.
+# Build the report, put it next to the scripts and open it in the browser. The file is
+# overwritten every time: this is not an archive, it is a look at right now.
 function Show-ActivityReport {
     param([int]$Days = 30)
 

@@ -1,4 +1,4 @@
-﻿# --- таймер выключения ------------------------------------------------------
+﻿# --- the shutdown timer -----------------------------------------------------
 
 Write-Host ''
 Write-Host 'the shutdown timer' -ForegroundColor White
@@ -40,9 +40,9 @@ Test-Case 'duration: the short form drops the empty zero' {
 }
 
 Test-Case 'duration: what the timer window shows, it can read back' {
-    # Поле в окне таймера — одно и то же и на запись, и на чтение: ползунок пишет
-    # в него Format-DurationShort, а разбирает написанное ConvertFrom-DurationText.
-    # Разойдись эти двое — и ползунок сбрасывал бы собственное значение.
+    # The field in the timer window is one and the same for writing and for reading: the slider writes
+    # into it with Format-DurationShort, and ConvertFrom-DurationText parses what was written. Let those
+    # two drift apart and the slider would reset its own value.
     foreach ($minutes in (Get-TimerSteps)) {
         Assert-Equal $minutes (ConvertFrom-DurationText (Format-DurationShort $minutes)) "round trip of $minutes"
     }
@@ -62,7 +62,7 @@ Test-Case 'timer steps: the slider lands on the nearest one, not the one below' 
 Test-Case 'timer nudge: five minutes, on the five-minute grid' {
     Assert-Equal 50 (Get-TimerNudge -Minutes 45 -Step 5)
     Assert-Equal 40 (Get-TimerNudge -Minutes 45 -Step -5)
-    # С неровного значения первый щелчок притягивает к сетке, а не половинит шаг.
+    # From an off-grid value the first click snaps to the grid rather than halving the step.
     Assert-Equal 50 (Get-TimerNudge -Minutes 47 -Step 5)
     Assert-Equal 45 (Get-TimerNudge -Minutes 47 -Step -5)
     Assert-Equal 5 (Get-TimerNudge -Minutes 5 -Step -5) 'no shorter than five minutes'
@@ -73,18 +73,18 @@ Test-Case 'timer target: says when it happens, and when that is tomorrow' {
     $now = [datetime]'2026-08-25 21:00:00'
     Assert-Equal 'at 22:30' (Get-TimerTargetText -Minutes 90 -Now $now)
     Assert-Equal 'at 00:30 tomorrow' (Get-TimerTargetText -Minutes 210 -Now $now)
-    # Полночь ровно — уже завтра: «в 00:00» без пометки читалось бы как «сегодня».
+    # Midnight exactly is already tomorrow: "at 00:00" with no note would read as "today".
     Assert-Equal 'at 00:00 tomorrow' (Get-TimerTargetText -Minutes 180 -Now $now)
 }
 
 Test-Case 'popup: opens above the cursor and stays on the screen' {
-    # Значок в трее — правый нижний угол: окно обязано уйти вверх и влево, целиком.
+    # The tray icon is in the bottom-right corner: the window has to go up and left, wholly.
     $p = Get-PopupPlacement -X 1900 -Y 1030 -Width 330 -Height 236 `
                             -Left 0 -Top 0 -Right 1920 -Bottom 1040
     Assert-Equal 1590 $p.X 'pushed back from the right edge'
     Assert-Equal 782 $p.Y 'above the cursor'
 
-    # Панель задач сверху — идти вверх некуда, окно уходит вниз.
+    # The taskbar is at the top — there is nowhere to go up, so the window goes down.
     $p = Get-PopupPlacement -X 900 -Y 60 -Width 330 -Height 236 `
                             -Left 0 -Top 48 -Right 1920 -Bottom 1080
     Assert-Equal 735 $p.X 'centred under the cursor'

@@ -73,20 +73,20 @@ $ErrorActionPreference = 'Stop'
 function Resolve-ModeKey {
     param([string]$Text, $Modes)
 
-    # точный ключ
+    # the exact key
     $hit = $Modes | Where-Object { $_.Key -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
-    # имя комбинации, как оно записано в настройках; регистр не важен, поэтому
-    # обёртки вида work.cmd находят комбинацию «Work».
+    # a combo name as it is written in the settings; case does not matter, so that
+    # wrappers like work.cmd find the "Work" combo.
     $hit = $Modes | Where-Object { $_.Kind -eq 'combo' -and $_.Title -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
-    # короткий Monitor ID
+    # the short Monitor ID
     $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $Text } | Select-Object -First 1
     if ($hit) { return $hit }
 
-    # часть названия монитора
+    # part of a monitor's name
     $hit = @($Modes | Where-Object { $_.Title -match [regex]::Escape($Text) })
     if ($hit.Count -eq 1) { return $hit[0] }
     if ($hit.Count -gt 1) {
@@ -95,15 +95,15 @@ function Resolve-ModeKey {
     throw "Unknown mode '$Text'. Run: .\Set-Display.ps1 modes"
 }
 
-# Настройки читаются один раз и раздаются дальше: состав комбинаций нужен
-# режимам. Иначе каждый потребитель шёл бы на диск сам.
+# The settings are read once and handed on: the modes need to know what the combos
+# are made of. Otherwise every consumer would go to disk on its own.
 $settings = Get-DisplaySettings
 $state = @(Get-DisplayState)
 
 if ($Mode -eq 'status') {
     Write-Host ''
-    # Версия первой строкой: status — это то, что человек копирует в отчёт об
-    # ошибке, и без неё отчёт приходится доспрашивать.
+    # The version on the first line: status is what a person copies into a bug
+    # report, and without it the report has to be asked about twice.
     Write-Host (Get-VersionLine) -ForegroundColor DarkGray
     Write-Host ''
     Write-Host 'Displays:' -ForegroundColor Cyan
@@ -119,9 +119,9 @@ if ($Mode -eq 'status') {
 }
 
 if ($Mode -eq 'audio') {
-    # Нужно, чтобы знать, какой кусок названия писать в settings.json -> audio.
-    # Окна для этой настройки нет намеренно, а угадывать названия устройств
-    # по памяти невозможно.
+    # Needed to know which part of a name to write into settings.json -> audio.
+    # There is deliberately no window for this setting, and guessing device names
+    # from memory is impossible.
     Write-Host ''
     Write-Host 'Playback devices:' -ForegroundColor Cyan
     $devs = @(Get-AudioDevices)
@@ -136,9 +136,9 @@ if ($Mode -eq 'audio') {
 }
 
 if ($Mode -eq 'brightness') {
-    # Нужно, чтобы знать две вещи перед тем, как что-то писать в settings.json:
-    # слушается ли монитор по DDC/CI вообще и какая яркость стоит сейчас. Спящие
-    # мониторы в списке не появятся — они на запросы не отвечают.
+    # Needed to know two things before writing anything into settings.json: whether
+    # the monitor listens over DDC/CI at all, and what its brightness is right now.
+    # Sleeping monitors will not show up in the list — they answer nothing.
     Write-Host ''
     Write-Host 'Monitors that answer over DDC/CI:' -ForegroundColor Cyan
     $levels = @(Get-MonitorLevels)
@@ -146,8 +146,8 @@ if ($Mode -eq 'brightness') {
         Write-Host '  (none answered - only displays that are ON can be asked)'
         return
     }
-    # Название монитора берём из состояния: DDC отдаёт «Generic PnP Monitor» всем
-    # подряд, и по такому списку выбрать нужный невозможно.
+    # The monitor name comes from the state: DDC hands out "Generic PnP Monitor" to
+    # everything, and picking the right one out of such a list is impossible.
     $byOutput = @{}
     foreach ($m in $state) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
     $levels |
@@ -183,11 +183,22 @@ if ($Mode -eq 'modes') {
     return
 }
 
-$resolved = Resolve-ModeKey -Text $Mode -Modes $modes
-$result = Switch-DisplayMode -ModeKey $resolved.Key -PrimaryMatch $PrimaryMatch -KeepMode:$KeepMode -DryRun:$DryRun
+# A refusal here is a sentence, not a stack trace. Every one of these messages is written for a person
+# ("Unknown mode 'work'", "That display is not connected right now"), and under
+# $ErrorActionPreference = 'Stop' they used to arrive as a red wall of PowerShell internals — in a window
+# that closes the instant it appears, since the .cmd wrappers only pause on a failure.
+try {
+    $resolved = Resolve-ModeKey -Text $Mode -Modes $modes
+    $result = Switch-DisplayMode -ModeKey $resolved.Key -PrimaryMatch $PrimaryMatch -KeepMode:$KeepMode -DryRun:$DryRun
+}
+catch {
+    Write-Host ''
+    Write-Host ("Problem: " + $_.Exception.Message) -ForegroundColor Red
+    exit 1
+}
 
-# Код возврата важнее текста: при полном провале сообщение пустое, и .cmd-файлы
-# рапортовали бы успех молча и с кодом 0.
+# The exit code matters more than the text: on a complete failure the message is
+# empty, and the .cmd files would report success silently and with code 0.
 if (-not $result) { exit 1 }
 if ($result.Skipped) {
     Write-Host ''

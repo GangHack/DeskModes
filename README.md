@@ -233,14 +233,25 @@ its decision is not the one you made.
   be exactly what `"combo:Work"` did to a display the combination does not include. With
   `"all"` every connected display belongs to it, so the desk is always assembled.
 
-  And it stays quiet for ten seconds after **a different** display went away. When one
-  monitor drops off the bus, Windows lights up whatever is left, and those screens arrive as
-  a plug of their own a second or two later — which is not a hand on a cable, and used to
-  walk the desk over to a mode the display you were working on is not part of. A display
-  coming back from its own nap is still a plug, and so is a cable swapped in one go.
+  And it stays quiet for ten seconds after **any** display went away — including the one
+  that then comes back. When a monitor drops off the bus, Windows lights up whatever is left,
+  and those screens arrive as a plug of their own a second or two later; a monitor in deep
+  sleep does the same by itself, leaving the bus and returning within a second. Neither is a
+  hand on a cable, and both used to walk the desk over to a mode the display you were working
+  on is not part of. A real hand is slower than that: switching a monitor off and on by its
+  own button takes longer than ten seconds, and if it did not, the next press works.
+
+  A cable swapped in one go is still a plug — there the new display is the news.
 
 Only **connected** displays are compared, never the ones that are on. The switcher turns
 displays on and off constantly; reacting to its own work would be an endless loop.
+
+None of this happens while a game is on the screen. Rearranging displays under a full-screen
+app drops its Direct3D device — the picture blinks, the window falls out — so the rebuild
+waits, and runs within fifteen seconds of your leaving the game. It is postponed, not
+dropped: a display that went away leaves the arrangement in pieces, and those pieces are what
+you would come back to otherwise. Switch modes yourself in the meantime and the postponed
+rebuild is forgotten — you have just said what you want.
 
 None of this ever overwrites the mode **you** chose. `restoreLastMode` brings back your last
 choice, not the last thing the switcher did on its own — otherwise a monitor that fell asleep
@@ -484,8 +495,11 @@ fraction the driver uses — 144 Hz is `143999/1000` here, and asking for `144/1
 whole request rejected — so each display's real mode is remembered in `display-modes.json`
 after every switch, which is also where the rate for a *sleeping* display comes from. And
 because a single call has to name coordinates for every display, this road is only taken
-when `layout` in the settings says what the order is; without it the old three-step path
-runs, which moves only the primary and leaves the rest where they are.
+when `layout` in the settings says what the order is — or when the mode lights a single
+display, which stands at the coordinate origin whatever anybody wrote. Without either, the
+old three-step path runs, which moves only the primary and leaves the rest where they are.
+The taskbar is placed on both roads: "primary" being a place rather than a flag, that is one
+call, and it is made whether or not there is an order to arrange the rest by.
 
 The three steps are still there as repair: after the single call the tool checks the set,
 the arrangement and each mode, and fixes whatever did not take (a display that refuses a
@@ -562,10 +576,9 @@ The release ZIP holds the program only — the scripts, the launchers, this READ
 tests, the gates, the screenshots and the engineering notes live in the repository,
 because that is where they are of any use.
 
-Code comments and the engineering notes are in Russian; the interface, the log and this
-README are in English. The notes are worth a look if you are here for the display API
-rather than the tool — they are a day-by-day account of what Windows actually does, with
-measurements: [`docs/notes.ru.md`](https://github.com/GangHack/ScreenDeck/blob/main/docs/notes.ru.md).
+The engineering notes are worth a look if you are here for the display API rather than the
+tool — they are a day-by-day account of what Windows actually does, with measurements:
+[`docs/notes.md`](https://github.com/GangHack/ScreenDeck/blob/main/docs/notes.md).
 
 ## Also here
 

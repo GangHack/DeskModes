@@ -1,12 +1,12 @@
-﻿# --- защита от «игра сама ставит режим» -------------------------------------
-# Сторож частоты не вмешивается, пока на экране полноэкранное приложение: смена
-# режима под ним роняет полноэкранное устройство D3D. Решает Test-FullscreenApp, и
-# она полтораста раз за историю журнала говорила «игра» там, где игры не было.
+﻿# --- the guard against "the game sets its own mode" --------------------------
+# The refresh-rate watchdog does not interfere while a full-screen application is on the screen: a mode
+# change under one kills a full-screen D3D device. Test-FullscreenApp decides, and over the log's history
+# it said "a game" a hundred and fifty times where there was no game.
 #
-# Виновник найден замером: TextInputHost — системное окно ввода размером РОВНО в
-# монитор, видимое по IsWindowVisible и закрытое DWM. Проверяемая часть решения
-# вынесена в Get-GhostWindowReason: у самой Test-FullscreenApp все входы приходят
-# от Windows, а [NativeForeground] — тип, а не функция, и подменить его нечем.
+# The culprit was found by measurement: TextInputHost — the system input window, EXACTLY the size of the
+# monitor, visible by IsWindowVisible and cloaked by DWM. The testable part of the decision is lifted out
+# into Get-GhostWindowReason: in Test-FullscreenApp itself every input comes from Windows, and
+# [NativeForeground] is a type rather than a function, so there is nothing to shadow it with.
 
 Write-Host ''
 Write-Host 'the full-screen guard' -ForegroundColor White
@@ -17,7 +17,7 @@ Test-Case 'ghost: an ordinary visible window is a real window' {
 }
 
 Test-Case 'ghost: a window DWM cloaked is not on the desk, whatever its size' {
-    # Ровно случай TextInputHost: IsWindowVisible говорит «да», на экране его нет.
+    # Exactly the TextInputHost case: IsWindowVisible says yes, and it is not on the screen.
     $why = Get-GhostWindowReason -Visible $true -Cloaked $true -Minimised $false -ToolWindow $false
     Assert-Equal 'the window is cloaked by DWM' $why 'and the reason names DWM, not the window'
 }
@@ -33,9 +33,8 @@ Test-Case 'ghost: a minimised window cannot own the screen' {
 }
 
 Test-Case 'ghost: an overlay without a taskbar button is not a game' {
-    # NVIDIA Overlay не дотягивал до прежней проверки ОДИН пиксель, то есть прошёл
-    # бы при первом же изменении. Игра себе WS_EX_TOOLWINDOW не ставит, накладка —
-    # ставит.
+    # The NVIDIA Overlay fell ONE pixel short of the old check, that is, it would have passed on the very
+    # first change. A game does not set WS_EX_TOOLWINDOW on itself; an overlay does.
     $why = Get-GhostWindowReason -Visible $true -Cloaked $false -Minimised $false -ToolWindow $true
     Assert-Equal 'the window is a tool window' $why ''
 }
@@ -46,12 +45,12 @@ Test-Case 'ghost: the reason is the first thing that disqualifies it, not a list
 }
 
 Test-Case 'fullscreen state names: the log gets a name, not just a number' {
-    # «state=2» в отчёте об ошибке не говорит ничего, QUNS_BUSY говорит всё.
+    # "state=2" in a bug report says nothing, QUNS_BUSY says everything.
     Assert-Equal 'QUNS_BUSY' $script:NotificationStateNames[2] ''
     Assert-Equal 'QUNS_RUNNING_D3D_FULL_SCREEN' $script:NotificationStateNames[3] ''
     Assert-Equal 'QUNS_ACCEPTS_NOTIFICATIONS' $script:NotificationStateNames[5] 'the quiet one, which is not full screen'
-    # Все четыре значения, на которые сторож отступает, обязаны иметь имя: без него
-    # строка журнала выродится в «the shell says 7 (unknown)».
+    # All four values the watchdog backs off on have to have a name: without one the log line degenerates
+    # into "the shell says 7 (unknown)".
     foreach ($code in @(2, 3, 4, 7)) {
         Assert-True ([bool]$script:NotificationStateNames[$code]) "state $code has a name"
     }

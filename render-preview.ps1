@@ -42,15 +42,15 @@
 param(
     [string]$Out = (Join-Path $PSScriptRoot 'preview-settings.png'),
     [switch]$Fake,
-    # Чей редактор снимать вторым снимком: ключ режима («all», «solo:LG ULTRAFINE»,
-    # «combo:Work»). По умолчанию — первая комбинация.
+    # Whose editor to render as the second image: a mode key ("all",
+    # "solo:LG ULTRAFINE", "combo:Work"). Defaults to the first combination.
     [string]$EditorMode = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Журнал уводим в сторону: это инструмент разработки, и в разборе настоящих
-# переключений его следам не место.
+# The log goes off to the side: this is a development tool, and its traces have no
+# business in the record of real switches.
 if (-not $env:SCREENDECK_LOG_FILE) {
     $env:SCREENDECK_LOG_FILE = Join-Path $env:TEMP 'screendeck-render-preview.log'
 }
@@ -61,7 +61,7 @@ if (-not $env:SCREENDECK_LOG_FILE) {
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
 function New-FakeState {
-    # Тот стол, для которого всё это писалось: 4K посередине, два 1440p по бокам.
+    # The desk all of this was written for: 4K in the middle, two 1440p on the sides.
     return @(
         [pscustomobject]@{ Output = '\\.\DISPLAY1'; Label = 'LG ULTRAFINE'; Model = 'LG ULTRAFINE'
                            ShortId = 'GSM5CBC'; Native = [pscustomobject]@{ Width = 3840; Height = 2160 }
@@ -81,7 +81,7 @@ function New-FakeState {
 $settings = Get-DisplaySettings
 if ($Fake) {
     $state = @(New-FakeState)
-    # Настройки под выдуманный стол: иначе карточки встанут по чужой раскладке.
+    # Settings to match the invented desk: otherwise the cards line up by someone else's layout.
     $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
     $settings.primary = 'LG ULTRAGEAR'
     $settings.combos = [ordered]@{
@@ -95,8 +95,8 @@ if ($Fake) {
         'combo:Work'        = 'Ctrl+Alt+F4'
         'all'               = 'Ctrl+Alt+F5'
     }
-    # Чтобы на снимках яркость была видна в работе, а не пустая: у комбинации —
-    # своя на каждый монитор (её и покажет редактор), у «всех» — одно число.
+    # So that brightness shows up in the images doing its job rather than empty: the
+    # combo has one per monitor (which is what the editor shows), "all" has a single number.
     $settings.brightness = [ordered]@{
         'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = 25; 'LG ULTRAGEAR' = 60 }
         'all'        = 80
@@ -109,24 +109,24 @@ else {
 function Save-WindowSnapshot {
     param($Window, [string]$Path)
 
-    # Живое окно не выше рабочей области — дальше прокрутка. Снимку прокрутка
-    # только мешает: он нужен, чтобы увидеть ВСЁ окно сразу.
+    # A live window is never taller than the work area — past that it scrolls. For an
+    # image scrolling only gets in the way: it exists to show the WHOLE window at once.
     $Window.MaxHeight = [double]::PositiveInfinity
-    # Прокрутку редактора тоже снимаем. Ищем по имени из разметки, а не по дереву
-    # элементов: до Show() дерева ещё нет.
+    # The editor's scrolling comes off too. We look it up by the name from the markup,
+    # not through the element tree: before Show() there is no tree yet.
     $viewer = $Window.FindName('Scroll')
     if ($viewer) { $viewer.VerticalScrollBarVisibility = 'Disabled' }
-    # Окно приходится ПОКАЗАТЬ: размеры дерева элементов считает система, и у
-    # непоказанного окна они остаются нулевыми. Показываем за краем экрана и без
-    # активации — снимок получается, а на столе оно не мелькает.
+    # The window has to be SHOWN: the system is what measures the element tree, and for
+    # a window that was never shown those measurements stay zero. We show it off the edge
+    # of the screen and without activating it — the image comes out, and nothing flashes on the desk.
     $Window.WindowStartupLocation = 'Manual'
     $Window.ShowActivated = $false
     $Window.ShowInTaskbar = $false
     $Window.Left = -10000
     $Window.Top = -10000
     $Window.Show()
-    # Раскладка считается в очереди сообщений, поэтому её надо прокрутить: без
-    # этого рисуется наполовину собранное окно.
+    # Layout is computed on the message queue, so the queue has to be pumped: without
+    # this a half-assembled window gets drawn.
     $frame = New-Object System.Windows.Threading.DispatcherFrame
     [void]$Window.Dispatcher.BeginInvoke([System.Windows.Threading.DispatcherPriority]::ContextIdle,
         [action]{ $frame.Continue = $false })
@@ -135,7 +135,7 @@ function Save-WindowSnapshot {
 
     $size = New-Object System.Windows.Size ([double]$Window.ActualWidth), ([double]$Window.ActualHeight)
 
-    # 192 dpi: на 96 текст в снимке мылится, а окно всё равно смотрят с увеличением.
+    # 192 dpi: at 96 the text in the image goes soft, and the window gets looked at zoomed in anyway.
     $dpi = 192
     $scale = $dpi / 96
     $target = New-Object System.Windows.Media.Imaging.RenderTargetBitmap (
@@ -157,9 +157,9 @@ $ui = New-SettingsWindow -Modes $modes -Settings $settings -State $state
 try {
     Save-WindowSnapshot -Window $ui.Window -Path $Out
 
-    # Второе окно — редактор режима: всё про режим настраивается в нём, значит
-    # увидеть надо и его. По умолчанию берём комбинацию — она самая длинная, — но
-    # снять можно любой режим по его ключу.
+    # The second window is the mode editor: everything about a mode is set up in there,
+    # so it has to be seen too. By default we take a combination — it is the longest one
+    # — but any mode can be rendered by its key.
     $pick = @()
     if ($EditorMode) { $pick = @($modes | Where-Object { [string]$_.Key -eq $EditorMode } | Select-Object -First 1) }
     if ($pick.Count -eq 0) { $pick = @($modes | Where-Object { [string]$_.Kind -eq 'combo' } | Select-Object -First 1) }
@@ -171,13 +171,13 @@ try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state `
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark (Test-DarkTheme)
         try {
-            # Рядом с первым снимком, с суффиксом. ChangeExtension($Out, $null) здесь
-            # не годится: PowerShell отдаёт вместо $null пустую строку, и точка от
-            # расширения остаётся в имени.
+            # Next to the first image, with a suffix. ChangeExtension($Out, $null) is no
+            # good here: PowerShell hands back an empty string instead of $null, and the
+            # dot from the extension stays in the name.
             #
-            # Папку берём с запасным '.': у голого имени файла (-Out ui.png)
-            # Split-Path -Parent отдаёт пустую строку, а Join-Path её не принимает —
-            # и второй снимок падал, когда первый уже записан.
+            # The folder is taken with a '.' fallback: for a bare file name (-Out ui.png)
+            # Split-Path -Parent hands back an empty string, and Join-Path will not take it
+            # — so the second image used to die once the first was already written.
             $editorDir = Split-Path -Parent $Out
             if (-not $editorDir) { $editorDir = '.' }
             $editorOut = Join-Path $editorDir `
@@ -187,8 +187,8 @@ try {
         finally { $ed.Window.Close() }
     }
 
-    # Третье окно — таймер. Оно маленькое, но своё: ползунок, таблетки и время на
-    # часах видно только на снимке, а не в разметке.
+    # The third window is the timer. Small, but its own: the slider, the pills and the
+    # time on the clock can only be seen in an image, not in the markup.
     $timerDir = Split-Path -Parent $Out
     if (-not $timerDir) { $timerDir = '.' }
     $timerOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-timer.png')

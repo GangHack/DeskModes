@@ -1,27 +1,27 @@
 ﻿#Requires -Version 5.1
 
 <#
-    tools\check.ps1 — одна команда на вопрос «не сломал ли я что-нибудь».
+    tools\check.ps1 — one command for the question "have I broken anything?".
 
-    Четыре ворот, ненулевой выход на любом провале:
+    Four gates, a non-zero exit on any failure:
 
-        1. разбор       — каждый .ps1 и .psd1 вообще разбирается;
-        2. кодировка    — .ps1 с BOM, и нигде нет одиночных LF;
-        3. анализатор   — PSScriptAnalyzer, если он есть в системе;
-        4. тесты        — tests\run-tests.ps1.
+        1. parse      — every .ps1 and .psd1 parses at all;
+        2. encoding   — the .ps1 files have a BOM, and there is no lone LF anywhere;
+        3. analyzer   — PSScriptAnalyzer, if it is present on the system;
+        4. tests      — tests\run-tests.ps1.
 
-    Первые ворота нужны ровно потому, что render-preview.ps1 и Make-Icon.ps1 не
-    дот-сорсит ни один тест: опечатка в них живёт до ручного запуска.
+    The first gate exists precisely because no test dot-sources render-preview.ps1 or
+    Make-Icon.ps1: a typo in them lives until somebody runs them by hand.
 
-        .\tools\check.ps1                     всё
-        .\tools\check.ps1 -Only combos        фильтр имён тестов (проброс в раннер)
-        .\tools\check.ps1 -RequireAnalyzer    отсутствие PSScriptAnalyzer — провал
+        .\tools\check.ps1                     everything
+        .\tools\check.ps1 -Only combos        a filter on test names (passed to the runner)
+        .\tools\check.ps1 -RequireAnalyzer    a missing PSScriptAnalyzer is a failure
 
-    В систему ничего не устанавливается: нет анализатора — шаг пропускается с
-    предупреждением. -RequireAnalyzer стоит только в CI, где модуль ставится
-    самим воркфлоу.
+    Nothing is installed on the system: no analyzer and the step is skipped with a
+    warning. -RequireAnalyzer is only used in CI, where the workflow installs the module
+    itself.
 
-    Код возврата: 0 — всё зелено, 1 — есть провалы.
+    Exit code: 0 — everything green, 1 — there are failures.
 #>
 [CmdletBinding()]
 param(
@@ -56,10 +56,10 @@ function Write-CheckFail {
     Write-Host "  x  $Message" -ForegroundColor Red
 }
 
-# Список файлов спрашиваем у git: порождённые файлы (settings.json, activity.json,
-# last-mode.json) машина пишет сама, они в .gitignore, и ловить их на концах строк
-# — ложная тревога о том, что никогда не попадёт в коммит. Нет git — обходим
-# дерево целиком, только без .git: лучше лишняя проверка, чем никакой.
+# The file list is asked of git: generated files (settings.json, activity.json,
+# last-mode.json) the machine writes itself, they are in .gitignore, and catching them on
+# their line endings is a false alarm about something that will never reach a commit. No git
+# — we walk the whole tree, only without .git: an extra check is better than none.
 function Get-CheckFiles {
     $paths = $null
     try {
@@ -68,7 +68,7 @@ function Get-CheckFiles {
             $paths = @($listed | Where-Object { $_ } | ForEach-Object { Join-Path $root ($_ -replace '/', '\') })
         }
     }
-    catch { }   # git нет или это не репозиторий — не повод не проверять
+    catch { }   # no git, or this is not a repository — no reason not to check
 
     if ($null -eq $paths) {
         $paths = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force |
@@ -76,7 +76,7 @@ function Get-CheckFiles {
                    ForEach-Object { $_.FullName })
     }
 
-    # git перечисляет и удалённые из рабочей копии файлы — они ещё в индексе.
+# git lists files deleted from the working copy too — they are still in the index.
     return @($paths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Sort-Object)
 }
 
@@ -95,9 +95,9 @@ function Get-Relative {
 Write-Host ''
 Write-Host 'ScreenDeck - check' -ForegroundColor Cyan
 
-# --- 1. разбор --------------------------------------------------------------
-# ParseFile, а не дот-сорс: файл не исполняется, побочных действий нет, а
-# синтаксис проверен весь, включая ветки, до которых тесты не доходят.
+# --- 1. parse ---------------------------------------------------------------
+# ParseFile rather than a dot-source: the file is not executed, there are no side effects,
+# and the whole syntax is checked, branches the tests never reach included.
 
 Write-CheckHead ("parse ({0} files)" -f $code.Count)
 
@@ -115,10 +115,10 @@ foreach ($file in $code) {
 }
 if ($parseBad -eq 0) { Write-CheckOk 'every script parses' }
 
-# --- 2. кодировка и концы строк ---------------------------------------------
-# Без BOM PowerShell 5.1 читает файл как Windows-1251, и русские комментарии
-# превращаются в мусор — молча, без единой ошибки. .gitattributes чинит концы
-# строк при коммите, а эта проверка ловит их на месте, до коммита.
+# --- 2. encoding and line endings -------------------------------------------
+# Without a BOM, PowerShell 5.1 reads a file as Windows-1251 and every non-ASCII character
+# in it turns to rubbish — silently, without a single error. .gitattributes fixes line
+# endings at commit time, and this check catches them on the spot, before the commit.
 
 Write-CheckHead ("encoding ({0} files)" -f $text.Count)
 
@@ -135,10 +135,9 @@ foreach ($file in $text) {
         }
     }
 
-    # Байты 0x0A и 0x0D в UTF-8 не могут быть частью многобайтовой
-    # последовательности (продолжения всегда >= 0x80), поэтому для поиска концов
-    # строк ASCII-строка точна и стоит дёшево: остальные байты станут '?', и это
-    # ровно то, что нам здесь не важно.
+    # The bytes 0x0A and 0x0D cannot be part of a multi-byte UTF-8 sequence (continuations
+    # are always >= 0x80), so for finding line endings an ASCII string is exact and costs
+    # little: the other bytes become '?', and that is precisely what does not matter here.
     $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
     $lone = [regex]::Match($ascii, "(?<!\r)\n")
     if ($lone.Success) {
@@ -149,7 +148,7 @@ foreach ($file in $text) {
 }
 if ($encBad -eq 0) { Write-CheckOk 'BOM and CRLF everywhere' }
 
-# --- 3. анализатор ----------------------------------------------------------
+# --- 3. analyzer ------------------------------------------------------------
 
 Write-CheckHead 'PSScriptAnalyzer'
 
@@ -166,8 +165,8 @@ if ($analyzer.Count -eq 0) {
 else {
     Import-Module PSScriptAnalyzer -ErrorAction Stop
 
-    # Файл настроек — не обязателен: без него анализатор идёт правилами по
-    # умолчанию. Так проверка не превращается в ошибку на клоне, где psd1 ещё нет.
+    # The settings file is not required: without it the analyzer runs on the default rules.
+    # That way the check does not turn into an error on a clone where the psd1 is not there yet.
     $settings = Join-Path $root 'PSScriptAnalyzerSettings.psd1'
     $withSettings = @{}
     if (Test-Path -LiteralPath $settings) { $withSettings['Settings'] = $settings }
@@ -177,10 +176,9 @@ else {
     foreach ($file in $code) {
         $found += @(Invoke-ScriptAnalyzer -Path $file @withSettings)
     }
-    # Порог не по важности, а по списку: что не выключено в
-    # PSScriptAnalyzerSettings.psd1 — то провал, включая Information. Один
-    # источник правды вместо двух, и новое правило после обновления модуля не
-    # проезжает молча.
+    # The threshold is not by severity but by list: whatever is not switched off in
+    # PSScriptAnalyzerSettings.psd1 is a failure, Information included. One source of truth
+    # instead of two, and a new rule after a module update does not slip through silently.
     $problems = @($found)
     if ($problems.Count -eq 0) {
         Write-CheckOk ("clean ({0} v{1})" -f $analyzer[0].Name, $analyzer[0].Version)
@@ -192,11 +190,11 @@ else {
     }
 }
 
-# --- 4. тесты ---------------------------------------------------------------
-# Дочерним процессом, а не дот-сорсом: раннер заканчивается exit, и в этом же
-# процессе он унёс бы check.ps1 вместе с собой, не дав напечатать итог. Явно
-# powershell.exe: инструмент живёт в Windows PowerShell 5.1, и проверять его надо
-# там же, даже если check.ps1 запустили из pwsh 7.
+# --- 4. tests ---------------------------------------------------------------
+# In a child process rather than by dot-sourcing: the runner ends with exit, and in this same
+# process it would have taken check.ps1 with it and never let the total be printed.
+# powershell.exe explicitly: the tool lives in Windows PowerShell 5.1, and it has to be
+# checked there, even when check.ps1 was started from pwsh 7.
 
 Write-CheckHead 'tests'
 
@@ -207,7 +205,7 @@ if ($Only) { $psArgs += @('-Only', $Only) }
 & powershell.exe @psArgs
 if ($LASTEXITCODE -ne 0) { Write-CheckFail "run-tests.ps1 exited with $LASTEXITCODE" }
 
-# --- итог -------------------------------------------------------------------
+# --- the total --------------------------------------------------------------
 
 Write-Host ''
 if ($script:Bad -eq 0) {

@@ -1,27 +1,27 @@
 ﻿#Requires -Version 5.1
 
 <#
-    tools\pack.ps1 — релизный архив: то, что человек скачивает и распаковывает.
+    tools\pack.ps1 — the release archive: what a person downloads and unpacks.
 
-    В архив идёт ТОЛЬКО программа. Тесты, ворота, дневник разработки и правила для
-    своих остаются в репозитории: тому, кто пришёл переключать мониторы, они не
-    нужны, а 150 килобайт русских заметок в папке инструмента только сбивают.
+    ONLY the program goes into the archive. The tests, the gates, the engineering diary and the
+    house rules stay in the repository: whoever came here to switch monitors does not need them,
+    and 150 kilobytes of engineering notes in the tool's folder only get in the way.
 
-        .\tools\pack.ps1                        ScreenDeck-<версия>.zip рядом с корнем
-        .\tools\pack.ps1 -OutDir C:\out         положить в другое место
-        .\tools\pack.ps1 -NotesOut notes.md     заодно выдрать раздел CHANGELOG
-        .\tools\pack.ps1 -ExpectVersion 1.0.0   отказаться, если в коде не эта версия
-        .\tools\pack.ps1 -AllowDirty            паковать поверх незакоммиченных правок
+        .\tools\pack.ps1                        ScreenDeck-<version>.zip next to the root
+        .\tools\pack.ps1 -OutDir C:\out         put it somewhere else
+        .\tools\pack.ps1 -NotesOut notes.md     also pull out the CHANGELOG section
+        .\tools\pack.ps1 -ExpectVersion 1.0.0   refuse if the code says another version
+        .\tools\pack.ps1 -AllowDirty            pack over uncommitted edits
 
-    Грязное дерево — отказ по умолчанию: собранный из него архив невоспроизводим,
-    и разбираться, что именно уехало пользователю, будет уже поздно.
+    A dirty tree is a refusal by default: an archive built from one is not reproducible, and by
+    the time anyone works out what exactly went to the user it is already too late.
 
-    Список файлов спрашивается у git, как и в check.ps1: один источник правды о
-    том, что вообще относится к проекту. Порождённые файлы (settings.json, журнал,
-    native-*.dll) в .gitignore и в архив не попадают сами собой — то есть человек
-    получает чистую папку, а не слепок чужой машины.
+    The file list is asked of git, as in check.ps1: one source of truth about what belongs to the
+    project at all. Generated files (settings.json, the log, native-*.dll) are in .gitignore and
+    do not reach the archive by themselves — that is, a person gets a clean folder rather than a
+    cast of somebody else's machine.
 
-    Код возврата: 0 — архив собран, иначе исключение.
+    Exit code: 0 — the archive was built, otherwise an exception.
 #>
 [CmdletBinding()]
 param(
@@ -34,15 +34,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = $root }
-# Относительный -OutDir разворачиваем сразу: ZipFile::Open — это .NET, а у .NET
-# своя текущая директория, и за Set-Location она не ходит. Без этого архив уезжает
-# мимо только что созданной папки, а Get-FileHash ищет его там, где его нет.
+# A relative -OutDir is expanded straight away: ZipFile::Open is .NET, and .NET has a current
+# directory of its own that does not follow Set-Location. Without this the archive goes past the
+# folder just created, and Get-FileHash looks for it where it is not.
 if (-not [System.IO.Path]::IsPathRooted($OutDir)) { $OutDir = Join-Path (Get-Location).Path $OutDir }
 
-# Что в архив не идёт. Список — исключающий, а не разрешающий, намеренно: новый
-# файл ПРОГРАММЫ обязан уехать пользователю сам, без правки упаковщика, иначе
-# однажды соберётся релиз без него и никто этого не заметит. Новый файл для своих,
-# наоборот, требует строчки здесь — и это видимое решение, а не умолчание.
+# What does not go into the archive. The list is an excluding one rather than an allowing one,
+# deliberately: a new file of the PROGRAM has to reach the user by itself, without editing the
+# packer, or a release will one day be built without it and nobody will notice. A new file for us,
+# the other way round, requires a line here — and that is a visible decision rather than a default.
 $script:DevDirs = @('tests/', 'tools/', 'docs/', '.github/')
 $script:DevFiles = @(
     '.editorconfig'
@@ -65,10 +65,10 @@ function Test-ShippedFile {
     return $true
 }
 
-# --- версия -----------------------------------------------------------------
-# Регуляркой, а не дот-сорсом: загрузка DisplayCore.ps1 компилирует нативные типы
-# и пишет в журнал, а упаковщик обязан быть без побочных действий — его зовут и в
-# CI, где ни того, ни другого делать незачем.
+# --- the version ------------------------------------------------------------
+# By regex rather than by dot-sourcing: loading DisplayCore.ps1 compiles the native types and writes
+# to the log, whereas the packer has to be free of side effects — it is called in CI too, where
+# there is no reason to do either.
 $coreFile = Join-Path $root 'DisplayCore.ps1'
 $pattern = "^\s*\`$script:Version\s*=\s*'(\d+\.\d+\.\d+)'"
 $version = ''
@@ -77,14 +77,34 @@ foreach ($line in [System.IO.File]::ReadAllLines($coreFile)) {
 }
 if (-not $version) { throw ('Could not read $script:Version from ' + $coreFile) }
 
-# Тег без поднятой версии — самая дешёвая из ошибок релиза и самая обидная: архив
-# уезжает под чужим номером, и About внутри него говорит не то, что написано на
-# странице релиза. Сверку зовёт воркфлоу, передавая имя тега без «v».
+# A tag without the version bumped is the cheapest of release mistakes and the most galling: the
+# archive leaves under somebody else's number, and the About inside it says something other than
+# what is written on the release page. The workflow calls the check, passing the tag name without the "v".
 if ($ExpectVersion -and $ExpectVersion -ne $version) {
     throw ("The tag says $ExpectVersion, but " + '$script:Version' + " in DisplayCore.ps1 is $version. Bump one of them.")
 }
 
-# --- что пакуем -------------------------------------------------------------
+# The other half of the same mistake, and until now nothing caught it: a version's section in
+# CHANGELOG.md rightly says "not released yet" for as long as it is being written, and on the release
+# path that same line is wrong. Only the body of the section reaches the release page, so the archive
+# used to build happily under a heading claiming the release had not happened.
+#
+# Checked HERE and not down with the notes: a refusal after the archive has been written and hashed is
+# a refusal that leaves rubbish behind. -ExpectVersion is what tells a release from a local build —
+# only the workflow passes it, and only for a tag.
+if ($ExpectVersion) {
+    $heading = ''
+    foreach ($line in [System.IO.File]::ReadAllLines((Join-Path $root 'CHANGELOG.md'))) {
+        if ($line -match '^##\s+(\d+\.\d+\.\d+)' -and $Matches[1] -eq $version) { $heading = $line; break }
+    }
+    if (-not $heading) { throw "CHANGELOG.md has no section for $version." }
+    if ($heading -notmatch '\d{4}-\d{2}-\d{2}') {
+        throw ("CHANGELOG.md: the heading for $version carries no date - '$($heading.Trim())'. " +
+               "Write it as '## $version " + [char]0x2014 + " yyyy-mm-dd' before tagging.")
+    }
+}
+
+# --- what we pack -----------------------------------------------------------
 $listed = @(& git -C $root ls-files 2>$null)
 if ($LASTEXITCODE -ne 0 -or $listed.Count -eq 0) {
     throw 'git is required to pack: the release contents come from git ls-files.'
@@ -100,26 +120,26 @@ if (-not $AllowDirty) {
 
 $manifest = @($listed | Where-Object { $_ } | Where-Object { Test-ShippedFile -Relative $_ } | Sort-Object)
 
-# git перечисляет и то, что удалено из рабочей копии, но ещё лежит в индексе.
-# Молча пропустить такой файл нельзя: архив выйдет неполным и об этом никто не
-# узнает до первой жалобы.
+# git lists what has been deleted from the working copy but is still in the index. Skipping such a
+# file silently is not allowed: the archive would come out incomplete and nobody would know about it
+# until the first complaint.
 $missing = @($manifest | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root ($_ -replace '/', '\')) -PathType Leaf) })
 if ($missing.Count -gt 0) {
     throw ("Tracked but not on disk:`n" + ($missing -join "`n"))
 }
 
-# --- архив ------------------------------------------------------------------
-# Пакуем из рабочего дерева, а не через git archive: в репозитории лежит LF, а
-# CRLF навешивает .gitattributes при выкладке. Архив с LF сломал бы вторые ворота
-# у любого, кто запустит check.ps1 из распакованной папки.
+# --- the archive ------------------------------------------------------------
+# We pack out of the working tree rather than through git archive: the repository holds LF, and CRLF
+# is put on by .gitattributes at checkout. An archive with LF would break the second gate for anyone
+# who runs check.ps1 out of the unpacked folder.
 $zipName = "ScreenDeck-$version.zip"
 $zipPath = Join-Path $OutDir $zipName
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 
-# Две сборки, а не одна: ZipFile и ZipFileExtensions лежат в ...FileSystem, а
-# ZipArchiveMode и CompressionLevel — в System.IO.Compression. Без второй строки
-# упаковщик падает на «Unable to find type» в любой свежей сессии, включая CI.
+# Two assemblies rather than one: ZipFile and ZipFileExtensions live in ...FileSystem, while
+# ZipArchiveMode and CompressionLevel are in System.IO.Compression. Without the second line the
+# packer dies on "Unable to find type" in any fresh session, CI included.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.IO.Compression
 
@@ -127,8 +147,8 @@ Write-Host ''
 Write-Host "ScreenDeck - pack $version" -ForegroundColor Cyan
 Write-Host ''
 
-# Все записи — под общей папкой ScreenDeck/, чтобы распаковка в любую директорию
-# давала одну папку, а не рассыпала два десятка файлов поверх чужих.
+# Every entry goes under a shared ScreenDeck/ folder, so that unpacking into any directory gives one
+# folder rather than scattering two dozen files over somebody else's.
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
     foreach ($relative in $manifest) {
@@ -140,16 +160,16 @@ try {
 }
 finally { $zip.Dispose() }
 
-# Хэш нужен Scoop: манифест бакета читает его отсюда при автообновлении. Формат —
-# как у sha256sum, чтобы человек мог проверить своей утилитой, не разбираясь.
-# ToLowerInvariant, а не ToLower: регистр не должен зависеть от языка системы.
+# Scoop needs the hash: a bucket manifest reads it from here when it auto-updates. The format is the
+# one sha256sum uses, so that a person can check it with their own utility without having to work
+# anything out. ToLowerInvariant and not ToLower: the case must not depend on the system's language.
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $hashPath = "$zipPath.sha256"
 Set-Content -LiteralPath $hashPath -Value "$hash *$zipName" -Encoding ASCII
 
-# --- заметки к релизу -------------------------------------------------------
-# Раздел своей версии из CHANGELOG.md — чтобы описание релиза на GitHub писалось
-# один раз и в одном месте, а не расходилось с файлом.
+# --- the release notes ------------------------------------------------------
+# Its own version's section out of CHANGELOG.md — so that the release description on GitHub is
+# written once and in one place rather than drifting apart from the file.
 if ($NotesOut) {
     $notes = New-Object System.Collections.Generic.List[string]
     $inside = $false
@@ -161,8 +181,8 @@ if ($NotesOut) {
         if ($inside) { $notes.Add($line) }
     }
     if ($notes.Count -eq 0) { throw "CHANGELOG.md has no section for $version." }
-    # Относительный путь разворачиваем сами: у .NET своя текущая директория, и она
-    # не обязана совпадать с той, где стоит PowerShell — файл уехал бы не туда.
+    # We expand a relative path ourselves: .NET has a current directory of its own, and it need not
+    # match the one PowerShell is standing in — the file would have gone somewhere else.
     $notesPath = $NotesOut
     if (-not [System.IO.Path]::IsPathRooted($notesPath)) {
         $notesPath = Join-Path (Get-Location).Path $notesPath

@@ -1,22 +1,21 @@
-# Релиз собирается по тегу vX.Y.Z и никак иначе: тег — единственное осознанное
-# действие человека, всё остальное здесь механика.
+# A release is built off a vX.Y.Z tag and no other way: the tag is the one deliberate act by a
+# person, and everything else here is mechanics.
 #
-# Ворота не переписываются, а зовутся тем же .\tools\check.ps1, что и в check.yml
-# и что человек зовёт руками: вторая формулировка того, что считается «зелено»,
-# рано или поздно разойдётся с первой. Релиз без прогона ворот не собирается —
-# именно он уезжает людям, и чинить его потом дороже всего.
+# The gates are not rewritten but called as the same .\tools\check.ps1 as in check.yml and as a
+# person calls by hand: a second wording of what counts as "green" will sooner or later drift apart
+# from the first. A release is not built without the gates being run — it is the release that goes
+# out to people, and fixing it afterwards costs the most of all.
 #
-# Работы две, и разнесены они намеренно. Ворота ставят PSScriptAnalyzer из
-# PSGallery и исполняют его: check.ps1 делает Import-Module, то есть чужой код
-# работает на раннере. Стой он в одной работе со сборкой, у него было бы право
-# записи в дерево ДО того, как из этого дерева пакуется архив и считается его
-# SHA256, — угнанный пакет уехал бы людям, а хэш на странице релиза сошёлся бы с
-# подменённым содержимым. Инструмент не подписан, второго способа проверить у
-# скачавшего нет. Поэтому та работа, что пакует и публикует, не ставит ничего:
-# в ней исполняется только checkout, наш код и gh.
+# There are two jobs, and they are kept apart deliberately. The gates install PSScriptAnalyzer from
+# PSGallery and execute it: check.ps1 does an Import-Module, that is, somebody else's code runs on
+# the runner. Were it in the same job as the build, it would have the right to write into the tree
+# BEFORE the archive is packed out of that tree and its SHA256 worked out — a hijacked package would
+# go out to people, and the hash on the release page would agree with the substituted contents. The
+# tool is not signed, and whoever downloads it has no second way to check. So the job that packs and
+# publishes installs nothing: only the checkout, our own code and gh run in it.
 #
-# shell: powershell — Windows PowerShell 5.1, та же версия, под которую написан
-# инструмент. pwsh (7) взял бы другой движок.
+# shell: powershell — Windows PowerShell 5.1, the same version the tool is written for. pwsh (7)
+# would take a different engine.
 name: release
 
 on:
@@ -24,18 +23,18 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# По умолчанию — только чтение. Право писать выдано одной работе из двух, и
-# именно той, которая заводит релиз.
+# Read-only by default. The right to write is granted to one job out of the two, and to the one that
+# creates the release.
 permissions:
   contents: read
 
 jobs:
   check:
     runs-on: windows-latest
-    # Тег — единственный законный повод собрать релиз. Ручной запуск с ветки дал бы
-    # в GITHUB_REF_NAME «main», сверка версии упала бы уже после ворот, а страница
-    # релиза завелась бы под именем ветки. Работе release своё условие не нужно:
-    # пропуск той, от которой она зависит, пропускает и её.
+    # The tag is the only legitimate reason to build a release. A manual run from a branch would put
+    # "main" into GITHUB_REF_NAME, the version check would fail after the gates had already run, and
+    # the release page would be created under the branch's name. The release job needs no condition of
+    # its own: skipping the one it depends on skips it too.
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
@@ -43,9 +42,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      # Версия закреплена: «последняя» означает, что содержимое шага меняется само
-      # по себе — два прогона одного и того же тега получают разный анализатор, и
-      # позеленевшие вчера ворота сегодня краснеют без единой правки в коде.
+      # The version is pinned: "latest" means a step's contents change by themselves — two runs of one
+      # and the same tag get different analyzers, and gates that went green yesterday turn red today
+      # without a single edit to the code.
       - name: Install PSScriptAnalyzer
         shell: powershell
         run: |
@@ -67,8 +66,8 @@ jobs:
         with:
           fetch-depth: 1
 
-      # -ExpectVersion ловит тег, поставленный без поднятия $script:Version:
-      # архив уехал бы под чужим номером, а About внутри него говорил бы своё.
+      # -ExpectVersion catches a tag set without $script:Version being bumped: the archive would leave
+      # under somebody else's number, while the About inside it said its own.
       - name: Pack
         shell: powershell
         run: |

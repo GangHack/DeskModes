@@ -1,29 +1,29 @@
 ﻿#Requires -Version 5.1
 
 <#
-    tests\run-tests.ps1 — точка входа набора тестов. Своя, без Pester.
+    tests\run-tests.ps1 — the test suite's entry point. Our own, without Pester.
 
-    Почему без Pester: в PowerShell 5.1 предустановлен древний 3.4, а ставить
-    новый — против философии проекта («в систему ничего не установлено, папку
-    можно просто удалить»). Здесь нужны Assert и ненулевой код возврата, всё
-    остальное — лишняя зависимость.
+    Why without Pester: PowerShell 5.1 comes with an ancient 3.4 preinstalled, and installing a newer
+    one goes against the project's philosophy ("nothing is installed on your system, the folder can
+    just be deleted"). What is needed here is Assert and a non-zero exit code; everything else is a
+    dependency we do not want.
 
-    Этот файл только собирает прогон: уводит журнал, дот-сорсит подопытный код,
-    обходит cases/ и печатает итог. Сами проверки живут рядом:
+    This file only sets a run up: it redirects the log, dot-sources the code under test, walks cases/
+    and prints the total. The checks themselves live alongside:
 
-        framework.ps1          Test-Case и утверждения
-        fakes.ps1              подделки, нужные больше чем одной группе
-        cases/NN-имя.tests.ps1 по файлу на группу; префикс держит порядок вывода
+        framework.ps1          Test-Case and the assertions
+        fakes.ps1              the fakes that more than one group needs
+        cases/NN-name.tests.ps1 one file per group; the prefix fixes the order of the output
 
-    Тесты трогают ТОЛЬКО чистые функции: ни один не меняет мониторы и ни один не
-    пишет в настоящий settings.json, журнал или дневник — все пути подменены на
-    файлы во временной папке. Запуск занимает секунды.
+    The tests touch ONLY pure functions: not one of them changes the monitors and not one writes into
+    the real settings.json, the log or the diary — every path is redirected to files in a temporary
+    folder. A run takes seconds.
 
-        .\tests\run-tests.ps1                 всё
-        .\tests\run-tests.ps1 -Only hotkey    только тесты, чьё имя содержит строку
-        .\tests\run-tests.ps1 -File 12        только этот файл случаев
+        .\tests\run-tests.ps1                 all of them
+        .\tests\run-tests.ps1 -Only hotkey    only tests whose name contains the string
+        .\tests\run-tests.ps1 -File 12        only that file of cases
 
-    Код возврата: 0 — все зелёные, 1 — есть провалы.
+    Exit code: 0 — everything green, 1 — there are failures.
 #>
 [CmdletBinding()]
 param(
@@ -34,20 +34,20 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-# Журнал уводим в сторону ДО дот-сорса: DisplayCore пишет в него уже при загрузке
-# (поворот журнала, компиляция типов), и подменять $script:LogFile после было
-# поздно — эти строки уезжали в настоящий last-run.log.
+# The log is redirected BEFORE the dot-source: DisplayCore writes into it while it is being loaded
+# (log rotation, type compilation), and replacing $script:LogFile afterwards was too late — those
+# lines went into the real last-run.log.
 $script:LogDir = Join-Path $env:TEMP ('screendeck-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $script:LogDir | Out-Null
 $env:SCREENDECK_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 
-# Фреймворк — до подопытного кода: Test-Case и утверждения нужны всем, и
-# дот-сорс кладёт их в область ЭТОГО файла, где лежат счётчики и $Only.
+# The framework comes before the code under test: Test-Case and the assertions are needed by
+# everybody, and the dot-source puts them in THIS file's scope, where the counters and $Only live.
 . (Join-Path $PSScriptRoot 'framework.ps1')
 
-# Точки входа дот-сорсить нельзя: Displays.ps1 при загрузке поднимает всё
-# приложение. Берём core, WindowLayout и диалог, а Resolve-ModeKey из
-# Set-Display.ps1 вытаскивает себе тот файл случаев, которому он нужен
+# The entry points must not be dot-sourced: Displays.ps1 brings the whole application up when it is
+# loaded. We take core, WindowLayout and the dialog, while Resolve-ModeKey out of Set-Display.ps1 is
+# pulled in by the file of cases that needs it
 # (cases/11-cli-mode-key.tests.ps1).
 
 . (Join-Path $root 'DisplayCore.ps1')
@@ -55,28 +55,27 @@ $env:SCREENDECK_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 . (Join-Path $root 'Activity.ps1')
 . (Join-Path $root 'SettingsDialog.ps1')
 
-# Настоящий settings.json не трогаем НИ В ОДНОМ тесте.
-$script:TestDir = $script:LogDir   # он же, создан выше ради журнала
+# The real settings.json is touched by NOT ONE test.
+$script:TestDir = $script:LogDir   # the same one, created above for the log's sake
 $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
 $script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
-# Настоящий дневник тесты тоже не трогают: он про человека, и подмешивать в него
-# выдуманные дни нельзя.
+# The tests do not touch the real diary either: it is about a person, and mixing invented days into
+# it is not allowed.
 $script:ActivityFile = Join-Path $script:TestDir 'activity.json'
 
-# Подделки — после подопытного кода: New-TestSettings строится на
-# Get-DefaultSettings, а $script:DlgState — на настоящем Get-DialogModes.
+# The fakes come after the code under test: New-TestSettings is built on Get-DefaultSettings, and
+# $script:DlgState on the real Get-DialogModes.
 . (Join-Path $PSScriptRoot 'fakes.ps1')
 
 Write-Host ''
 Write-Host 'ScreenDeck - tests' -ForegroundColor Cyan
 Write-Host ''
 
-# --- случаи -----------------------------------------------------------------
-# Порядок вывода держит числовой префикс имени файла, а не порядок обхода
-# файловой системы: сортировка по имени явная, чтобы прогон читался одинаково
-# на любой машине.
+# --- the cases --------------------------------------------------------------
+# The order of the output is held by the numeric prefix of the file name rather than by the order of
+# the file-system walk: the sort by name is explicit, so that a run reads the same on any machine.
 
 $cases = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'cases') -Filter '*.tests.ps1' |
            Sort-Object Name)
@@ -89,7 +88,7 @@ if ($cases.Count -eq 0) {
 
 foreach ($case in $cases) { . $case.FullName }
 
-# --- итог -------------------------------------------------------------------
+# --- the total --------------------------------------------------------------
 
 Remove-Item -LiteralPath $script:TestDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item Env:\SCREENDECK_LOG_FILE -ErrorAction SilentlyContinue

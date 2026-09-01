@@ -1,8 +1,8 @@
-﻿# --- карточка яркости -------------------------------------------------------
-# Две формы записи (число и словарь) окно обязано уметь и НЕ превращать одну в
-# другую само: развернув число по мониторам, которые сейчас на столе, оно
-# потеряло бы яркость выдернутого и изменило бы смысл «all» для монитора,
-# который появится завтра.
+﻿# --- the brightness card ----------------------------------------------------
+# The window has to handle both forms of entry (a number and a dictionary) and must NOT turn one into
+# the other on its own: by expanding a number over the monitors that happen to be on the desk it would
+# lose the brightness of one that was pulled out, and it would change the meaning of "all" for a
+# monitor that turns up tomorrow.
 
 Write-Host ''
 Write-Host 'the brightness card' -ForegroundColor White
@@ -68,8 +68,8 @@ Test-Case 'level rows: "all displays" lists what is connected' {
 }
 
 Test-Case 'level rows: a combination lists its displays by their real names' {
-    # В файле шаблон, а в строке должно стоять полное название монитора: обе
-    # записи совпадают, но точнее — то, что видит человек.
+    # The file holds a pattern while the row has to hold the monitor's full name: both entries match,
+    # but the more precise one is what a person sees.
     $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false
@@ -80,9 +80,9 @@ Test-Case 'level rows: a combination lists its displays by their real names' {
 }
 
 Test-Case 'level rows: a display mode names the display, not its key' {
-    # У двух одинаковых моделей в ключе стоит короткий ID («solo:DELL U2723 ABC123»),
-    # и разбор ключа дал бы строку ползунка с именем, которого нет ни на одном
-    # мониторе. Состав режима знает Get-ModeMembers — он и отвечает.
+    # For two identical models the key holds a short ID ("solo:DELL U2723 ABC123"), and parsing the key
+    # would give a slider row with a name that is on no monitor at all. Get-ModeMembers knows a mode's
+    # membership — and it is what answers.
     $state = @(
         (New-FakeMonitor 'DELL U2723' 'ABC123' 'path-1')
         (New-FakeMonitor 'DELL U2723' 'ABC124' 'path-2')
@@ -97,16 +97,16 @@ Test-Case 'level rows: a display mode names the display, not its key' {
 }
 
 Test-Case 'level rows: a level for a display that is gone is still shown' {
-    # Иначе такую настройку нельзя ни увидеть, ни снять — тем же правилом живут
-    # привязки клавиш к отсутствующим мониторам.
+    # Otherwise such a setting can neither be seen nor cleared — shortcut bindings to monitors that are
+    # not there live by the same rule.
     $names = @(Get-LevelRowNames -Displays @('LG ULTRAGEAR') -Map ([ordered]@{ 'XG27AQDMGR' = 40 }))
     Assert-True ($names -contains 'XG27AQDMGR') 'the orphan row is there'
     Assert-True ($names -contains 'LG ULTRAGEAR') 'next to the display that is here'
 }
 
 Test-Case 'mode editor: brightness is offered for every kind of mode' {
-    # Яркость живёт в редакторе режима — и обязана быть в редакторе любого режима,
-    # не только комбинации.
+    # The brightness lives in the mode editor — and it has to be in the editor of any mode, not just a
+    # combo's.
     foreach ($mode in @(
         [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
         [pscustomobject]@{ Key = 'solo:LG ULTRAGEAR'; Title = 'Only LG ULTRAGEAR'; Kind = 'solo'; Available = $true }
@@ -127,8 +127,8 @@ Test-Case 'mode editor: a display mode has no name, members or taskbar to argue 
     try {
         Assert-Equal 'Collapsed' ([string]$ed.Window.FindName('ComboPart').Visibility) 'the combination part is out of the way'
         Assert-Equal 'Only LG ULTRAGEAR' ([string]$ed.Window.FindName('HeadTitle').Text) 'the mode names itself'
-        # Пустое имя у комбинации — отказ; у режима монитора имени нет вовсе, и
-        # Save обязан пройти.
+        # An empty name on a combo is a refusal; a monitor mode has no name at all, and Save has to go
+        # through.
         $got = Read-ModeFromUi -Editor $ed
         Assert-True $got.Ok 'saving asks nothing of it'
         Assert-Null $got.Mode.PSObject.Properties['Name'] 'and it carries no name back'
@@ -141,13 +141,12 @@ Test-Case 'dialog: a brightness set for a mode that no longer exists gets its ow
     $settings.brightness['solo:GONE MONITOR'] = 55
     $ui = New-DialogUi -Settings $settings
     try {
-        # Два монитора, «все» и строка-сирота: увидеть и снять настройку можно
-        # только отсюда.
+        # Two monitors, "all" and an orphan row: the setting can only be seen and cleared from here.
         Assert-Equal 4 $ui.ModesPanel.Children.Count 'the setting without a mode is listed'
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 55 $updated.brightness['solo:GONE MONITOR'] 'and untouched by a plain Save'
 
-        # Remove у такой строки снимает именно её.
+        # Remove on such a row clears that row specifically.
         Remove-UiOrphan -Ui $ui -Key 'solo:GONE MONITOR'
         Assert-Equal 3 $ui.ModesPanel.Children.Count 'the row went away'
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
@@ -157,9 +156,8 @@ Test-Case 'dialog: a brightness set for a mode that no longer exists gets its ow
 }
 
 Test-Case 'dialog: a hand-written number survives a Save untouched' {
-    # Регрессия, которую здесь и стерегут: разворачивать число в словарь по
-    # текущим мониторам нельзя — «all: 80» относится и к тому монитору, который
-    # воткнут не сейчас.
+    # The regression this stands guard over: expanding a number into a dictionary over the current
+    # monitors is not allowed — "all: 80" applies to the monitor that is not plugged in right now too.
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = 80
     $ui = New-DialogUi -Settings $settings
@@ -178,7 +176,7 @@ Test-Case 'mode editor: moving the one-level slider is what gets saved' {
     try {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Dark $false
         try {
-            # Как это делает человек: выбрать форму, подвинуть ползунок, Save.
+            # The way a person does it: pick the form, move the slider, Save.
             $ed.LevelKindBox.SelectedIndex = 1
             $ed.LevelOneSlider.Value = 35
             Assert-Equal 'Visible' ([string]$ed.LevelOnePanel.Visibility) 'the slider showed up'
@@ -195,8 +193,8 @@ Test-Case 'mode editor: moving the one-level slider is what gets saved' {
 }
 
 Test-Case 'mode editor: Cancel leaves the brightness the window already had' {
-    # Редактор правит КОПИЮ модели: иначе «подвигал и передумал» уже изменило бы
-    # настройку, и Cancel врал бы.
+    # The editor edits a COPY of the model: otherwise "moved it about and changed my mind" would already
+    # have changed the setting, and Cancel would be lying.
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = 70
     $ui = New-DialogUi -Settings $settings
@@ -208,7 +206,7 @@ Test-Case 'mode editor: Cancel leaves the brightness the window already had' {
             Assert-Equal 20 ([int]$ed.Level.Value) 'the editor moved'
         }
         finally { $ed.Window.Close() }
-        # Ответ редактора не применяли — окно обязано остаться при своих.
+        # The editor's answer was not applied — the window has to keep what it had.
         Assert-Equal 70 ([int]$ui.Levels['all'].Value) 'the window did not'
     }
     finally { $ui.Window.Close() }
@@ -235,7 +233,7 @@ Test-Case 'mode editor: switching to per-display seeds it from the level it had'
         $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Levels $ui.Levels -Dark $false
         try {
             Assert-Equal 'one' ([string]$ed.Level.Kind) 'started as one level'
-            # Человек видел 70 и должен править от семидесяти, а не от пустого списка.
+            # The person saw 70 and has to edit from seventy rather than from an empty list.
             $ed.LevelKindBox.SelectedIndex = 2
             $got = Read-ModeFromUi -Editor $ed
             Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
@@ -250,10 +248,10 @@ Test-Case 'mode editor: switching to per-display seeds it from the level it had'
 }
 
 Test-Case 'mode editor: the per-display rows are really built' {
-    # Тест на построение, а не на модель: первая версия строк звала
-    # [GridLength]::Parse, которого не существует, и переход на «каждому своё»
-    # падал в живом окне. Модель при этом была в полном порядке — поймал снимок
-    # окна, а не тест, поэтому теперь строки строятся здесь.
+    # A test of the building, not of the model: the first version of the rows called
+    # [GridLength]::Parse, which does not exist, and the move to "one each" died in the live window. The
+    # model was in perfect order at the time — what caught it was a snapshot of the window rather than a
+    # test, which is why the rows are built here now.
     $settings = Get-DefaultSettings
     $settings.brightness['all'] = [ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 }
     $ui = New-DialogUi -Settings $settings
@@ -263,7 +261,7 @@ Test-Case 'mode editor: the per-display rows are really built' {
         try {
             Assert-Equal 'Collapsed' ([string]$ed.LevelOnePanel.Visibility) 'the single slider is out of the way'
             Assert-Equal 2 $ed.LevelRowsPanel.Children.Count 'a row per display'
-            # Первый столбец строки — галочка «задано», она же подписана названием.
+            # A row's first column is the "set" checkbox, and it carries the name as its label.
             $first = $ed.LevelRowsPanel.Children[0]
             Assert-Equal 'LG ULTRAGEAR' ([string]$first.Children[0].Content) 'named after the display'
             Assert-True ([bool]$first.Children[0].IsChecked) 'ticked, because a level is set'
@@ -295,7 +293,7 @@ Test-Case 'mode editor: a display with no level gets an unticked, disabled row' 
 }
 
 Test-Case 'mode editor: unticking a display drops its brightness row with it' {
-    # Иначе под комбинацией остался бы ползунок монитора, которого в ней уже нет.
+    # Otherwise a combo would be left with a slider for a monitor it no longer has.
     $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $level = ConvertTo-LevelModel ([ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 })
@@ -307,8 +305,7 @@ Test-Case 'mode editor: unticking a display drops its brightness row with it' {
         $uf.IsChecked = $false
         $uf.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
         $names = @($ed.LevelRowsPanel.Children | ForEach-Object { [string]$_.Children[0].Content })
-        # Строка остаётся, но уже как сирота: значение задано, и снять его можно
-        # только видя его.
+        # The row stays, but as an orphan now: the value is set, and it can only be cleared by seeing it.
         Assert-True ($names -contains 'LG ULTRAGEAR') 'the display that stayed keeps its row'
         $got = Read-ModeFromUi -Editor $ed
         Assert-Equal @('LG ULTRAGEAR') @($got.Mode.Patterns) 'and the combination lost the display'
@@ -322,8 +319,8 @@ Test-Case 'dialog: renaming a combination carries the sliders too' {
     $settings.brightness['combo:Work'] = 45
     $ui = New-DialogUi -Settings $settings
     try {
-        # Через ту же дверь, что и живое окно: имя меняет редактор режима, а не
-        # рука в списке комбинаций.
+        # Through the same door as the live window: the name is changed by the mode editor and not by a
+        # hand in the combo list.
         $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = ''
@@ -336,9 +333,9 @@ Test-Case 'dialog: renaming a combination carries the sliders too' {
 }
 
 Test-Case 'dialog: a new combination taking a freed name keeps its own brightness' {
-    # Яркость Set-UiMode перекладывает на новый ключ сразу, поэтому на Save её
-    # переименовывать НЕ надо: иначе новая комбинация, занявшая освободившееся
-    # имя, совпадает с источником переименования и молча теряет свою яркость.
+    # Set-UiMode moves the brightness onto the new key at once, so it must NOT be renamed on Save:
+    # otherwise a new combo that took over the freed name coincides with the rename's source and
+    # silently loses its own brightness.
     $settings = Get-DefaultSettings
     $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
     $settings.brightness['combo:Work'] = 30
@@ -348,7 +345,7 @@ Test-Case 'dialog: a new combination taking a freed name keeps its own brightnes
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Play'; Patterns = @('LG ULTRAGEAR'); Primary = ''
             Level = $ui.Levels['combo:Work'] })
-        # И тут же заводим новую «Work» — имя освободилось.
+        # And straight away we create a new "Work" — the name has been freed up.
         Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited ([pscustomobject]@{
             Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = ''
             Level = [pscustomobject]@{ Kind = 'one'; Value = 70; Map = [ordered]@{} } })

@@ -1,28 +1,26 @@
 ﻿#Requires -Version 5.1
 
 <#
-    tools\trace-displays.ps1 — одна лента из двух журналов.
+    tools\trace-displays.ps1 — one timeline out of two logs.
 
-    Наш журнал знает, что РЕШИЛ переключатель. Windows знает, что случилось с
-    железом. Порознь эти две половины отвечают на разные вопросы, и 28 августа
-    вечер ушёл на то, чтобы сложить их руками.
+    Our log knows what the switcher DECIDED. Windows knows what happened to the hardware. Apart,
+    those two halves answer different questions, and on 28 August an evening went on putting them
+    together by hand.
 
-    Windows пишет отвал монитора сюда:
+    Windows writes a monitor dropping off here:
 
-        Microsoft-Windows-Kernel-PnP/Device Management, событие 1010
-        «Device DISPLAY\AUSAA1D\... has been surprise removed as it is
-         reported as missing on the bus»
+        Microsoft-Windows-Kernel-PnP/Device Management, event 1010
 
-    Это то самое «монитор погас сам»: он ушёл с шины — уснул своей кнопкой,
-    моргнул линком, или драйвер перестал его видеть. Событие приходит на
-    секунду-две РАНЬШЕ, чем это заметит трей, поэтому в общей ленте видно, что
-    было причиной, а что следствием.
+    That is the very "the monitor went out by itself": it left the bus — fell asleep on its own
+    button, flapped its link, or the driver stopped seeing it. The event arrives a second or two
+    EARLIER than the tray notices, so in a shared timeline it is visible what was the cause and
+    what was the effect.
 
-        .\tools\trace-displays.ps1              за последние сутки
-        .\tools\trace-displays.ps1 -Hours 3     за три часа
-        .\tools\trace-displays.ps1 -All         всё, что есть в обоих журналах
+        .\tools\trace-displays.ps1              the last twenty-four hours
+        .\tools\trace-displays.ps1 -Hours 3     the last three hours
+        .\tools\trace-displays.ps1 -All         everything there is in both logs
 
-    Только читает. Ничего не меняет ни на столе, ни на диске.
+    It only reads. It changes nothing, on the desk or on the disk.
 #>
 [CmdletBinding()]
 param(
@@ -37,9 +35,15 @@ $logFile = Join-Path $root 'last-run.log'
 
 $since = $(if ($All) { [datetime]'1970-01-01' } else { (Get-Date).AddHours(-$Hours) })
 
-# --- наш журнал -------------------------------------------------------------
-# Строки вида «2026-08-28 21:06:43  reapply: ...». Всё, что не начинается с даты,
-# — продолжение предыдущей строки, и в ленту оно не идёт.
+# --- our log ----------------------------------------------------------------
+# Lines of the form "2026-08-28 21:06:43  reapply: ...". Anything that does not start with a date is
+# a continuation of the previous line, and it does not go into the timeline.
+# Order carries the tie-break. The stamp is only accurate to the second and a single switch writes up to
+# nine lines inside one — and Sort-Object in PowerShell 5.1 is NOT stable (there is no -Stable here), so
+# sorting on the stamp alone shuffles them: measured on this repo's own log, 925 same-second pairs came
+# back out of file order, with "done:" printed above the "--- start" that caused it. The whole tool is the
+# claim that a line below another is a reaction to it, so the ordinal is not a nicety.
+$ordinal = 0
 $ours = @()
 if (Test-Path $logFile) {
     foreach ($line in (Get-Content -LiteralPath $logFile -Encoding UTF8)) {
@@ -47,35 +51,47 @@ if (Test-Path $logFile) {
         $when = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss',
                                        [System.Globalization.CultureInfo]::InvariantCulture)
         if ($when -lt $since) { continue }
-        $ours += [pscustomobject]@{ When = $when; Source = 'deck'; Text = $Matches[2] }
+        $ordinal++
+        $ours += [pscustomobject]@{ When = $when; Source = 'deck'; Text = $Matches[2]; Ordinal = $ordinal }
     }
 }
 
-# --- журнал Windows ---------------------------------------------------------
-# Фильтр по имени журнала, а не перебор всех: этот перебирается за миллисекунды,
-# а «все включённые» — за минуту.
+# --- the Windows log --------------------------------------------------------
+# Filtered by log name rather than walking them all: this one is walked in milliseconds, whereas
+# "every enabled one" takes a minute.
 $theirs = @()
 try {
     $filter = @{ LogName = 'Microsoft-Windows-Kernel-PnP/Device Management'; Id = 1010 }
     if (-not $All) { $filter['StartTime'] = $since }
     foreach ($e in (Get-WinEvent -FilterHashtable $filter -ErrorAction Stop)) {
         if ($e.Message -notmatch 'DISPLAY\\([A-Z0-9_]+)\\') { continue }
+        # A negative ordinal keeps Windows' own line above the deck lines it explains when both land
+        # in the same second — the cause is what one wants to read first.
         $theirs += [pscustomobject]@{
             When = $e.TimeCreated; Source = 'pnp'
             Text = ('{0} surprise removed - missing on the bus' -f $Matches[1])
+            Ordinal = -1
         }
     }
 }
-catch [System.Diagnostics.Eventing.Reader.EventLogNotFoundException] {
-    Write-Host 'Kernel-PnP log is not there - only the deck side will be shown.' -ForegroundColor Yellow
-}
 catch {
-    # Пустой журнал за период — это не ошибка, это ответ «ничего не отваливалось».
-    if ($_.Exception.Message -notmatch 'No events') { throw }
+    # Both outcomes arrive as a plain System.Exception, not as EventLogNotFoundException — a typed
+    # catch for that never fires. The identifier is what separates them, and it is the identifier we
+    # match on, never the message: that text is localised, and on a German or Russian Windows a match
+    # on 'No events' fails on the most ordinary run there is — a quiet day with nothing off the bus —
+    # and the tool would die instead of printing the deck side.
+    switch -Wildcard ($_.FullyQualifiedErrorId) {
+        'NoMatchingLogsFound,*'   { Write-Host 'Kernel-PnP log is not there - only the deck side will be shown.' -ForegroundColor Yellow }
+        'NoMatchingEventsFound,*' { }   # nothing dropped off in the period: the answer, not an error
+        default                   { throw }
+    }
 }
 
-# --- одна лента -------------------------------------------------------------
-$rows = @($ours + $theirs) | Sort-Object When
+# --- one timeline -----------------------------------------------------------
+# The @() wraps the PIPELINE, not just the operands: Sort-Object emits a bare object when one row
+# survives the period, and a bare [pscustomobject] has no .Count in PowerShell 5.1 — the header printed
+# "displays, one timeline -  lines" with a hole in it.
+$rows = @($ours + $theirs | Sort-Object When, Ordinal)
 
 if ($rows.Count -eq 0) {
     Write-Host 'Nothing in either log for that period.' -ForegroundColor Yellow
@@ -93,7 +109,7 @@ foreach ($row in $rows) {
         Write-Host ('{0}  WINDOWS  {1}' -f $stamp, $row.Text) -ForegroundColor Yellow
     }
     else {
-        # Строки, ради которых лента и собирается, — глазами их надо находить сразу.
+        # The lines the timeline is assembled for in the first place — the eye has to find them at once.
         $loud = ($row.Text -like 'plug:*' -or $row.Text -like 'reapply:*' -or
                  $row.Text -like 'desk:*' -or $row.Text -like 'ERROR*')
         $colour = $(if ($loud) { 'White' } else { 'DarkGray' })

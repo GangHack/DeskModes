@@ -1,7 +1,7 @@
-﻿# --- DPI меню трея ---------------------------------------------------------
-# Процесс работает в PER_MONITOR_AWARE_V2, поэтому WinForms уже не растягивает
-# меню за нас. Проверяем отдельно число масштаба и итоговые пиксели рендерера:
-# так тесты не зависят ни от шрифтов, ни от настоящего расположения мониторов.
+﻿# --- the tray menu's DPI ---------------------------------------------------
+# The process runs in PER_MONITOR_AWARE_V2, so WinForms no longer stretches the menu for us. We test the
+# scale number and the renderer's final pixels separately: that way the tests depend neither on the fonts
+# nor on where the monitors really are.
 
 Write-Host ''
 Write-Host 'the tray menu at every DPI' -ForegroundColor White
@@ -16,7 +16,7 @@ function New-DpiMenuRenderer {
     return New-Object ModernMenuRenderer $false, $accent, ([single]$Scale)
 }
 
-function Render-MenuSeparator {
+function Get-MenuSeparatorBitmap {
     param($Renderer, [int]$Width = 64)
     $bmp = New-Object System.Drawing.Bitmap $Width, 9
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -39,7 +39,7 @@ function Render-MenuSeparator {
     return $bmp
 }
 
-function Render-MenuCheck {
+function Get-MenuCheckBitmap {
     param($Renderer, [int]$Size)
     $bmp = New-Object System.Drawing.Bitmap $Size, $Size
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -92,15 +92,15 @@ Test-Case 'menu DPI: the scale follows the requested DPI and never shrinks' {
 }
 
 Test-Case 'menu DPI: the old renderer constructor is exactly scale one' {
-    $legacy = Render-MenuSeparator (New-DpiMenuRenderer -Scale 1 -Legacy)
-    $scaled = Render-MenuSeparator (New-DpiMenuRenderer -Scale 1)
+    $legacy = Get-MenuSeparatorBitmap (New-DpiMenuRenderer -Scale 1 -Legacy)
+    $scaled = Get-MenuSeparatorBitmap (New-DpiMenuRenderer -Scale 1)
     try { Assert-Equal 0 (Measure-DifferentPixels -Left $legacy -Right $scaled) 'different pixels' }
     finally { $legacy.Dispose(); $scaled.Dispose() }
 }
 
 Test-Case 'menu DPI: a double-scale separator has a double inset' {
-    $normal = Render-MenuSeparator (New-DpiMenuRenderer -Scale 1)
-    $double = Render-MenuSeparator (New-DpiMenuRenderer -Scale 2)
+    $normal = Get-MenuSeparatorBitmap (New-DpiMenuRenderer -Scale 1)
+    $double = Get-MenuSeparatorBitmap (New-DpiMenuRenderer -Scale 2)
     try {
         $white = [System.Drawing.Color]::White.ToArgb()
         Assert-True ($normal.GetPixel(12, 4).ToArgb() -ne $white) 'scale one reaches x=12'
@@ -112,8 +112,8 @@ Test-Case 'menu DPI: a double-scale separator has a double inset' {
 }
 
 Test-Case 'menu DPI: a double-scale check has a visibly heavier stroke' {
-    $normal = Render-MenuCheck -Renderer (New-DpiMenuRenderer -Scale 1) -Size 16
-    $double = Render-MenuCheck -Renderer (New-DpiMenuRenderer -Scale 2) -Size 32
+    $normal = Get-MenuCheckBitmap -Renderer (New-DpiMenuRenderer -Scale 1) -Size 16
+    $double = Get-MenuCheckBitmap -Renderer (New-DpiMenuRenderer -Scale 2) -Size 32
     try {
         $normalPixels = Measure-AccentPixels $normal
         $doublePixels = Measure-AccentPixels $double

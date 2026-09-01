@@ -1,29 +1,30 @@
 ﻿<#
-    WindowLayout.ps1 — окна помнят свои места для каждой раскладки столов.
+    WindowLayout.ps1 — windows remember where they sat for every desk layout.
 
-    Смена набора мониторов сдвигает окна, и обратно они сами не раскладываются —
-    это ограничение Windows. Но снять снимок до перестроения стола и вернуть его
-    после вполне можно.
+    Changing the set of monitors moves windows around, and Windows never puts
+    them back — that is a limitation of the system. Taking a snapshot before the
+    desk is rebuilt and restoring it afterwards, however, works fine.
 
-    Подключается из точек входа (Displays.ps1, Set-Display.ps1), а НЕ из
-    DisplayCore.ps1: core остаётся «только определения» и ничего про окна не знает.
-    Switch-DisplayMode вызывает эти функции, только если они определены, — поэтому
-    core работает и без этого файла.
+    Dot-sourced from the entry points (Displays.ps1, Set-Display.ps1) and NOT
+    from DisplayCore.ps1: core stays "definitions only" and knows nothing about
+    windows. Switch-DisplayMode calls these functions only when they are defined,
+    which is why core works without this file at all.
 
-    Ключ снимка — раскладка СТОЛОВ, а не название режима: отсортированные пути
-    активных мониторов, склеенные через '|'. Два разных режима с одинаковым набором
-    экранов (пока ASUS не воткнут, «оба LG» и «все» — это один набор) обязаны
-    делить один снимок, иначе окна возвращались бы через раз.
+    The snapshot key is the DESK layout, not the mode name: the sorted device
+    paths of the active monitors, joined with '|'. Two different modes with the
+    same set of screens (until the ASUS is plugged in, "both LGs" and "all" are
+    one and the same set) have to share one snapshot, or windows would come back
+    only every other time.
 
-    Хранилище — window-state.json рядом со скриптами. HWND действительны в рамках
-    одного входа в Windows и одинаковы для всех процессов, поэтому снимок,
-    снятый из CLI, годится трею и наоборот. При старте трея записи с мёртвыми
-    процессами вычищаются.
+    The store is window-state.json next to the scripts. HWNDs are valid for one
+    Windows logon and are the same for every process, so a snapshot taken from
+    the CLI serves the tray and the other way round. On tray startup, entries
+    whose processes are all dead are swept out.
 #>
 
 $script:WindowStateFile = Join-Path $PSScriptRoot 'window-state.json'
 
-# Ключ раскладки столов по состоянию мониторов (или по готовому списку путей).
+# The desk-layout key from the monitor state (or from a ready list of paths).
 function Get-DisplayLayoutKey {
     param($State, [string[]]$DevicePaths)
 
@@ -45,9 +46,9 @@ function Get-WindowStateStore {
         return $store
     }
     catch {
-        # Испорченный файл — это неприятность, а не поломка: снимки наживаются
-        # заново за одно переключение. Настройки в такой ситуации сохраняют копию,
-        # здесь это не нужно.
+        # A damaged file is a nuisance, not a breakage: the snapshots build up
+        # again over one switch. Settings keep a copy in this situation; here
+        # that is not needed.
         Write-DisplayLog "windows: state file is damaged, starting over - $($_.Exception.Message)"
         return @{}
     }
@@ -65,7 +66,7 @@ function Save-WindowStateStore {
     }
 }
 
-# Снять положение всех пользовательских окон и запомнить под ключом раскладки.
+# Snapshot where every ordinary window sits and remember it under the layout key.
 function Save-WindowLayout {
     param([Parameter(Mandatory)][string]$Key)
 
@@ -104,7 +105,7 @@ function Save-WindowLayout {
     }
 }
 
-# Вернуть окна на места, запомненные для этой раскладки.
+# Put the windows back where this layout remembered them.
 function Restore-WindowLayout {
     param([Parameter(Mandatory)][string]$Key)
 
@@ -112,8 +113,8 @@ function Restore-WindowLayout {
 
     $store = Get-WindowStateStore
     if (-not $store.ContainsKey($Key)) {
-        # Не ошибка: этой раскладки ещё не видели. Снимок появится, когда с неё
-        # будут уходить.
+        # Not an error: this layout has not been seen yet. The snapshot appears
+        # when the desk is left for another one.
         Write-DisplayLog ("windows: no snapshot for {0} yet" -f (Format-LayoutKey $Key))
         return
     }
@@ -126,10 +127,10 @@ function Restore-WindowLayout {
     $refused = 0
     foreach ($w in $saved) {
         $h = [IntPtr][int64]$w.hwnd
-        # Живо ли окно и то ли это окно. HWND переиспользуются: номер закрытого
-        # окна система может выдать другому, поэтому одной проверки IsWindow мало
-        # — сверяем ещё и процесс. Иначе снимок Firefox однажды переставил бы
-        # чужое окно, оказавшееся на том же номере.
+        # Is the window alive, and is it the same window. HWNDs get reused: the
+        # system can hand a closed window's number to another one, so IsWindow
+        # alone is not enough — we check the process too. Otherwise a Firefox
+        # snapshot would one day move a stranger's window that landed on that number.
         if (-not [NativeWindows]::IsWindow($h)) { $gone++; continue }
         if ([NativeWindows]::PidOfWindow($h) -ne [int]$w.pid) { $gone++; continue }
 
@@ -144,9 +145,10 @@ function Restore-WindowLayout {
         if ($ok) { $done++ } else { $refused++ }
     }
 
-    # Считаем честно: сколько вернули из скольких, и сколько окон уже нет. Отказы
-    # (окно живо, а SetWindowPlacement его не пустил — так бывает у окон с правами
-    # выше наших) показываем отдельно, чтобы не выглядело «пропало».
+    # Count honestly: how many came back out of how many, and how many windows are
+    # gone. Refusals (the window is alive but SetWindowPlacement would not let us
+    # move it — that happens to windows with rights above ours) are shown separately,
+    # so it does not read as "vanished".
     $line = "windows: restored {0} of {1}" -f $done, $saved.Count
     $tail = @()
     if ($gone -gt 0)    { $tail += "$gone gone" }
@@ -155,8 +157,8 @@ function Restore-WindowLayout {
     Write-DisplayLog $line
 }
 
-# Ключ в журнале — это три длинных пути устройств; читать невозможно. Для
-# журнала сокращаем до количества экранов, а сам ключ и так лежит в json.
+# The key in the log is three long device paths; unreadable. For the log we shorten
+# it to the number of screens — the key itself is in the json anyway.
 function Format-LayoutKey {
     param([string]$Key)
     if (-not $Key) { return '(none)' }
@@ -164,8 +166,8 @@ function Format-LayoutKey {
     return ("a {0}-display layout" -f $n)
 }
 
-# Записи, все процессы которых уже мертвы, держать незачем: HWND из прошлого
-# входа в Windows не значат ничего. Вызывается при старте трея.
+# Entries whose every process is already dead are worth nothing: an HWND from a
+# previous Windows logon means nothing. Called on tray startup.
 function Remove-DeadWindowLayouts {
     if (-not (Test-Path $script:WindowStateFile)) { return }
 

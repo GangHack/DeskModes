@@ -1,6 +1,6 @@
-﻿# --- предпросмотр стола -----------------------------------------------------
-# Картинка считается той же функцией, которой считает переключатель
-# (Get-LayoutPositions), поэтому проверять надо ровно одно: что в неё попадает.
+﻿# --- the desk preview -------------------------------------------------------
+# The picture is worked out by the same function the switcher works with (Get-LayoutPositions), so
+# there is exactly one thing to test: what goes into it.
 
 Write-Host ''
 Write-Host 'the desk preview' -ForegroundColor White
@@ -18,8 +18,8 @@ Test-Case 'preview: pixel sizes come from the cards' {
 }
 
 Test-Case 'preview: a display of unknown size still takes its place in the row' {
-    # Карточка-памятка от выдернутого монитора: размера у неё нет, но место в
-    # ряду она занимает — иначе предпросмотр показывал бы не тот стол.
+    # A reminder card from a monitor that was pulled out: it has no size, but it does take up its place
+    # in the row — otherwise the preview would show a different desk.
     $cards = @([pscustomobject]@{ Label = 'XG27AQDMGR'; Width = 0; Height = 0; Connected = $false; Primary = $false })
     $screens = @(ConvertTo-PreviewScreens -Cards $cards)
     Assert-Equal 1 $screens.Count 'still there'
@@ -28,8 +28,8 @@ Test-Case 'preview: a display of unknown size still takes its place in the row' 
 }
 
 Test-Case 'preview: what it draws is what the switcher will do' {
-    # Экраны разной высоты выравниваются по центру, и именно это должно быть
-    # видно на картинке: 2160 и 1440 дают отступ (2160-1440)/2 = 360.
+    # Screens of different heights are aligned centred, and that is exactly what has to be visible in
+    # the picture: 2160 and 1440 give an offset of (2160-1440)/2 = 360.
     $cards = @(
         [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $true }
         [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $false }
@@ -41,10 +41,9 @@ Test-Case 'preview: what it draws is what the switcher will do' {
 }
 
 Test-Case 'preview: the cards decide the order, not the alphabet' {
-    # Регрессия: с пустым Order у всех экранов одинаковый ранг, и раскладка
-    # сортировалась по названию. Картинка показывала ULTRAFINE, ULTRAGEAR,
-    # XG27AQDMGR, а карточки стояли ULTRAFINE, XG27AQDMGR, ULTRAGEAR — то есть
-    # предпросмотр обещал не тот стол, который получится.
+    # A regression: with an empty Order every screen has the same rank, and the layout was sorted by
+    # name. The picture showed ULTRAFINE, ULTRAGEAR, XG27AQDMGR while the cards stood ULTRAFINE,
+    # XG27AQDMGR, ULTRAGEAR — that is, the preview promised a desk other than the one that would come out.
     $cards = @(
         [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
         [pscustomobject]@{ Label = 'XG27AQDMGR';   Width = 2560; Height = 1440; Connected = $true; Primary = $true }
@@ -56,8 +55,8 @@ Test-Case 'preview: the cards decide the order, not the alphabet' {
 }
 
 Test-Case 'preview: the taskbar display is where the coordinates start' {
-    # Основным Windows делает того, чей левый верхний угол лежит в (0,0) — и
-    # картинка обязана показывать это так же, иначе она рисует чужую раскладку.
+    # Windows makes primary whoever's top-left corner lies at (0,0) — and the picture has to show it the
+    # same way, or it is drawing somebody else's layout.
     $cards = @(
         [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
         [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $true }

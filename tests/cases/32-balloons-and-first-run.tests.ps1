@@ -1,19 +1,19 @@
-﻿# --- всплывашки и первый запуск ---------------------------------------------
-# Выключенные уведомления глушат фоновые сообщения — и однажды заглушили ответ на
-# нажатие: «About ScreenDeck» нажат, и не происходит ничего. Развилка (switch
-# -Always) — чистая логика, и проверять её на живом столе незачем.
+﻿# --- the balloons and the first run -----------------------------------------
+# Notifications turned off mute the background messages — and one day they muted the answer to a click:
+# "About ScreenDeck" is clicked and nothing happens. The fork (switch -Always) is pure logic, and there
+# is no reason to test it on a live desk.
 #
-# Первый запуск человек видит ровно один раз, и живьём его не повторить, не удалив
-# настройки, — а это единственный путь, который никто не переоткрывает руками.
+# A person sees the first run exactly once, and live it cannot be repeated without deleting the settings
+# — and that is the one path nobody ever reopens by hand.
 #
-# И Show-Balloon, и тело таймера старта достаём из Displays.ps1 разбором файла:
-# дот-сорснуть точку входа нельзя, она поднимает всё приложение, а копия кода в
-# тесте разошлась бы с оригиналом (тот же приём, что в 16-restore-on-start).
+# Both Show-Balloon and the body of the startup timer are pulled out of Displays.ps1 by parsing the file:
+# an entry point cannot be dot-sourced, it brings the whole application up, and a copy of the code in the
+# test would drift apart from the original (the same trick as in 16-restore-on-start).
 
 Write-Host ''
 Write-Host 'the balloons and the first run' -ForegroundColor White
 
-# ToolTipIcon — из WinForms: Show-Balloon достаёт из него значок по имени вида.
+# ToolTipIcon comes from WinForms: Show-Balloon takes the icon out of it by the kind's name.
 Add-Type -AssemblyName System.Windows.Forms
 
 $script:TrayAst = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -25,21 +25,21 @@ $balloon = @($script:TrayAst.FindAll({ param($n)
 if ($balloon.Count -ne 1) { throw "expected exactly one Show-Balloon in Displays.ps1, found $($balloon.Count)" }
 . ([scriptblock]::Create($balloon[0].Extent.Text))
 
-# Тело таймера старта — не функция, а блок, отданный в .add_Tick(). Берём именно
-# тик StartupTimer: тиков в файле четыре, и остальные три про другое.
+# The startup timer's body is not a function but a block handed to .add_Tick(). We take the StartupTimer
+# tick specifically: there are four ticks in the file, and the other three are about something else.
 $startupTick = @($script:TrayAst.FindAll({ param($n)
     $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
     $n.Member.Extent.Text -eq 'add_Tick' }, $true) |
     Where-Object { $_.Expression.Extent.Text -match 'StartupTimer' })
 if ($startupTick.Count -ne 1) { throw "expected exactly one StartupTimer tick in Displays.ps1, found $($startupTick.Count)" }
-# .EndBlock, а не сам блок: Extent блока — это «{ … }» вместе со скобками, и
-# Create собрал бы из него не тело, а литерал скриптблока.
+# .EndBlock rather than the block itself: a block's Extent is "{ … }" braces included, and Create would
+# have assembled a script-block literal out of it rather than a body.
 $script:StartupTick = [scriptblock]::Create($startupTick[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
 
-# --- окружение, которое эти два куска ожидают вокруг себя --------------------
+# --- the environment these two pieces expect around themselves ---------------
 
-# Значок трея. Не настоящий NotifyIcon: видимый показал бы всплывашку поверх
-# чужого экрана, а невидимый бросил бы исключение на ShowBalloonTip.
+# The tray icon. Not a real NotifyIcon: a visible one would show a balloon over somebody else's screen,
+# and an invisible one would throw on ShowBalloonTip.
 $script:tray = New-Object psobject -Property @{
     BalloonTipIcon = $null; BalloonTipTitle = ''; BalloonTipText = ''; Shown = 0
 }
@@ -51,11 +51,16 @@ $script:SettingsOpened = $false
 $script:StartupTimer = New-Object psobject
 $script:StartupTimer | Add-Member -MemberType ScriptMethod -Name Stop -Value { $script:TimerStopped = $true }
 
-# Соседи тика: сам возврат режима проверен в 16-restore-on-start, здесь он только
-# не должен мешать.
+# The tick's neighbours: the mode restore itself is tested in 16-restore-on-start, and here it only has
+# to stay out of the way.
 function Invoke-StartupRestore { }
 function Open-SettingsWindow { $script:SettingsOpened = $true }
 function Optimize-TrayMemory { }
+
+# Show-Balloon reads the settings the way the whole tray does — through the function, never through the
+# variable. Ours is declared here rather than borrowed from an earlier file of cases: a test that reads
+# somebody else's scene breaks the day that scene is edited.
+function Get-ActiveSettings { return $script:Settings }
 
 function Set-BalloonScene {
     param([bool]$Notifications)
@@ -75,7 +80,7 @@ function Invoke-StartupTick {
     & $script:StartupTick
 }
 
-# --- что глушится, а что нет ------------------------------------------------
+# --- what gets muted and what does not --------------------------------------
 
 Test-Case 'balloon: a background message is silent when notifications are off' {
     Set-BalloonScene -Notifications $false
@@ -103,8 +108,8 @@ Test-Case 'balloon: a failure is never silenced' {
 }
 
 Test-Case 'balloon: -Always is a licence for that one message, not for the rest' {
-    # Если условие перевернуть, обычные «переключено» полезут при выключенных
-    # уведомлениях — а это ровно то, что человек и выключал.
+    # Turn the condition round and the ordinary "switched" messages will push through with notifications
+    # off — which is exactly what the person turned off.
     Set-BalloonScene -Notifications $false
     Show-Balloon 'Displays switched' 'Both work displays are up.'
     Show-Balloon 'ScreenDeck' 'ScreenDeck 1.0.0' -Always
@@ -112,9 +117,9 @@ Test-Case 'balloon: -Always is a licence for that one message, not for the rest'
     Assert-Equal 1 $script:tray.Shown 'only the answer to the press got through'
 }
 
-# Правило, а не пример: «нажал, и ничего не произошло» в коде не видно, и один раз
-# так и уехало. Смотрим все Show-Balloon прямо в обработчиках add_Click — у каждого
-# обязан быть -Always или свой Kind, который не глушится.
+# A rule rather than an example: "clicked it and nothing happened" is invisible in the code, and it went
+# out that way once. We look at every Show-Balloon right inside the add_Click handlers — each one has to
+# carry -Always or a Kind of its own that does not get muted.
 Test-Case 'balloon: no answer to a menu click can be silenced' {
     $handlers = @($script:TrayAst.FindAll({ param($n)
         $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
@@ -135,11 +140,11 @@ Test-Case 'balloon: no answer to a menu click can be silenced' {
     Assert-Equal 0 $silent.Count ('silenced answers: ' + ($silent -join ' | '))
 }
 
-# --- первый запуск ----------------------------------------------------------
+# --- the first run ----------------------------------------------------------
 
 Test-Case 'startup: the welcome belongs to the run that had to create the settings' {
-    # Признак — ОТСУТСТВИЕ файла настроек: пустой список клавиш им не является,
-    # иначе человек, снявший все привязки, получал бы приглашение каждый раз.
+    # The tell is the ABSENCE of the settings file: an empty shortcut list is not one, otherwise a person
+    # who cleared every binding would get the welcome every time.
     Assert-True ($script:TrayAst.Extent.Text -match '(?m)^\$script:FirstRun\s*=\s*\$false') 'the flag is off by default'
 
     $ifs = @($script:TrayAst.FindAll({ param($n)
@@ -152,9 +157,9 @@ Test-Case 'startup: the welcome belongs to the run that had to create the settin
 }
 
 Test-Case 'startup: the first run says where the menu is and opens Settings itself' {
-    # Приглашение показывается из таймера старта, когда цикл сообщений уже
-    # крутится: до него всплывашка не появляется вовсе, а окно настроек встало бы
-    # поперёк старта. Поэтому тик и гоняется целиком, а не читается глазами.
+    # The welcome is shown from the startup timer, once the message loop is already running: before it a
+    # balloon does not appear at all, and the Settings window would have stood across the startup. Which
+    # is why the tick is run whole rather than read with the eye.
     Invoke-StartupTick -First $true
     Assert-True $script:TimerStopped 'the one-shot timer stopped itself'
     Assert-Equal 1 $script:tray.Shown 'one balloon'
@@ -163,8 +168,7 @@ Test-Case 'startup: the first run says where the menu is and opens Settings itse
 }
 
 Test-Case 'startup: every later start is silent' {
-    # Окно настроек, открывающееся на каждом входе в Windows, — это то, за что
-    # инструмент удаляют.
+    # A Settings window that opens on every login to Windows is the sort of thing a tool gets deleted over.
     Invoke-StartupTick -First $false
     Assert-Equal 0 $script:tray.Shown 'no welcome'
     Assert-True (-not $script:SettingsOpened) 'no window'
@@ -172,8 +176,8 @@ Test-Case 'startup: every later start is silent' {
 }
 
 Test-Case 'startup: a Settings window that will not open does not take the start down' {
-    # Всё, что трей делает на старте, идёт до Application.Run: исключение отсюда —
-    # это значок, который не появился вообще.
+    # Everything the tray does at startup happens before Application.Run: an exception from here is an icon
+    # that never appeared at all.
     function Open-SettingsWindow { throw 'no display device' }
     Invoke-StartupTick -First $true
     Assert-Equal 1 $script:tray.Shown 'the balloon still went out'

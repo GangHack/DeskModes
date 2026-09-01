@@ -53,7 +53,7 @@ function New-IconBitmap {
     $g.Clear([System.Drawing.Color]::Transparent)
 
     $s = [single]$Size
-    # плитка с градиентом
+    # the tile, with its gradient
     $tile = New-RoundedPath 0 0 $s $s ($s * 0.22)
     $rect = New-Object System.Drawing.RectangleF 0, 0, $s, $s
     $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
@@ -65,11 +65,11 @@ function New-IconBitmap {
 
     $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::White)
     $hint  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(150, 255, 255, 255))
-    # обводка цветом плитки — ею отделяем передний монитор от заднего
+    # an outline in the tile's own colour — it separates the front monitor from the back one
     $sep = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 46, 104, 224)), ([single]([Math]::Max(1.0, $s * 0.055)))
 
-    # Второй монитор намёком. На 16-20 px он превращается в кашу, поэтому там
-    # остаётся один экран — так силуэт читается.
+    # The second monitor as a hint only. At 16-20 px it turns to mush, so there only
+    # one screen is left — that way the silhouette reads.
     $twoScreens = $Size -ge 24
     if ($twoScreens) {
         $back = New-RoundedPath ($s*0.52) ($s*0.13) ($s*0.35) ($s*0.28) ($s*0.05)
@@ -77,13 +77,13 @@ function New-IconBitmap {
         $back.Dispose()
     }
 
-    # передний монитор
+    # the front monitor
     $scr = New-RoundedPath ($s*0.13) ($s*0.24) ($s*0.58) ($s*0.38) ($s*0.06)
     if ($twoScreens) { $g.DrawPath($sep, $scr) }
     $g.FillPath($white, $scr)
     $scr.Dispose()
 
-    # ножка и основание
+    # the stand and its foot
     $g.FillRectangle($white, ($s*0.375), ($s*0.62), ($s*0.10), ($s*0.09))
     $base = New-RoundedPath ($s*0.26) ($s*0.70) ($s*0.34) ($s*0.08) ($s*0.035)
     $g.FillPath($white, $base)
@@ -103,7 +103,7 @@ foreach ($sz in $sizes) {
     $ms.Dispose()
 }
 
-# --- сборка .ico ------------------------------------------------------------
+# --- assembling the .ico ----------------------------------------------------
 $fs = New-Object System.IO.FileStream $IcoPath, ([System.IO.FileMode]::Create)
 $bw = New-Object System.IO.BinaryWriter $fs
 $bw.Write([uint16]0)               # reserved
@@ -126,7 +126,7 @@ foreach ($im in $images) { $bw.Write($im.Bytes) }
 $bw.Flush(); $bw.Dispose(); $fs.Dispose()
 "ico written: $IcoPath  ($((Get-Item $IcoPath).Length) bytes, $($images.Count) sizes)"
 
-# --- превью: те же размеры на светлом и тёмном фоне -------------------------
+# --- preview: the same sizes on a light and on a dark background -------------
 $show = 16, 24, 32, 48, 128
 $pad = 16
 $w = [int]($pad + ($show | ForEach-Object { $_ + $pad } | Measure-Object -Sum).Sum)

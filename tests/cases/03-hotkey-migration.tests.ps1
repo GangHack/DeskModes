@@ -1,4 +1,4 @@
-﻿# --- миграция привязок ------------------------------------------------------
+﻿# --- migrating the bindings -------------------------------------------------
 
 Write-Host ''
 Write-Host 'hotkey migration' -ForegroundColor White
@@ -13,8 +13,8 @@ Test-Case 'migration: a binding keyed by the old short id moves to the name key'
 }
 
 Test-Case 'migration: a longer old name still finds its display' {
-    # Название в настройках может быть полным — «ROG STRIX XG27AQDMGR», — а система
-    # знает монитор как «XG27AQDMGR». Одно содержится в другом.
+    # A name in the settings may be the full one — "ROG STRIX XG27AQDMGR" — while the system knows
+    # the monitor as "XG27AQDMGR". One is contained in the other.
     $state = @((New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D'))
     $s = Get-DefaultSettings
     $s.hotkeys['solo:ROG STRIX XG27AQDMGR'] = 'Ctrl+Alt+F4'

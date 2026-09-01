@@ -1,14 +1,13 @@
-﻿# --- ретрай раскладки и вердикт переключения --------------------------------
-# Валидация раскладки отвечает 87 сразу после смены топологии. Если единственная
-# попытка молча провалится, а переключение отчитается успехом, мониторы до
-# следующего хоткея стоят перепутанными. Отсюда два свойства, прибитые тестами:
-# раскладка повторяется, провал попадает в вердикт.
+﻿# --- the layout retry and a switch's verdict --------------------------------
+# Layout validation answers 87 right after a topology change. If the one attempt fails silently and
+# the switch reports success, the monitors stand muddled up until the next shortcut. Hence two
+# properties nailed down by tests: the layout is retried, and a failure reaches the verdict.
 
 Write-Host ''
 Write-Host 'layout retry and the switch verdict' -ForegroundColor White
 
 Test-Case 'layout retry: a transient failure is retried until it succeeds' {
-    # Тот самый день: две неудачи подряд, потом система приходит в себя.
+    # That very day: two failures in a row, and then the system comes to its senses.
     $script:LayoutCalls = 0
     function Invoke-CcdLayoutAttempt {
         param([string]$PrimaryPath, [string[]]$Order, [int]$Attempt, [int]$Attempts)
@@ -39,8 +38,8 @@ Test-Case 'layout retry: gives up after three attempts and reports the failure' 
 }
 
 Test-Case 'layout retry: success on the first try is not retried' {
-    # «Уже стоит как надо» — самый частый случай; лишние попытки стоили бы
-    # лишних перечитываний CCD на каждом переключении.
+    # "Already stands as it should" is the most frequent case; extra attempts would cost extra
+    # re-reads of CCD on every switch.
     $script:LayoutCalls = 0
     function Invoke-CcdLayoutAttempt {
         param([string]$PrimaryPath, [string[]]$Order, [int]$Attempt, [int]$Attempts)

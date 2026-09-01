@@ -1,32 +1,30 @@
 ﻿#Requires -Version 5.1
 
 <#
-    tests\live.ps1 — прогон по НАСТОЯЩЕМУ столу. Только руками, никогда в CI и
-    никогда по умолчанию.
+    tests\live.ps1 — a run against the REAL desk. By hand only, never in CI and never by default.
 
-    Зачем он есть, когда есть целый набор обычных случаев: вся ценность проекта — в
-    поведении на настоящем железе. Подписи P/Invoke, отказы драйвера, время, за
-    которое монитор просыпается, дробь частоты, которую примет именно эта
-    видеокарта, — ни одна подделка этого не воспроизводит. Открытый риск номер
-    один здесь звучит как «никто не запускал ни на чём, кроме одного стола», и
-    сценарный прогон отвечает на него лучше, чем прогон по памяти.
+    Why it exists when there is a whole suite of ordinary cases: all of this project's value is in its
+    behaviour on real hardware. P/Invoke signatures, the driver's refusals, the time a monitor takes to
+    wake up, the refresh-rate fraction this particular graphics card will accept — not one fake
+    reproduces any of that. Open risk number one here reads as "nobody has run this on anything but
+    one desk", and a scripted run answers it better than a run from memory.
 
-    Это чек-лист, а не второй набор тестов: он проходит по всем режимам из
-    настроек, после каждого сверяет состав, основной монитор, раскладку и частоты,
-    и возвращает стол как было. Экраны будут моргать.
+    This is a checklist and not a second test suite: it goes through every mode in the settings, checks
+    the membership, the primary monitor, the layout and the refresh rates after each one, and puts the
+    desk back as it was. The screens will blink.
 
-        .\tests\live.ps1 -ReadOnly    только смоук CLI, мониторы не трогать
-        .\tests\live.ps1                 полный прогон, со подтверждением
-        .\tests\live.ps1 -Yes            полный прогон без вопросов
+        .\tests\live.ps1 -ReadOnly    the CLI smoke test only, do not touch the monitors
+        .\tests\live.ps1                 the full run, with a confirmation
+        .\tests\live.ps1 -Yes            the full run without any questions
 
-    Трей гасить не нужно: его сторож частоты берёт тот же мьютекс, что и
-    переключение, и держит его около секунды после каждого шага — поэтому
-    переключения здесь идут с повтором, а не в один заход.
+    There is no need to shut the tray down: its refresh-rate watchdog takes the same mutex as a switch
+    and holds it for about a second after every step — which is why the switches here go with a retry
+    rather than in one pass.
 
-    Журнал НЕ уводится в сторону: строки done: в last-run.log — это и есть замер
-    скорости, и сравнивать их надо с прошлыми неделями, а не с пустым файлом.
+    The log is NOT redirected: the done: lines in last-run.log ARE the speed measurement, and they have
+    to be compared against the past weeks rather than against an empty file.
 
-    Код возврата: 0 — всё сошлось, 1 — есть расхождения, 2 — прогон не начинался.
+    Exit code: 0 — everything agreed, 1 — there are discrepancies, 2 — the run never started.
 #>
 [CmdletBinding()]
 param(
@@ -37,8 +35,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-# В CI этому файлу делать нечего: там нет ни мониторов, ни человека, который
-# увидит, что стол остался разобранным.
+# This file has no business in CI: there are no monitors there, and no person to see that the desk was
+# left in pieces.
 if ($env:CI -or $env:GITHUB_ACTIONS -or $env:TF_BUILD) {
     Write-Host 'live.ps1 drives real displays and never runs in CI.' -ForegroundColor Yellow
     exit 2
@@ -60,32 +58,30 @@ function Write-LiveCheck {
     }
 }
 
-# Последняя строка done: — это замер, который переключение оставило само. Читаем
-# её из журнала, а не считаем секунды здесь: сравнивать надо ровно то число,
-# которое лежит в файле за прошлые недели.
+# The last done: line is a measurement the switch left behind itself. We read it out of the log rather
+# than counting the seconds here: what has to be compared is exactly the number that sits in the file
+# for the past weeks.
 function Get-LastDoneLine {
     try {
         $tail = @(Get-Content -LiteralPath $script:LogFile -Tail 40 -ErrorAction Stop)
         $line = @($tail | Where-Object { $_ -match '\sdone: ' })[-1]
         if ($line -match '\((\d+[.,]\d+) s') { return $Matches[1] }
     }
-    catch { }   # журнала может не быть вовсе — это не повод рушить прогон
+    catch { }   # the log may not exist at all — that is no reason to bring the run down
     return ''
 }
 
-# Переключение с повтором, и повтор здесь не перестраховка.
+# A switch with a retry, and the retry here is not belt and braces.
 #
-# Сторож частоты в живом трее (Restore-BestModes) берёт ТОТ ЖЕ именованный
-# мьютекс Local\ScreenDeckSwitch и держит его, пока собирает состояние — по его
-# собственному комментарию, около секунды. Событие DisplaySettingsChanged он
-# получает от НАШЕГО переключения, так что окно занятости открывается сразу
-# после каждого успешного шага. Прогон, который бьёт режимами без паузы,
-# попадает в это окно гарантированно: первый шаг проходит, все остальные
-# получают skip. Проверено 2026-08-26 — именно так и вышло.
+# The refresh-rate watchdog in a live tray (Restore-BestModes) takes THE SAME named mutex
+# Local\ScreenDeckSwitch and holds it while it gathers state — by its own comment, about a second. It
+# gets the DisplaySettingsChanged event from OUR switch, so the busy window opens right after every
+# successful step. A run that fires modes off with no pause lands in that window every time: the first
+# step goes through and all the rest get a skip. Verified 2026-08-26 — that is exactly what happened.
 #
-# Гасить трей ради прогона неправильно: трей запущен — это НОРМАЛЬНОЕ состояние
-# машины, и проверять надо его. Человек, нажимающий хоткеи, попадает в ту же
-# секунду и просто нажимает снова.
+# Shutting the tray down for the run's sake is wrong: the tray being running is the machine's NORMAL
+# state, and that is what has to be tested. A person pressing shortcuts lands in the same second and
+# simply presses again.
 function Invoke-LiveSwitch {
     param([Parameter(Mandatory)][string]$Key, [int]$Attempts = 5, [int]$WaitMs = 1500)
 
@@ -112,18 +108,18 @@ function Invoke-LiveSwitch {
 function Invoke-Cli {
     param([string[]]$CliArgs)
 
-    # 'Continue' здесь обязателен, и это не перестраховка. Дочерний powershell.exe
-    # пишет отказ в stderr, а `2>&1` превращает его в запись об ошибке; при
-    # $ErrorActionPreference = 'Stop' такая запись от НЕ-PowerShell команды
-    # терминирующая, и прогон падал ровно на том случае, который проверяет код
-    # возврата 1. Присваивание локальное: за пределами функции преференс тот же.
+    # 'Continue' is mandatory here, and it is not belt and braces. The child powershell.exe writes its
+    # refusal to stderr, and `2>&1` turns that into an error record; with $ErrorActionPreference = 'Stop'
+    # such a record from a NON-PowerShell command is terminating, and the run used to die on exactly the
+    # case that checks for exit code 1. The assignment is local: outside the function the preference is
+    # the same.
     $ErrorActionPreference = 'Continue'
 
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'Set-Display.ps1') @CliArgs 2>&1
     return [pscustomobject]@{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
 }
 
-# --- смоук командной строки: ничего не меняет -------------------------------
+# --- the command-line smoke test: it changes nothing -------------------------
 
 Write-Host ''
 Write-Host 'ScreenDeck - live' -ForegroundColor Cyan
@@ -141,8 +137,8 @@ Write-LiveCheck ($r.Text -match 'Modes:') 'modes prints the list' $r.Text
 $r = Invoke-Cli @('brightness')
 Write-LiveCheck ($r.Code -eq 0) 'brightness exits 0 even when nothing answers over DDC' "exit $($r.Code)"
 
-# Неизвестное имя — ошибка с кодом 1, а не молчаливый успех: .cmd-обёртки судят
-# именно по коду.
+# An unknown name is an error with code 1 rather than a silent success: the .cmd wrappers judge by the
+# code specifically.
 $r = Invoke-Cli @('no-such-display-anywhere')
 Write-LiveCheck ($r.Code -eq 1) 'an unknown name exits 1' "exit $($r.Code)"
 
@@ -159,7 +155,7 @@ if ($ReadOnly) {
     exit $(if ($script:Bad -eq 0) { 0 } else { 1 })
 }
 
-# --- полный прогон по режимам ------------------------------------------------
+# --- the full run over the modes ---------------------------------------------
 
 $settings = Get-DisplaySettings
 $state = @(Get-DisplayState)
@@ -192,14 +188,14 @@ foreach ($mode in $available) {
     $thisMode = @($nowModes | Where-Object { $_.Key -eq $mode.Key })[0]
     if (-not $thisMode) { $thisMode = $mode }
 
-    # Состав. Сравниваем с тем, что режим просит от ТЕКУЩЕГО стола: монитор мог
-    # отвалиться посреди прогона, и тогда честный ответ — новый состав, а не старый.
+    # The membership. We compare against what the mode asks of the CURRENT desk: a monitor could have
+    # dropped off mid-run, and then the honest answer is the new membership rather than the old one.
     $want = @(Get-ModeMembers -Mode $thisMode -State $now | ForEach-Object { $_.Id } | Sort-Object)
     $on = @($now | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
     Write-LiveCheck (-not (Compare-Object $want $on)) 'the set on the desk is the set the mode names' `
         ("wanted [{0}], got [{1}]" -f ($want -join ', '), ($on -join ', '))
 
-    # Основной монитор — та же лестница выбора, что у переключения.
+    # The primary monitor — the same ladder of choice as in a switch.
     $primary = Select-PrimaryDisplay -Wanted @($now | Where-Object { $_.Active }) -PrimaryMatch '' `
                                      -ModePrimary ([string]$thisMode.Primary) `
                                      -SettingsPrimary ([string]$settings.primary) `
@@ -208,8 +204,8 @@ foreach ($mode in $available) {
     Write-LiveCheck ($isPrimary -contains $primary.Id) 'the taskbar is on the display the settings ask for' `
         ("wanted [{0}], got [{1}]" -f $primary.Label, ($isPrimary -join ', '))
 
-    # Раскладка: X-координаты обязаны совпасть с той же математикой, по которой
-    # их выставляли. Расхождение здесь — это разъехавшиеся мониторы.
+    # The layout: the X coordinates have to match the same arithmetic they were set by. A discrepancy
+    # here means the monitors have drifted apart.
     if (@($settings.layout).Count -gt 0) {
         $screens = @($now | Where-Object { $_.Active } | ForEach-Object {
             [pscustomobject]@{ DevicePath = $_.Id; Label = $_.Label; Width = $_.Width; Height = $_.Height }
@@ -226,8 +222,8 @@ foreach ($mode in $available) {
         Write-LiveCheck ($off.Count -eq 0) 'the displays stand where the layout says' ($off -join '; ')
     }
 
-    # Частоты: без -KeepMode переключение обязано поднять каждый монитор в его
-    # максимум. Именно это Windows сбрасывает сама чаще всего.
+    # The refresh rates: without -KeepMode a switch has to bring every monitor up to its maximum. That
+    # is precisely what Windows drops by itself most often.
     $lower = @($now | Where-Object { $_.Active -and $_.BestMode } | Where-Object {
         $_.Width -ne $_.BestMode.Width -or $_.Height -ne $_.BestMode.Height -or $_.Hz -ne $_.BestMode.Hz
     } | ForEach-Object { "$($_.Label) $($_.Width)x$($_.Height)@$($_.Hz) (best $($_.BestMode.Width)x$($_.BestMode.Height)@$($_.BestMode.Hz))" })
@@ -237,7 +233,7 @@ foreach ($mode in $available) {
     if ($took) { Write-Host ("       took {0} s (compare with the weeks before it in last-run.log)" -f $took) -ForegroundColor DarkGray }
 }
 
-# --- вернуть как было --------------------------------------------------------
+# --- put it back as it was ---------------------------------------------------
 
 Write-Host ''
 Write-Host 'putting the desk back' -ForegroundColor White

@@ -1,14 +1,13 @@
 ﻿<#
-    tests\framework.ps1 — Test-Case и утверждения.
+    tests\framework.ps1 — Test-Case and the assertions.
 
-    Без Pester: в PowerShell 5.1 предустановлен древний 3.4, а ставить новый —
-    против обещания «в систему ничего не установлено, папку можно просто
-    удалить». Нужны Assert и ненулевой код возврата, всё остальное — лишняя
-    зависимость.
+    Without Pester: PowerShell 5.1 comes with an ancient 3.4 preinstalled, and installing a newer one
+    goes against the promise that "nothing is installed on your system, the folder can just be
+    deleted". What is needed is Assert and a non-zero exit code; everything else is a dependency we
+    do not want.
 
-    Дот-сорсится из run-tests.ps1, поэтому $script:Total, $script:Failed и
-    $Only разрешаются в области ТОГО файла: счётчики и фильтр там, где точка
-    входа их и печатает.
+    Dot-sourced from run-tests.ps1, which is why $script:Total, $script:Failed and $Only resolve in
+    THAT file's scope: the counters and the filter belong where the entry point prints them.
 #>
 
 
@@ -41,8 +40,8 @@ function Test-Case {
 function Assert-Equal {
     param($Expected, $Actual, [string]$What = '')
     $script:Total++
-    # Массивы сравниваем по содержимому: -eq на них в PowerShell делает не то,
-    # что читается (фильтрует, а не сравнивает).
+    # Arrays are compared by content: -eq on them in PowerShell does not do what it reads like (it
+    # filters rather than compares).
     $same = $false
     if ($Expected -is [array] -or $Actual -is [array]) {
         $e = @($Expected); $a = @($Actual)

@@ -1,27 +1,26 @@
-﻿# --- оркестратор переключения -----------------------------------------------
-# Switch-DisplayMode — самая сложная и самая ломкая часть проекта, и до сих пор
-# единственным способом её проверить было переключить настоящие мониторы.
+﻿# --- the switch orchestrator ------------------------------------------------
+# Switch-DisplayMode is the most complicated and the most fragile part of the project, and until now
+# the only way to test it was to switch real monitors.
 #
-# Проверяется она ПОДМЕНОЙ ФУНКЦИЙ, а не швом в коде. К железу и к диску
-# Switch-DisplayMode ходит только через именованные функции, а PowerShell ищет
-# функции по цепочке областей ВЫЗОВА. Значит объявление `function Set-CcdFullConfig`
-# внутри блока Test-Case перекрывает настоящую для всего, что этот блок позовёт, и
-# умирает вместе с блоком: восстанавливать нечего, изоляция между случаями
-# бесплатная, а на пути, где мерялись миллисекунды, не появилось ни одного лишнего
-# вызова. Производственный код для этих тестов не менялся вообще.
+# It is tested by SHADOWING FUNCTIONS rather than by a seam in the code. Switch-DisplayMode reaches
+# hardware and disk only through named functions, and PowerShell looks functions up along the chain of
+# CALL scopes. So a `function Set-CcdFullConfig` declaration inside a Test-Case block overrides the real
+# one for everything that block calls, and dies with the block: there is nothing to restore, the
+# isolation between cases is free, and not one extra call appeared on the path where milliseconds were
+# measured. The production code was not changed for these tests at all.
 #
-# Подделки пишут вызовы в $script:SwCalls — тест проверяет ЧТО и в КАКОМ порядке
-# позвали, а не только чем всё кончилось.
+# The fakes write their calls into $script:SwCalls — a test checks WHAT was called and in WHAT order,
+# not only how it all ended.
 #
-# Ретрай самой раскладки живёт этажом ниже, в Invoke-CcdLayoutAttempt, и проверен
-# в 13-layout-retry: здесь Set-CcdLayout отвечает сразу и целиком.
+# The layout's own retry lives a floor below, in Invoke-CcdLayoutAttempt, and is tested in
+# 13-layout-retry: here Set-CcdLayout answers at once and in full.
 
 Write-Host ''
 Write-Host 'the switch orchestrator' -ForegroundColor White
 
-# Стол для оркестратора. BestMode заполнен нарочно: без него Get-SwitchTargets
-# отдаёт пустой набор, переход одним вызовом даже не пробуется, и половина
-# случаев проверяла бы не то, что написано в их названии.
+# The desk for the orchestrator. BestMode is filled in on purpose: without it Get-SwitchTargets hands
+# back an empty set, the one-call transition is not even attempted, and half the cases would be testing
+# something other than what their names say.
 function New-SwitchDesk {
     param([bool]$ThirdActive = $true, [bool]$ThirdDisconnected = $false)
 
@@ -40,15 +39,15 @@ function New-SwitchDesk {
 function New-SwitchSettings {
     param([hashtable]$Combos = @{})
     $s = New-TestSettings -Combos $Combos
-    # Порядок на столе задан: без него Set-CcdLayout не зовётся вообще, и
-    # проверять «раскладка всё равно проверяется» было бы нечем.
+    # The order on the desk is set: without it Set-CcdLayout is not called at all, and there would be
+    # nothing to test "the layout is checked anyway" with.
     $s.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE', 'XG27AQDMGR')
     return $s
 }
 
-# Все подделки одним куском. Дот-сорс скриптблока исполняет его в области ТОГО,
-# кто позвал, — то есть внутри блока Test-Case, а не в области скрипта. Так
-# функции живут ровно один случай и не протекают в следующий.
+# Every fake in one piece. Dot-sourcing a script block executes it in the scope of WHOEVER called it —
+# that is, inside the Test-Case block rather than in the script's scope. That way the functions live for
+# exactly one case and do not leak into the next.
 $script:SwFakes = {
     $script:SwCalls = @()
     $script:SwFullOk = $true
@@ -62,9 +61,8 @@ $script:SwFakes = {
     function Get-DisplaySettings { return $script:SwSettings }
     function Get-DisplayState { return @($script:SwDesk) }
 
-    # Кэш проверенных режимов подменён нарочно: файл во временной папке остаётся
-    # после других групп случаев, и без этого набор целей зависел бы от порядка
-    # прогона.
+    # The cache of verified modes is shadowed on purpose: the file in the temporary folder is left behind
+    # by other groups of cases, and without this the set of targets would depend on the order of the run.
     function Get-ModeCache { return @{} }
 
     function Invoke-ModeHook {
@@ -98,18 +96,22 @@ $script:SwFakes = {
     function Set-CcdLayout {
         param([string]$PrimaryPath, $Order)
         $script:SwCalls += 'layout'
+        # Who was sent to (0, 0) is remembered separately: "the call happened" and "the taskbar went to
+        # the display the settings name" are two different claims, and only the second one is the promise.
+        $script:SwLayoutPrimary = $PrimaryPath
+        $script:SwLayoutOrder = @($Order)
         return [pscustomobject]@{ Ok = $script:SwLayoutOk; Changed = $script:SwLayoutChanged }
     }
 
-    # Set-WantedModes работает по-настоящему: подменены только его концы у железа.
+    # Set-WantedModes works for real: only its ends at the hardware are shadowed.
     function Get-CcdTargets {
         return @(@($script:SwDesk) | Where-Object { $_.Active } | ForEach-Object {
             [pscustomobject]@{ DevicePath = $_.Id; Output = $_.Output; Active = $true }
         })
     }
-    # Спящий монитор в Get-CcdTargets ещё не виден: имя выхода за ним идут
-    # спрашивать отдельно, и здесь он как раз просыпается. Так проверяется и та
-    # ветка Set-WantedModes, которая ждёт опоздавших.
+    # A sleeping monitor is not yet visible in Get-CcdTargets: its output name is asked for separately,
+    # and here it is waking up at just that moment. That way the branch of Set-WantedModes that waits for
+    # latecomers gets tested too.
     function Get-CcdOutput {
         param([string]$DevicePath)
         $m = @($script:SwDesk) | Where-Object { $_.Id -eq $DevicePath } | Select-Object -First 1
@@ -149,16 +151,15 @@ Test-Case 'switch: the set is already right, so the topology is not rebuilt' {
     Assert-True (-not ($script:SwCalls -match '^topology')) 'and no topology rebuild either'
     Assert-True (-not ($script:SwCalls -contains 'settle')) 'nothing to wait for'
     Assert-True (-not ($script:SwCalls -contains 'windows:save')) 'windows did not move, so they were not snapshotted'
-    # Раскладка и режимы всё равно проверяются: набор может совпадать, а стол быть
-    # развален — например после DisplaySwitch /extend.
+    # The layout and the modes are checked anyway: the set can match while the desk is in pieces — after
+    # DisplaySwitch /extend, for instance.
     Assert-True ($script:SwCalls -contains 'layout') 'the layout is still checked'
     Assert-Equal 'hook:before,layout,lastMode,applied,hook:after' ($script:SwCalls -join ',') 'and that is the whole of it'
 }
 
 Test-Case 'switch: an automatic switch does not overwrite the mode the human chose' {
-    # 2026-08-28: reapply по появлению монитора записал combo:Work поверх
-    # выбранного solo:XG27AQDMGR, и дальше уже и onUnplug, и восстановление при
-    # старте вели мимо монитора, за которым человек сидел.
+    # 2026-08-28: a reapply on a monitor appearing wrote combo:Work over the chosen solo:XG27AQDMGR, and
+    # from then on both onUnplug and the startup restore led past the monitor the person was sitting at.
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
@@ -310,7 +311,7 @@ Test-Case 'switch: a layout that would not lie down is not reported as success' 
 
     Assert-True (-not $r.Ok) 'a silent success on scrambled displays is the worst possible message'
     Assert-True ($r.Message -like '*positions not arranged*') 'the text says what to do about it'
-    # Выбор человека запоминается даже так: он просил именно этот режим.
+    # A person's choice is remembered even so: they asked for this mode specifically.
     Assert-True ($script:SwCalls -contains 'lastMode') 'and the choice is still remembered'
     Assert-Equal 'all' $script:SwSavedMode 'as the mode he asked for'
 }
@@ -349,10 +350,10 @@ Test-Case 'switch: -KeepMode leaves resolution and refresh rate alone' {
 
     Assert-True $r.Ok 'the switch still lands'
     Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'best:*' }).Count 'nobody was pushed to its best mode'
-    # А ещё: у спящего монитора «оставить как есть» нечего — текущего режима у
-    # него нет. Набор целиком уходит на старую дорогу, и это не поломка, а
-    # единственный честный ответ: смешивать заданные размеры с незаданными в
-    # одном запросе значит гадать, что система сделает с остатком.
+    # And another thing: for a sleeping monitor there is no "leave it as it is" — it has no current mode.
+    # The set goes to the old road whole, and that is not a breakage but the only honest answer: mixing
+    # specified sizes with unspecified ones in one request means guessing what the system will do with the
+    # remainder.
     Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the one-call road needs modes, so it is not even tried'
     Assert-Equal 1 @($script:SwCalls | Where-Object { $_ -like 'topology:*' }).Count 'the set alone is asked for instead'
 }
@@ -364,7 +365,7 @@ Test-Case 'switch: modes are only pushed when the desk actually moved' {
 
     [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
 
-    # Стол перестраивался, значит «уже в максимуме» не годится и режимы доводятся.
+    # The desk was rebuilt, so "already at its maximum" is no good and the modes get brought up.
     Assert-Equal 3 @($script:SwCalls | Where-Object { $_ -like 'best:*' }).Count 'all three displays got their mode'
     Assert-True ($script:SwCalls -contains 'applied') 'and what they showed was written down'
 }
@@ -380,8 +381,8 @@ Test-Case 'switch: sound and brightness follow the mode, and only when asked for
 
     Assert-True ($script:SwCalls -contains 'audio:ULTRAFINE') 'the playback device was switched'
     Assert-True ($script:SwCalls -match '^levels:') 'and the levels went out over DDC'
-    # Порядок осмысленный: и то и другое после того, как режим состоялся, а
-    # команда «после» — в самом конце, чтобы застать готовое состояние.
+    # The order is deliberate: both of them after the mode has happened, and the "after" command at the
+    # very end, so it catches a finished state.
     Assert-True ($script:SwCalls.IndexOf('hook:after') -gt $script:SwCalls.IndexOf('audio:ULTRAFINE')) 'after the sound'
 }
 
@@ -401,19 +402,18 @@ Test-Case 'switch: a switch already in progress is skipped, not queued behind it
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
 
-    # Мьютекс принадлежит ПОТОКУ, а не объекту: повторный WaitOne из своего же
-    # потока проходит насквозь, и держать его из самого теста бесполезно —
-    # проверялось бы ничто. Поэтому держит отдельный поток, а синхронизация на
-    # именованных событиях, с ограниченным ожиданием: тест не имеет права
-    # подвиснуть, чем бы ни кончился захват.
+    # A mutex belongs to a THREAD rather than to an object: a repeat WaitOne from one's own thread goes
+    # straight through, and holding it from the test itself is useless — it would be testing nothing. So a
+    # separate thread holds it, and the synchronisation is on named events with a bounded wait: the test
+    # has no right to hang, whatever the outcome of the grab.
     $held = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestHeld')
     $go = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestGo')
     $holder = [powershell]::Create()
     [void]$holder.AddScript({
         $m = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
         $got = $m.WaitOne(0)
-        # Сигналим только на удачном захвате: если мьютекс занял живой трей,
-        # ожидание в тесте истечёт, и провал будет читаемым, а не загадочным.
+        # We only signal on a successful grab: if a live tray has taken the mutex, the wait in the test
+        # will expire, and the failure will be readable rather than mysterious.
         if ($got) {
             $flag = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestHeld')
             [void]$flag.Set()
@@ -441,4 +441,38 @@ Test-Case 'switch: a switch already in progress is skipped, not queued behind it
         $held.Dispose()
         $go.Dispose()
     }
+}
+
+Test-Case 'switch: the taskbar is placed even when the settings say nothing about the order' {
+    # "Primary" in Windows is not a flag but the place (0, 0), and Set-CcdLayout is the only thing in the
+    # whole application that moves anybody there. Behind the `if ($order.Count -gt 0)` that used to guard
+    # this call, a desk with no `layout` in the settings - which is every desk until its owner opens the
+    # Settings window once - never had its taskbar moved at all: the `primary` setting, a combo's own
+    # primary and -PrimaryMatch from the command line were all silently doing nothing, while README and
+    # the diary both said the old road "moves only the primary monitor and leaves the rest standing".
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.layout = @()
+    $script:SwSettings.primary = 'ULTRAFINE'
+    $script:SwLayoutPrimary = ''
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet
+
+    Assert-True $r.Ok 'the switch is a success'
+    Assert-True ($script:SwCalls -contains 'layout') 'the desk was still asked to place the taskbar'
+    Assert-Equal 'path-uf' $script:SwLayoutPrimary 'and on the display the settings name'
+    Assert-Equal 0 $script:SwLayoutOrder.Count 'with no order to arrange by - only the primary moves'
+}
+
+Test-Case 'switch: with an order, the layout gets it whole' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.primary = 'ULTRAFINE'
+
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
+
+    Assert-Equal 'path-uf' $script:SwLayoutPrimary 'the taskbar display'
+    Assert-Equal 3 $script:SwLayoutOrder.Count 'and all three names, in the order from the settings'
 }

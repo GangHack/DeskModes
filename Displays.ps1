@@ -33,16 +33,15 @@
 .LINK
     README.md
 #>
-# Интерфейс и журнал английские, комментарии русские — см. docs/notes.ru.md.
 [CmdletBinding()]
 param([switch]$NoHotkeys)
 
 $ErrorActionPreference = 'Stop'
 
-# Заводим до всего остального: в это время попадает и компиляция (или загрузка из
-# кэша) нативных типов, и сборка формы, и первый опрос состояния. Итог уходит в
-# журнал строкой «tray: started in N ms» — постоянный контроль того, как быстро
-# клавиши становятся рабочими после входа в Windows.
+# Started before everything else: what falls inside it is the compilation (or the load
+# from cache) of the native types, the building of the form, and the first state query.
+# The total goes to the log as "tray: started in N ms" — a permanent watch on how fast
+# the shortcuts become usable after logging in to Windows.
 $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
@@ -50,19 +49,19 @@ $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
-# Метка зоны. Всё скачанное Windows помечает потоком Zone.Identifier. Запуск это
-# само по себе не ломает — .cmd зовёт powershell с -ExecutionPolicy Bypass, а
-# Bypass на зону не смотрит, — но метка остаётся на файлах и мешает дальше:
-# диспетчер вложений спрашивает про Displays.cmd при каждом запуске, а тот, кто
-# позовёт .\Set-Display.ps1 из своей консоли, упрётся в «not digitally signed» уже
-# по своей политике. Проверка стоит обращение к потоку и в обычной жизни ложна;
-# когда истинна — снимаем метку со всех своих скриптов разом.
+# The zone mark. Windows marks everything downloaded with a Zone.Identifier stream.
+# That does not break startup by itself — the .cmd calls powershell with
+# -ExecutionPolicy Bypass, and Bypass does not look at the zone — but the mark stays on
+# the files and gets in the way later: the attachment manager asks about Displays.cmd on
+# every run, and whoever calls .\Set-Display.ps1 from their own console runs into "not
+# digitally signed" under their own policy. The check costs one stream lookup and in
+# ordinary life is false; when it is true, the mark comes off all our scripts at once.
 #
-# Признак — не один файл, а любой из своих: кому Windows пожаловалась именно на
-# Displays.ps1, тот снимает метку с него одного (Свойства → Разблокировать), и
-# папка так и осталась бы помеченной — а признака уже нет. И Unblock-File с
-# -ErrorAction Continue: под $ErrorActionPreference = 'Stop' один упрямый файл
-# оборвал бы конвейер, а второго раза не будет.
+# The tell is not one file but any of ours: whoever Windows complained about specifically
+# for Displays.ps1 takes the mark off that one file (Properties -> Unblock), and the
+# folder would have stayed marked — while the tell is already gone. And Unblock-File with
+# -ErrorAction Continue: under $ErrorActionPreference = 'Stop' one stubborn file would cut
+# the pipeline short, and there will be no second time.
 try {
     $marked = $false
     foreach ($name in 'Displays.ps1', 'Displays.cmd', 'DisplayCore.ps1', 'Set-Display.ps1', 'SettingsDialog.ps1') {
@@ -72,16 +71,16 @@ try {
         }
     }
     if ($marked) {
-        # Только свои .ps1 и .cmd. Unblock-File снимает метку с ЛЮБОГО типа файла,
-        # и на .exe, .docx или .xlsm она — это SmartScreen, диспетчер вложений и
-        # Protected View: сняв её со всей папки, инструмент молча разоружил бы
-        # чужое скачанное, окажись оно рядом (папку кладут и в общую Tools\, и
-        # распаковывают обновление поверх). Мешает же метка ровно двум видам:
-        # .ps1 упирается в политику подписи, .cmd — в диспетчер вложений; app.ico
-        # и README в разблокировке не нуждались никогда.
+        # Only our own .ps1 and .cmd. Unblock-File takes the mark off ANY kind of file,
+        # and on an .exe, a .docx or an .xlsm that mark is SmartScreen, the attachment
+        # manager and Protected View: by clearing it across the whole folder the tool
+        # would silently disarm somebody else's download that happened to sit there (the
+        # folder gets put into a shared Tools\, and an update gets unpacked over it). The
+        # mark gets in the way of exactly two kinds: .ps1 runs into the signing policy,
+        # .cmd into the attachment manager; app.ico and README never needed unblocking.
         #
-        # Where-Object, а не -Include: с -LiteralPath тот молча игнорируется и
-        # разблокирует всё подряд — проверено, ошибка беззвучная.
+        # Where-Object, not -Include: with -LiteralPath that one is silently ignored and
+        # everything gets unblocked — measured, and the mistake makes no sound.
         Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File |
             Where-Object { $_.Extension -eq '.ps1' -or $_.Extension -eq '.cmd' } |
             Unblock-File -ErrorAction Continue
@@ -96,8 +95,8 @@ Add-Type -AssemblyName System.Drawing
 
 $script:AppName = 'ScreenDeck'
 
-# Один экземпляр: иначе горячие клавиши займёт только первый, а второй провисит
-# бесполезным значком.
+# One instance: otherwise only the first would claim the shortcuts, and the second would
+# hang there as a useless icon.
 $script:AppMutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckTray')
 if (-not $script:AppMutex.WaitOne(0)) {
     [System.Windows.Forms.MessageBox]::Show(
@@ -108,11 +107,11 @@ if (-not $script:AppMutex.WaitOne(0)) {
 
 $script:Settings = Get-DisplaySettings
 
-# Доступ к настройкам только через эти функции. Обработчики событий создаются
-# через .GetNewClosure() внутри других блоков, и обращение вида $script:Settings
-# внутри них разрешается не в переменную скрипта, а в пустоту — окно настроек
-# из-за этого получало $null и падало. Функция же всегда исполняется в области
-# скрипта, независимо от того, откуда её вызвали.
+# Settings are reached only through these functions. Event handlers are created with
+# .GetNewClosure() inside other blocks, and a $script:Settings reference inside them
+# resolves not to the script's variable but to nothing — which is how the Settings window
+# got $null and died. A function, on the other hand, always runs in script scope, no
+# matter who called it.
 function Get-ActiveSettings {
     if (-not $script:Settings) { $script:Settings = Get-DisplaySettings }
     return $script:Settings
@@ -123,31 +122,48 @@ function Set-ActiveSettings {
     $script:Settings = $NewSettings
 }
 
-# --- кэш состояния ----------------------------------------------------------
-# Меню обязано открываться мгновенно. Медленный опрос прямо в обработчике Opening
-# ломает штатный правый клик по значку: Windows решает, что меню не показалось, и
-# закрывает его. Опрос через CCD стоит десятки миллисекунд, но кэш всё равно нужен
-# — меню открывается без единого запроса к системе, а обновляется он по событию о
-# смене конфигурации.
+# --- the state cache --------------------------------------------------------
+# The menu has to open instantly. A slow query right inside the Opening handler breaks
+# an ordinary right-click on the icon: Windows decides the menu never showed and closes
+# it. A query through CCD costs tens of milliseconds, but the cache is needed anyway —
+# the menu opens without a single request to the system, and it is refreshed on the
+# configuration-changed event.
 
 $script:StateCache = $null
+
+# Device path -> name, everything seen during this run. Needed to name a monitor that is
+# ALREADY GONE from the state: one the driver removed from the bus vanishes from the
+# enumeration entirely, and asking for its name at the moment it goes is too late.
+#
+# Declared here, beside the cache it is an index over, because it is filled from the same
+# walk — and so that the very first refresh at startup already fills it. Filling it from
+# the desk snapshot instead left it empty until the run's first configuration change, which
+# is precisely the event that needs it: a monitor dropping off the bus overnight was logged
+# as the nameless "a display".
+$script:KnownLabels = @{}
 
 function Update-StateCache {
     try {
         $script:StateCache = @(Get-DisplayState)
-        # Кто ПОДКЛЮЧЁН (а не включён): по изменению этого набора видно, что
-        # монитор воткнули или выдернули, и только на это стоит реагировать —
-        # включённые меняем мы сами на каждом переключении (см. Get-ReapplyDecision).
+        # Who is CONNECTED (not who is on): a change in this set is what shows a monitor
+        # was plugged in or pulled out, and that is the only thing worth reacting to —
+        # the ones that are on we change ourselves on every switch (see Get-ReapplyDecision).
         $script:PresentIds = @($script:StateCache | Where-Object { -not $_.Disconnected } |
                                ForEach-Object { [string]$_.Id } | Sort-Object)
+
+        # The names are remembered ALWAYS, on every refresh: the next disappearance will name
+        # the monitor from right here, and by then it is out of the enumeration.
+        foreach ($m in $script:StateCache) {
+            if ($m.Id) { $script:KnownLabels[[string]$m.Id] = [string]$m.Label }
+        }
     }
     catch {
         Write-DisplayLog "cache: could not refresh display state - $($_.Exception.Message)"
     }
 }
 
-# Имя выхода -> название монитора, для дневника: он получает от системы
-# «\\.\DISPLAY1», а человеку нужно «LG ULTRAGEAR».
+# Output name -> monitor name, for the diary: it gets "\\.\DISPLAY1" from the system,
+# and a person needs "LG ULTRAGEAR".
 function Get-DisplayNameMap {
     $map = @{}
     foreach ($m in @(Get-CachedState)) {
@@ -156,8 +172,8 @@ function Get-DisplayNameMap {
     return $map
 }
 
-# Ключ режима, в котором стол находится сейчас, или пустая строка. Нужен и
-# правилам, и дневнику; состояние берётся из кэша, диск не читается.
+# The key of the mode the desk is in right now, or an empty string. Both the rules and
+# the diary need it; the state comes from the cache, the disk is not read.
 function Get-CurrentModeKey {
     $state = Get-CachedState
     if (-not $state) { return '' }
@@ -170,9 +186,9 @@ function Get-CachedState {
     return $script:StateCache
 }
 
-# Возврат частоты после того, как её сбросила система. Отдельной функцией, а не
-# кодом внутри обработчика: обработчик — блок, а $script: внутри блоков,
-# созданных через .GetNewClosure(), не разрешается (см. Get-ActiveSettings).
+# Putting the refresh rate back after the system dropped it. A function of its own rather
+# than code inside the handler: a handler is a block, and $script: inside blocks created
+# with .GetNewClosure() does not resolve (see Get-ActiveSettings).
 function Invoke-ModeWatch {
     if (-not (Get-ActiveSettings).maximizeRefresh) { return }
     try {
@@ -187,21 +203,21 @@ function Invoke-ModeWatch {
     }
 }
 
-# --- правила ----------------------------------------------------------------
-# «Случилось это — стань таким»: вся логика в Get-RuleDecision (DisplayCore.ps1),
-# чистой функцией и под тестами. Здесь только сбор фактов и исполнение решения.
+# --- rules ------------------------------------------------------------------
+# "When this happens, become that": all the logic is in Get-RuleDecision (DisplayCore.ps1),
+# a pure function and under tests. Here there is only fact-gathering and carrying it out.
 #
-# Опрос живёт в уже существующем 15-секундном таймере трея: своего не надо, а
-# Get-Process стоит единицы миллисекунд.
+# The polling lives in the tray's existing 15-second timer: no timer of its own is needed,
+# and Get-Process costs single-digit milliseconds.
 #
-# «Переключались мы» помнится отдельно от текущего режима. Иначе после ручного
-# переключения во время игры выход из неё уносил бы экраны туда, где человек их
-# видеть не просил.
+# "We were the ones who switched" is remembered separately from the current mode.
+# Otherwise, after a switch by hand during a game, leaving the game would drag the screens
+# somewhere the person never asked to see them.
 
 $script:RuleOwnedIndex = -1
 $script:RuleOwnedBack = ''
-# Последняя жалоба «возвращаться будет некуда»: без этого она уходила бы в журнал
-# каждые пятнадцать секунд, пока игра открыта.
+# The last "there will be nowhere to go back to" complaint: without this it would go to
+# the log every fifteen seconds for as long as the game is open.
 $script:RuleLastBlocked = ''
 
 function Reset-RuleOwnership {
@@ -213,8 +229,8 @@ function Invoke-RulesCheck {
     $rules = @((Get-ActiveSettings).rules)
     if ($rules.Count -eq 0) { return }
 
-    # Процессы спрашиваем ОДНИМ вызовом на все правила: Get-Process без имени
-    # стоит столько же, сколько с именем, а правил может быть десяток.
+    # Processes are asked for in ONE call for all the rules: Get-Process without a name
+    # costs the same as with one, and there can be a dozen rules.
     $needProcesses = $false
     foreach ($r in $rules) { if ([string]$r.when -eq 'process') { $needProcesses = $true; break } }
     $processes = @()
@@ -237,12 +253,25 @@ function Invoke-RulesCheck {
             $script:RuleLastBlocked = ''
             Write-DisplayLog ("rule: {0} -> {1}" -f $decision.Reason, $decision.Mode)
             Invoke-Mode $decision.Mode -Auto
+            # A busy mutex is not an answer, it is "ask again in a moment" — and it is an ordinary answer
+            # here: a rule fires on the events the refresh-rate watchdog wakes on, and that one holds
+            # Local\ScreenDeckSwitch for about a second. Owning a desk we never took cost the rule its
+            # whole turn: the next tick saw the mode unchanged and let go with "the displays were changed
+            # by hand", and on a desk that matches no known mode it stayed owned, without ever having
+            # switched, until the condition ended. Letting the claim go instead makes the next tick fire
+            # the rule again. Other refusals keep the claim, as before: those will not come right by
+            # being asked again, and a retry every fifteen seconds is a balloon every fifteen seconds.
+            if ($script:LastSwitchSkipped) { Reset-RuleOwnership }
         }
         'return' {
-            Reset-RuleOwnership
-            if ($decision.Mode) {
+            if (-not $decision.Mode) { Reset-RuleOwnership }
+            else {
                 Write-DisplayLog ("rule: {0} -> back to {1}" -f $decision.Reason, $decision.Mode)
                 Invoke-Mode $decision.Mode -Auto
+                # The same rule at the other end, and it matters more here. Letting go before the switch
+                # had gone through left the desk in the rule's mode for good: the condition has ended, so
+                # nothing comes back this way to try again. We hold the desk until it is really handed back.
+                if (-not $script:LastSwitchSkipped) { Reset-RuleOwnership }
             }
         }
         'release' {
@@ -259,12 +288,13 @@ function Invoke-RulesCheck {
     }
 }
 
-# --- значок -----------------------------------------------------------------
-# Один файл app.ico на всё: трей, ярлыки в Пуске и в автозагрузке. Своя иконка, а
-# не системная: в Пуске она не должна сливаться со значками Windows.
-# Размер берём тот, который система просит для мелких значков (при масштабе
-# 150% это уже не 16 px), и .ico отдаёт подходящую из девяти заготовленных —
-# растянутая из одной выглядела бы мылом. Перерисовать: .\Make-Icon.ps1
+# --- the icon ---------------------------------------------------------------
+# One app.ico file for everything: the tray, the Start-menu shortcut and the startup one.
+# Our own icon rather than a system one: in the Start menu it must not blend into the
+# Windows icons.
+# The size is the one the system asks for small icons (at 150% scale that is no longer
+# 16 px), and the .ico hands back a fitting one out of the nine prepared — stretched from
+# a single size it would look like mush. To redraw: .\Make-Icon.ps1
 
 $script:IconFile = Join-Path $PSScriptRoot 'app.ico'
 
@@ -288,14 +318,14 @@ $tray.Icon = New-TrayIcon
 $tray.Text = $script:AppName
 $tray.Visible = $true
 
-# --- оформление меню --------------------------------------------------------
-# Рисует ModernMenuRenderer (DisplayCore.ps1): плоский фон под системную тему,
-# скруглённая подсветка, галочка в цвет акцента. Штатный System-отрисовщик застрял
-# в Windows 7, и меню с ним выглядит как из XP.
+# --- how the menu looks -----------------------------------------------------
+# Drawn by ModernMenuRenderer (DisplayCore.ps1): a flat background matching the system
+# theme, rounded highlight, a check mark in the accent colour. The stock System renderer
+# is stuck in Windows 7, and a menu drawn with it looks like it came from XP.
 
-# Шрифты меню, с кэшем. Segoe UI Variable появился в Windows 11; на Windows 10
-# его нет, а GDI+ при неизвестном имени молча подставляет Microsoft Sans Serif —
-# поэтому наличие семейства проверяется по списку установленных.
+# The menu fonts, with a cache. Segoe UI Variable arrived in Windows 11; on Windows 10 it
+# is not there, and GDI+ silently substitutes Microsoft Sans Serif for a name it does not
+# know — which is why the family is checked against the list of installed ones.
 $script:UiFonts = @{}
 
 function Get-UiFont {
@@ -318,10 +348,9 @@ function Get-UiFont {
     return $font
 }
 
-# Точки состояния мониторов: зелёная — включён и на максимуме, янтарная — частота
-# ниже максимальной, серая — выключен, контурная — не подключён. Текст говорит то
-# же словами; точка отдаёт это одним взглядом. Рисуются по одной на вид и живут
-# до конца процесса.
+# The monitor status dots: green — on and at its maximum, amber — the rate is below the
+# maximum, grey — off, an outline — not connected. The text says the same in words; the
+# dot gives it in one glance. One is drawn per kind, and they live until the process ends.
 $script:StatusDots = @{}
 
 function Get-StatusDot {
@@ -360,68 +389,98 @@ $menu.ImageScalingSize = New-Object System.Drawing.Size 16, 16
 $menu.Padding = New-Object System.Windows.Forms.Padding 4, 6, 4, 6
 $tray.ContextMenuStrip = $menu
 
-# Скруглить углы окна меню умеет только DWM (и только на Windows 11; на десятке
-# вызов молча не сработает). Хэндл существует лишь у открытого меню — поэтому
-# здесь, а не при создании.
+# Only DWM can round the corners of the menu window (and only on Windows 11; on 10 the
+# call silently does nothing). A handle exists only for an open menu — which is why this
+# is here rather than at creation.
 $menu.add_Opened({
-    try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }   # не Windows 11 — углы останутся прямыми
+    try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }   # not Windows 11 — the corners stay square
 })
 
 function Show-Balloon {
-    # Always — для ответа на явное действие человека. Выключенные уведомления
-    # глушат Info, и «About ScreenDeck» из-за этого молчал: пункт меню нажат, а не
-    # происходит ничего. Нажатие обязано отвечать всегда; фоновые сообщения — нет.
+    # Always — for answering an explicit action by a person. Notifications turned off mute
+    # Info, and "About ScreenDeck" went silent because of it: the menu item is clicked and
+    # nothing happens. A click must always answer; background messages need not.
     param([string]$Title, [string]$Text, [string]$Kind = 'Info', [switch]$Always)
-    if (-not $Always -and -not $script:Settings.notifications -and $Kind -eq 'Info') { return }
+    # Through the function, not $script:Settings: see Get-ActiveSettings. One way of reading the settings
+    # for the whole file — the three places that went straight to the variable worked only because they
+    # happen to be functions, and the next one copied from them might not be.
+    if (-not $Always -and -not (Get-ActiveSettings).notifications -and $Kind -eq 'Info') { return }
     $tray.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::$Kind
     $tray.BalloonTipTitle = $Title
     $tray.BalloonTipText = $Text
     $tray.ShowBalloonTip(4000)
 }
 
-# Было ли в этом запуске трея хоть одно переключение. Нужно возврату режима при
-# старте: человек успевает нажать хоткей раньше, чем срабатывает наш таймер, и его
-# выбор новее нашего.
+# Whether this run of the tray has seen a single switch. The startup mode restore needs it:
+# a person manages to press a shortcut before our timer fires, and their choice is newer
+# than ours.
 $script:SwitchedOnce = $false
+
+# Whether the LAST call to Invoke-Mode actually moved the desk. Invoke-Mode answers every outcome with a
+# balloon and nothing else, so a caller that has to know — the postponed reapply, which must not throw its
+# intent away over a busy mutex — reads it here. A field rather than a return value: five of the six call
+# sites are event handlers that ignore the answer, and a returned boolean would leak into their output.
+$script:LastSwitchWent = $false
+
+# And WHY it did not go, in the one case where that changes what to do next: a busy mutex means "ask
+# again in a moment", while everything else ("that display is not connected", Windows refusing the
+# configuration) means "this will not work" and asking again every fifteen seconds would only be a
+# balloon every fifteen seconds. The rules read this one; see Invoke-RulesCheck.
+$script:LastSwitchSkipped = $false
 
 function Invoke-Mode {
     param([string]$Key, [switch]$Auto, [switch]$Silent)
 
-    $script:SwitchedOnce = $true
+    # Only a person's press counts as "a mode was already chosen by hand". The startup restore reads this
+    # to stand down, and an automatic switch inside its 1500 ms window — a monitor finishing its wake-up,
+    # a rule, a reapply — used to set it, so the restore skipped the boot and the log blamed a person who
+    # had touched nothing. Same distinction as -Automatic below, and it has to be drawn in both places.
+    if (-not $Auto) { $script:SwitchedOnce = $true }
 
-    # Человек переключил сам — значит правило больше не хозяин положения и
-    # возвращать ничего не должно. С людьми не воюем: если во время игры руками
-    # выбрали другой набор экранов, это осознанное решение.
-    if (-not $Auto) { Reset-RuleOwnership }
+    # The person switched by hand — so the rule is no longer master of the situation and
+    # must put nothing back. We do not fight people: if another set of screens was chosen
+    # by hand during a game, that was a deliberate decision.
+    #
+    # A postponed "assemble the desk" is cancelled for the same reason: it was waiting for
+    # the game to end, and in the meantime the person said what they wanted — laying a
+    # half-hour-old decision over their choice would be the same fight.
+    if (-not $Auto) {
+        Reset-RuleOwnership
+        $script:ReapplyPending = $null
+    }
 
     $tray.Text = "$script:AppName - switching..."
-    # Переключение состоялось. Не «нас попросили»: провал уходит исключением, а
-    # занятый мьютекс — Skipped, и считать их за переключение нельзя (см. дневник
-    # ниже). Зажатый хоткей давал очередь пропусков, и каждый попадал в отчёт.
+    # A switch actually happened. Not "we were asked to": a failure leaves as an exception
+    # and a busy mutex as Skipped, and neither counts as a switch (see the diary below). A
+    # held-down shortcut produced a queue of skips, and every one of them reached the report.
     $switched = $false
+    $skipped = $false
+    $script:LastSwitchWent = $false
+    $script:LastSwitchSkipped = $false
     try {
-        $keep = -not $script:Settings.maximizeRefresh
-        # -Automatic ходит вместе с -Auto: выбранный режим переписывает только
-        # человек. Все автоматические пути (правила, startup, reapply) зовут нас
-        # с -Auto, значит перечислять их здесь по одному не нужно.
+        $keep = -not (Get-ActiveSettings).maximizeRefresh
+        # -Automatic travels with -Auto: only a person overwrites the chosen mode. Every
+        # automatic path (rules, startup, reapply) calls us with -Auto, so there is no need
+        # to list them here one by one.
         $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet -Automatic:$Auto
         $switched = -not $result.Skipped
+        $skipped = [bool]$result.Skipped
         if ($result.Skipped) {
             Show-Balloon 'Skipped' $result.Message 'Warning'
         }
         elseif ($result.Message -and $result.Ok) {
-            # -Silent: набор экранов и так был правильный, чинили разве что
-            # раскладку. Всплывашка «Displays switched» на каждом включении
-            # компьютера сообщала бы о работе, которой не было.
+            # -Silent: the set of screens was right anyway, and the layout was all that got
+            # fixed. A "Displays switched" balloon on every power-on would be announcing
+            # work that never happened.
             if (-not $Silent) { Show-Balloon 'Displays switched' $result.Message }
         }
         elseif ($result.Message) {
-            # Частичный провал — тоже провал: монитор, который не поднялся, из
-            # зелёной сводки выпадал бы молча.
+            # A partial failure is a failure too: a monitor that never came up would drop
+            # out of the green summary silently.
             Show-Balloon 'Switched with problems' $result.Message 'Warning'
         }
         else {
-            # Пустая сводка означает, что нужный монитор так и не прицепился.
+            # An empty summary means the monitor we wanted never attached at all.
             Show-Balloon 'Nothing came up' "None of that mode's displays responded. Check the cable and Deep Sleep Mode in the monitor's menu." 'Warning'
         }
     }
@@ -429,35 +488,36 @@ function Invoke-Mode {
         Show-Balloon 'Failed' $_.Exception.Message 'Error'
     }
     finally {
+        $script:LastSwitchWent = $switched
+        $script:LastSwitchSkipped = $skipped
         Update-TrayText
         Update-StateCache
-        # Дневник считает переключения — по ним видно, сколько раз в день человек
-        # вообще трогает стол. Отдельным событием, потому что всё остальное в
-        # дневнике — это суммы секунд. Только состоявшиеся: отчёт, в котором
-        # переключений больше, чем их было, не отчёт.
+        # The diary counts switches — they show how many times a day a person touches the
+        # desk at all. As a separate event, because everything else in the diary is a sum of
+        # seconds. Only the ones that happened: a report with more switches in it than there
+        # were is not a report.
         if ($switched -and (Get-ActiveSettings).stats) {
-            try { Add-ActivitySwitch -Mode $Key } catch { }   # дневник не смеет мешать переключению
+            try { Add-ActivitySwitch -Mode $Key } catch { }   # the diary must not get in a switch's way
         }
     }
 }
 
-# --- возврат режима после включения компьютера ------------------------------
-# Windows после включения поднимает свой набор экранов, а не тот, который был
-# выбран перед выключением. Режим помнит Save-LastMode (DisplayCore.ps1), здесь мы
-# его возвращаем.
+# --- restoring the mode after the computer is turned on ---------------------
+# After power-on Windows brings up its own set of screens, not the one that was chosen
+# before shutdown. Save-LastMode (DisplayCore.ps1) remembers the mode; here we put it back.
 #
-# Почему не сравниваем текущий набор с запомненным и не выходим, если он совпал:
-# Switch-DisplayMode сам пропускает то, что уже сделано — топология, раскладка и
-# режимы проверяются по отдельности, поэтому вызов на уже правильном столе стоит
-# 0.2-0.3 с и ничем не моргает. Зато лечится случай, когда экраны те же, а
-# раскладка или основной монитор после загрузки разъехались: панель задач
-# приезжала на другой монитор при том же наборе.
+# Why we do not compare the current set with the remembered one and bail out when they
+# match: Switch-DisplayMode already skips whatever is done — topology, layout and modes are
+# each checked separately, so a call on an already-correct desk costs 0.2-0.3 s and blinks
+# nothing. What it does cure is the case where the screens are the same but the layout or
+# the primary monitor drifted after boot: the taskbar used to arrive on a different monitor
+# with the very same set.
 #
-# Отдельной функцией, а не кодом в обработчике таймера: см. Get-ActiveSettings.
+# A function of its own rather than code in the timer handler: see Get-ActiveSettings.
 
-# Режим по ключу, если он сейчас достижим. $null означает, что ни одного его
-# монитора на столе нет: гасить ради него остальные нельзя — останется чёрный
-# экран, а это ровно та цена ошибки, из-за которой здесь проверка.
+# The mode for a key, if it is reachable right now. $null means not one of its monitors is
+# on the desk: the rest must not be put out for its sake — that would leave a black screen,
+# and that is exactly the price of being wrong that this check exists for.
 function Get-AvailableMode {
     param([string]$Key, $State)
 
@@ -478,10 +538,10 @@ function Invoke-StartupRestore {
     $last = Get-LastMode
     if (-not $last) { return }
 
-    # Тот же сеанс работы машины — значит трей просто перезапустили. Экраны в этом
-    # случае не трогаем: набор мог сменить сам человек мимо приложения, через
-    # Win+P или параметры Windows, и возвращать его назад мы не в праве.
-    if ($last.Session -and $last.Session -eq (Get-SystemSessionId)) {
+    # The same machine session — so the tray was merely restarted. The screens are left
+    # alone in that case: the set could have been changed by the person themselves, past
+    # the app, through Win+P or Windows settings, and putting it back is not ours to do.
+    if ($last.Session -and (Test-SameSession -Saved $last.Session)) {
         Write-DisplayLog 'startup: same session as the last switch, leaving the displays alone'
         return
     }
@@ -498,16 +558,50 @@ function Invoke-StartupRestore {
     Invoke-Mode $last.Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 }
 
-# --- мир изменился сам ------------------------------------------------------
-# Монитор воткнули или выдернули, компьютер вышел из сна — Windows в этих случаях
-# расставляет экраны по своему усмотрению: раскладка разъезжается, панель задач
-# уезжает, частота падает. Решение принимает Get-ReapplyDecision (чистая функция
-# в DisplayCore.ps1, под тестами), здесь оно только исполняется.
+# --- the world changed by itself --------------------------------------------
+# A monitor was plugged in or pulled out, the computer woke from sleep — in these cases
+# Windows arranges the screens as it sees fit: the layout drifts, the taskbar moves, the
+# refresh rate drops. Get-ReapplyDecision makes the decision (a pure function in
+# DisplayCore.ps1, under tests); here it is only carried out.
+
+# A postponed "assemble the desk": the mode key and the reason it is being assembled.
+# In memory only, and only one: events arrive without limit, but the desk has to be
+# assembled for the latest one — by then the earlier ones are no longer true.
+$script:ReapplyPending = $null
 
 function Invoke-ReapplyMode {
     param([string]$Key, [string]$Reason)
 
     if (-not $Key) { return }
+
+    # Under a game the desk is not touched — for the same reason the refresh-rate watchdog
+    # backs off (see Restore-BestModes): a configuration change kills a full-screen D3D
+    # device. The watchdog could do this from the start, this path could not, and on
+    # 30 August at 19:58 it rebuilt the desk over a full-screen Chrome.
+    #
+    # Postponed, precisely, and not forgotten: a monitor that went away leaves the layout
+    # drifted, and a person coming out of a game expects an assembled desk, not the one
+    # Windows left them.
+    if (Test-FullscreenApp) {
+        if (-not $script:ReapplyPending -or $script:ReapplyPending.Key -ne $Key) {
+            Write-DisplayLog ("reapply: postponed - full screen: {0}" -f $script:FullscreenWhy)
+        }
+        $script:ReapplyPending = [pscustomobject]@{ Key = $Key; Reason = $Reason }
+        return
+    }
+
+    # From here on the desk is assembled right now, and what was postponed is no longer
+    # needed: the fresh event about it IS that same "assemble again", only newer.
+    #
+    # Kept in hand until the switch reports back, though. Invoke-Mode answers a busy mutex with
+    # Skipped and a monitor that never woke with "Nothing came up" — neither moves the desk, and
+    # both are ordinary here: the game exiting is itself a configuration change, so the
+    # refresh-rate watchdog is holding Local\ScreenDeckSwitch for about a second exactly when this
+    # runs. Dropping the intent there left the desk drifted for good, because nothing re-arms it
+    # short of the next hotplug.
+    $pending = [pscustomobject]@{ Key = $Key; Reason = $Reason }
+    $script:ReapplyPending = $null
+
     $state = Get-CachedState
     $mode = Get-AvailableMode -Key $Key -State $state
     if (-not $mode) {
@@ -518,24 +612,37 @@ function Invoke-ReapplyMode {
 
     Write-DisplayLog ("reapply: {0} -> '{1}'" -f $Reason, $mode.Title)
     Invoke-Mode $Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
+    if (-not $script:LastSwitchWent) {
+        # Put back, not logged loudly: Invoke-Mode has already said why in a balloon and in the log,
+        # and the 15-second timer will bring us back here.
+        $script:ReapplyPending = $pending
+    }
 }
 
-# Стол целиком — в журнал, но только когда он ДРУГОЙ. Событие о смене
-# конфигурации приходит и на наши собственные переключения, по нескольку раз
-# подряд, и повторять одну и ту же строку значило бы утопить в ней всё остальное.
+# What was postponed under a game is picked up here. Leaving a borderless full screen comes
+# with no DisplaySettingsChanged event, so there is nothing to wait for — we ask ourselves,
+# from the existing 15-second timer (the same trick the refresh-rate watchdog uses; no timer
+# of our own is started for this).
+function Invoke-ReapplyCheck {
+    if (-not $script:ReapplyPending) { return }
+    if (Test-FullscreenApp) { return }
+
+    $pending = $script:ReapplyPending
+    # The state went stale over the course of the game: a monitor could have been pulled out
+    # and plugged back in, and "is the mode reachable" has to be decided on today's desk.
+    Update-StateCache
+    Invoke-ReapplyMode -Key $pending.Key -Reason $pending.Reason
+}
+
+# The whole desk goes to the log, but only when it is a DIFFERENT one. The
+# configuration-changed event arrives on our own switches too, several times in a row, and
+# repeating one and the same line would drown everything else in it.
 #
-# Простой идёт той же строкой: если монитор уходит с шины ровно через N минут
-# тишины, это гашение экрана по таймауту питания, а не поломка, и увидеть это
-# можно только рядом с фактом.
+# Idle time goes on the same line: if a monitor leaves the bus exactly N minutes into the
+# silence, that is the screen being put out on a power timeout rather than a breakage, and
+# the only way to see it is right next to the fact.
 function Write-DeskSnapshot {
     $state = Get-CachedState
-
-    # Имена запоминаем ВСЕГДА, даже когда строка не изменилась и в журнал не
-    # пойдёт: следующая пропажа будет называть монитор именно отсюда.
-    foreach ($m in @($state)) {
-        if ($m.Id) { $script:KnownLabels[[string]$m.Id] = [string]$m.Label }
-    }
-
     $now = Format-DeskSnapshot -State $state
     if ($now -eq $script:LastDeskLine) { return }
     $script:LastDeskLine = $now
@@ -545,20 +652,20 @@ function Write-DeskSnapshot {
     else             { Write-DisplayLog ('desk: {0}' -f $now) }
 }
 
-# Событие о смене конфигурации приходит и на наши собственные переключения,
-# поэтому сравниваются ПОДКЛЮЧЁННЫЕ мониторы: их набор меняется только когда
-# кабель воткнули или выдернули (или монитор погасили его собственной кнопкой).
+# The configuration-changed event arrives on our own switches too, which is why it is the
+# CONNECTED monitors that get compared: their set changes only when a cable was plugged in
+# or pulled out (or a monitor was put out with its own button).
 function Invoke-PlugCheck {
     param($Before)
 
     $settings = Get-ActiveSettings
     $last = Get-LastMode
-    # Кэш состояния обновлён строкой выше нас (см. $script:DisplayChanged), так
-    # что и появившийся монитор, и пропавший здесь уже видны.
+    # The state cache was refreshed one line above us (see $script:DisplayChanged), so both
+    # a monitor that appeared and one that went away are already visible here.
     $state = Get-CachedState
 
-    # Состав режима из onPlug: решает чистая функция, а знать, кто в режим входит,
-    # может только тот, у кого на руках стол.
+    # The membership of the onPlug mode: the pure function decides, but only whoever holds
+    # the desk can know who belongs to a mode.
     $plugMembers = $null
     $plugKey = [string]$settings.reapply.onPlug
     if ($plugKey) {
@@ -570,8 +677,8 @@ function Invoke-PlugCheck {
         }
     }
 
-    # Часы для карантина держим здесь: решение принимает чистая функция, а
-    # «сколько прошло» и «кто тогда пропал» — это состояние трея.
+    # The clock for the quarantine is kept here: the pure function makes the decision, while
+    # "how long ago" and "who went away then" are the tray's state.
     $since = $null
     if ($script:LastVanishAt) { $since = ((Get-Date) - $script:LastVanishAt).TotalSeconds }
 
@@ -580,9 +687,9 @@ function Invoke-PlugCheck {
                                     -PlugModeMembers $plugMembers `
                                     -VanishedRecently $script:LastVanishIds -SecondsSinceVanish $since
 
-    # Имена — в журнал, и до всякого решения. Без них видно, какая ветка
-    # сработала, но не видно, кто её вызвал: разбор случая 28 августа целиком
-    # ушёл на то, чтобы вывести это косвенно.
+    # The names go to the log, and before any decision. Without them it is visible which
+    # branch fired but not what set it off: working out the 28 August case went entirely on
+    # inferring that indirectly.
     foreach ($id in @($decision.Vanished)) {
         Write-DisplayLog ('plug: {0} went away' -f (Get-DisplayLabelById -Id $id -State $state -Known $script:KnownLabels))
     }
@@ -596,8 +703,8 @@ function Invoke-PlugCheck {
     }
 
     if ($decision.Action -ne 'mode') {
-        # Причина у «ничего не делаем» бывает только одна — карантин, и молчать
-        # о ней нельзя: иначе настройка onPlug выглядит сломанной.
+        # "We do nothing" has only one possible reason — the quarantine — and staying quiet
+        # about it is not allowed: otherwise the onPlug setting looks broken.
         if ($decision.Reason) {
             Write-DisplayLog ('reapply: {0} - leaving the displays alone' -f $decision.Reason)
         }
@@ -606,17 +713,17 @@ function Invoke-PlugCheck {
     Invoke-ReapplyMode -Key $decision.Mode -Reason $decision.Reason
 }
 
-# Выход из сна. Возвращаем последний ВЫБРАННЫЙ режим, а не то, что система
-# подняла сама: она поднимает свой набор, и это тот же случай, что после
-# включения компьютера (см. Invoke-StartupRestore), только сессия та же.
+# Waking from sleep. We put back the last CHOSEN mode rather than whatever the system
+# brought up itself: it brings up its own set, and this is the same case as after power-on
+# (see Invoke-StartupRestore), only the session is the same one.
 #
-# Не сразу, а с задержкой: сразу после пробуждения мониторы ещё поднимаются, и
-# запрос состояния в этот момент отвечает про наполовину собранный стол.
+# Not straight away but after a delay: right after waking the monitors are still coming up,
+# and a state query at that moment answers about a half-assembled desk.
 #
-# Сама задержка живёт в уже существующем 15-секундном таймере, а не в своём:
-# событие о пробуждении система поднимает НЕ в потоке приложения, а заводить
-# оттуда таймер WinForms — значит трогать чужой поток. Отметка времени — это
-# просто присваивание, и его достаточно.
+# The delay itself lives in the existing 15-second timer rather than one of its own: the
+# system raises the wake event NOT on the application's thread, and starting a WinForms
+# timer from there means touching somebody else's thread. A timestamp is just an assignment,
+# and that is enough.
 $script:ResumeDueAt = $null
 
 function Invoke-ResumeCheck {
@@ -628,13 +735,13 @@ function Invoke-ResumeCheck {
     if ($last) { Invoke-ReapplyMode -Key ([string]$last.Key) -Reason 'woke up from sleep' }
 }
 
-# --- таймер выключения ------------------------------------------------------
-# «Выключи компьютер через час». Отсчёт живёт только в памяти трея: компьютер,
-# который выключается сам через сутки после того, как об этом попросили, страшнее
-# любой пользы, поэтому на диск это не пишется и после перезапуска не оживает.
+# --- the shutdown timer -----------------------------------------------------
+# "Turn the computer off in an hour." The countdown lives only in the tray's memory: a
+# computer that turns itself off a day after being asked to is scarier than any usefulness,
+# so this is not written to disk and does not come back to life after a restart.
 #
-# Предупреждение за минуту — обязательная часть, а не удобство: между «поставил
-# таймер и забыл» и «потерял несохранённое» стоит ровно оно.
+# The one-minute warning is a required part, not a convenience: between "set a timer and
+# forgot" and "lost unsaved work" stands exactly that.
 
 $script:PowerDeadline = $null
 $script:PowerAction = 'shutdown'
@@ -645,9 +752,9 @@ function Get-PowerRemaining {
     return [int][math]::Ceiling(($script:PowerDeadline - (Get-Date)).TotalSeconds)
 }
 
-# Подсказка значка: обратный отсчёт, когда он есть, и просто имя, когда нет.
-# Спрашиваем САМ срок, а не остаток: срок в прошлом — это всё ещё заведённый
-# таймер, и подсказка обязана его показывать (Format-Duration покажет «0 s»).
+# The icon's tooltip: a countdown when there is one, and just the name when there is not.
+# We ask for the DEADLINE itself, not the remainder: a deadline in the past is still a timer
+# that was set, and the tooltip has to show it (Format-Duration will show "0 s").
 function Update-TrayText {
     if ($script:PowerDeadline) {
         $tray.Text = '{0} - {1} in {2}' -f $script:AppName, $script:PowerAction, (Format-Duration (Get-PowerRemaining))
@@ -680,24 +787,24 @@ function Stop-PowerTimer {
     if (-not $Quiet) { Show-Balloon 'Timer cancelled' 'The computer stays on.' -Always }
 }
 
-# Подвинуть заведённый таймер, не заводя его заново: «ещё пятнадцать минут» — это
-# сдвиг срока, а не новый отсчёт от нуля, и разница видна как раз тогда, когда
-# просят добавить в третий раз подряд.
+# Move a timer that is already set instead of setting it again: "another fifteen minutes"
+# is a shift of the deadline, not a fresh countdown from zero, and the difference shows
+# precisely when the third "add some" in a row is asked for.
 function Add-PowerTime {
     param([int]$Minutes)
 
     if (-not $script:PowerDeadline) { return }
     $when = $script:PowerDeadline.AddMinutes($Minutes)
 
-    # Меньше минуты не оставляем ни при каком убавлении: предупреждение за минуту —
-    # часть уговора, и таймер без него выключил бы компьютер молча.
+    # Less than a minute is never left, whatever is taken off: the one-minute warning is
+    # part of the bargain, and a timer without it would turn the computer off in silence.
     $floor = (Get-Date).AddMinutes(1)
     if ($when -lt $floor) { $when = $floor }
     $script:PowerDeadline = $when
 
     $left = Get-PowerRemaining
-    # Предупреждение снова в силе, если после сдвига до срока больше минуты:
-    # иначе добавленное время прошло бы без него.
+    # The warning is in force again if more than a minute is left after the shift: otherwise
+    # the added time would pass without one.
     if ($left -gt 60) { $script:PowerWarned = $false }
 
     Write-DisplayLog ("power: {0} moved by {1} min, {2} left" -f $script:PowerAction, $Minutes, (Format-Duration $left))
@@ -706,8 +813,8 @@ function Add-PowerTime {
                                 (Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0)))) -Always
 }
 
-# С чего открывать окно выбора: с остатка, если этот таймер уже заведён (человек
-# идёт его править), и с сорока пяти минут, если нет.
+# Where the picker opens from: from what is left, if this timer is already set (the person
+# is going to edit it), and from forty-five minutes if it is not.
 function Get-PowerPrefill {
     param([string]$Action)
 
@@ -719,13 +826,13 @@ function Get-PowerPrefill {
 }
 
 $script:PowerTicker = New-Object System.Windows.Forms.Timer
-# Раз в пять секунд: обратный отсчёт показывается в минутах, и чаще незачем.
+# Once every five seconds: the countdown is shown in minutes, and more often is pointless.
 $script:PowerTicker.Interval = 5000
 $script:PowerTicker.add_Tick({
-    # Условие выхода — ОТСУТСТВИЕ срока, а не отрицательный остаток. Таймер WinForms
-    # всегда опаздывает и никогда не спешит, за сотню тиков опоздание накапливается,
-    # и тик, который должен был поймать срок, приходит уже за ним. Срок в прошлом
-    # означает «пора», а не «таймера нет».
+    # The exit condition is the ABSENCE of a deadline, not a negative remainder. A WinForms
+    # timer is always late and never early, over a hundred ticks the lateness piles up, and
+    # the tick that should have caught the deadline arrives past it. A deadline in the past
+    # means "time's up", not "there is no timer".
     if (-not $script:PowerDeadline) { $script:PowerTicker.Stop(); return }
     $left = Get-PowerRemaining
     Update-TrayText
@@ -744,19 +851,19 @@ $script:PowerTicker.add_Tick({
     }
 })
 
-# --- дневник ----------------------------------------------------------------
-# Замер раз в десять секунд: реже — и переключение между окнами теряется, чаще —
-# и это уже слежка с точностью, которая никому не нужна. Стоит замер микросекунды
-# (три системных вызова), на диск копилка уходит раз в две минуты.
+# --- the diary --------------------------------------------------------------
+# A sample every ten seconds: any less often and switching between windows gets lost, any
+# more often and this is surveillance at a precision nobody needs. A sample costs
+# microseconds (three system calls); the pot goes to disk once every two minutes.
 
 $script:ActivityTicks = 0
 
 function Invoke-ActivityTick {
     if (-not (Get-ActiveSettings).stats) { return }
     try {
-        # Сначала «есть ли кто за компьютером», и только потом карта мониторов и
-        # ключ режима: ночью каждый тик кончается на первом же вопросе, и
-        # пересчитывать для него комбинации незачем.
+        # First "is anybody at the computer", and only then the monitor map and the mode
+        # key: at night every tick ends on the very first question, and recomputing the
+        # combos for it is pointless.
         $sample = Get-ActivitySample
         if ($sample) {
             Add-ActivitySample -Sample $sample -DisplayMap (Get-DisplayNameMap) -Mode (Get-CurrentModeKey) -IntervalSeconds 10
@@ -771,12 +878,12 @@ $script:ActivityTimer = New-Object System.Windows.Forms.Timer
 $script:ActivityTimer.Interval = 10000
 $script:ActivityTimer.add_Tick({ Invoke-ActivityTick })
 
-# --- память -----------------------------------------------------------------
-# Обрезка рабочего набора: после старта процесс держит ~75 МБ, из них живого около
-# десяти, остальное — следы компиляции и первого построения меню. Дёргается один
-# раз после запуска и после закрытия окна настроек (WPF оставляет за собой больше
-# всех), а не по таймеру: страницы, которыми пользуются, обрезать бессмысленно —
-# они тут же вернутся.
+# --- memory -----------------------------------------------------------------
+# Trimming the working set: after startup the process holds ~75 MB, of which about ten is
+# live and the rest is the traces of compilation and of building the menu for the first
+# time. Pulled once after startup and after the Settings window is closed (WPF leaves the
+# most behind), and not on a timer: trimming pages that are in use is pointless — they come
+# straight back.
 function Optimize-TrayMemory {
     try {
         [GC]::Collect()
@@ -787,10 +894,11 @@ function Optimize-TrayMemory {
     catch { Write-DisplayLog "memory: trim failed - $($_.Exception.Message)" }
 }
 
-# Обрезка на старте — разовая: за несколько минут работы куча .NET заново набирает
-# свой бюджет, и рабочий набор возвращается к прежним ~70 МБ. Поэтому главная
-# обрезка — эта: человек отошёл, страницы остыли, самое время их отдать. Один раз на каждый перерыв, порог — пять минут: короткая пауза за
-# чаем не повод гонять страницы туда-обратно.
+# The trim at startup is a one-off: over a few minutes of work the .NET heap builds its
+# budget back up and the working set returns to the old ~70 MB. So the main trim is this
+# one: the person stepped away, the pages went cold, and now is the time to give them back.
+# Once per break, with a five-minute threshold: a short pause for tea is no reason to shuffle
+# pages back and forth.
 $script:AwayTrimDone = $false
 
 function Invoke-AwayTrim {
@@ -804,7 +912,7 @@ function Invoke-AwayTrim {
     elseif ($script:AwayTrimDone) { $script:AwayTrimDone = $false }
 }
 
-# --- регистрация горячих клавиш ---------------------------------------------
+# --- registering the global shortcuts ---------------------------------------
 
 $script:Hotkeys = $null
 $script:HotkeyMap = @{}
@@ -824,7 +932,8 @@ function Register-Hotkeys {
     $script:HotkeyMap = @{}
 
     $failed = @()
-    foreach ($p in $script:Settings.hotkeys.GetEnumerator()) {
+    # Through the function, not $script:Settings: see Get-ActiveSettings.
+    foreach ($p in (Get-ActiveSettings).hotkeys.GetEnumerator()) {
         $combo = ConvertFrom-HotkeyString $p.Value
         if (-not $combo) { continue }
         $id = $script:Hotkeys.Register(($combo.Modifiers -bor $script:ModNoRepeat), $combo.Vk)
@@ -838,13 +947,13 @@ function Register-Hotkeys {
     Write-DisplayLog ('tray: shortcuts registered: ' + $script:HotkeyMap.Count)
 }
 
-# Окно настроек открывают двое: пункт меню и первый запуск. Тело живёт здесь, а не
-# в обработчике, ровно поэтому: функция исполняется в области скрипта, откуда бы её
-# ни позвали, и $script:AppName в ней разрешается. Внутри .GetNewClosure() он
-# разрешился бы в пустоту — раньше имя ради этого копировали в локальную.
+# Two things open the Settings window: the menu item and the first run. The body lives here
+# rather than in the handler for exactly that reason: a function runs in script scope no
+# matter who called it, and $script:AppName resolves inside it. Inside .GetNewClosure() it
+# would resolve to nothing — the name used to be copied into a local for that very reason.
 function Open-SettingsWindow {
-    # Ошибку в построении окна WinForms показывает безымянным системным окном,
-    # без подробностей. Ловим сами и пишем в журнал — иначе такое не отладить.
+    # An error while building a WinForms window is shown as a nameless system window with no
+    # detail. We catch it ourselves and write it to the log — there is no debugging it otherwise.
     try {
         $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings)
         if ($updated) {
@@ -859,20 +968,20 @@ function Open-SettingsWindow {
             "Could not open Settings:`n`n$($_.Exception.Message)`n`nDetails are in the log.",
             $script:AppName, 'OK', 'Error') | Out-Null
     }
-    # Окно настроек — WPF, и после него остаётся больше всего мусора.
+    # The Settings window is WPF, and it leaves the most rubbish behind.
     Optimize-TrayMemory
 }
 
-# --- меню -------------------------------------------------------------------
-# Собирается заново при каждом открытии: набор подключённых мониторов меняется,
-# и пункт для выдернутого должен быть виден как недоступный, а не врать.
+# --- the menu ---------------------------------------------------------------
+# Rebuilt on every open: the set of connected monitors changes, and the item for one that
+# was pulled out has to be visible as unavailable rather than lying.
 
 function Add-MenuHeader {
     param([string]$Text, [double]$Scale = 1.0)
     $item = New-Object System.Windows.Forms.ToolStripMenuItem $Text
     $item.Enabled = $false
-    # По Tag отрисовщик отличает заголовок раздела (приглушить) от информационной
-    # строки (обычный цвет текста) — Enabled у обоих false, чтобы не ловить клики.
+    # By Tag the renderer tells a section header (dim it) from an information line (ordinary
+    # text colour) — Enabled is false on both, so that neither catches clicks.
     $item.Tag = 'header'
     $item.Font = Get-UiFont -Size 8.5 -Scale $Scale -Semibold
     $top = [int][Math]::Round(3 * $Scale, [System.MidpointRounding]::AwayFromZero)
@@ -893,9 +1002,9 @@ $menu.add_Opening({
     $menu.ImageScalingSize = New-Object System.Drawing.Size $iconPx, $iconPx
     $menu.Padding = New-Object System.Windows.Forms.Padding $sidePad, $topPad, $sidePad, $topPad
 
-    # Отрисовщик пересоздаётся на каждое открытие: тема и акцент могли смениться,
-    # пока трей жил, а объект дешёвый. Ошибка оформления меню не должна оставлять
-    # без самого меню — тогда откат на системный вид.
+    # The renderer is recreated on every open: the theme and the accent could have changed
+    # while the tray was alive, and the object is cheap. An error dressing the menu must not
+    # leave us without the menu itself — hence the fall back to the system look.
     try {
         $dark = Test-DarkTheme
         $accent = [System.Drawing.ColorTranslator]::FromHtml((Get-AccentColor -ForDarkTheme:$dark))
@@ -922,8 +1031,8 @@ $menu.add_Opening({
             $line.Enabled = $false
             $line.Tag = 'info'
             $line.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
-            # Расхождение с максимальным режимом стоит видеть сразу: обычно это
-            # деградировавшая линия DisplayPort, а не настройка.
+            # A disagreement with the best mode is worth seeing at once: usually it is a
+            # DisplayPort link that degraded, not a setting.
             if ($m.Active -and $m.BestMode -and $m.Hz -lt $m.BestMode.Hz) {
                 $line.Text += ('   (below {0} Hz)' -f $m.BestMode.Hz)
                 $dot = 'below'
@@ -934,8 +1043,8 @@ $menu.add_Opening({
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     }
 
-    # Настройки — ради комбинаций: без них Get-DisplayModes отдал бы только соло и
-    # «все». Через функцию, а не $script:Settings (см. Get-ActiveSettings).
+    # The settings are here for the combos' sake: without them Get-DisplayModes would hand
+    # back only the solos and "all". Through the function, not $script:Settings (see Get-ActiveSettings).
     $modes = @(Get-DisplayModes -State $state -Settings (Get-ActiveSettings))
     $activeKey = $null
     if ($state) { $activeKey = Get-ActiveModeKey -State $state -Modes $modes }
@@ -947,7 +1056,7 @@ $menu.add_Opening({
         $item.Tag = $mode.Key
         $item.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
 
-        # Через функцию, а не $script:Settings: см. Get-ActiveSettings.
+        # Through the function, not $script:Settings: see Get-ActiveSettings.
         $combo = (Get-ActiveSettings).hotkeys[$mode.Key]
         if ($combo) { $item.ShortcutKeyDisplayString = $combo }
 
@@ -966,10 +1075,10 @@ $menu.add_Opening({
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-    # Таймер: «выключи через час», «усни через двадцать минут». Отсчёт видно и
-    # здесь, и в подсказке значка — таймер, о котором нельзя узнать, страшный.
-    # Рядом с каждой величиной — время на часах: «через два часа» человек сверяет
-    # с собственными планами не в минутах, а в «во сколько это будет».
+    # The timer: "turn off in an hour", "sleep in twenty minutes". The countdown is visible
+    # both here and in the icon's tooltip — a timer you cannot find out about is a frightening
+    # one. Next to every amount is the time on the clock: "in two hours" is something a person
+    # checks against their own plans not in minutes but in "what time will that be".
     foreach ($spec in @(@{ Action = 'shutdown'; Title = 'Shut down' }, @{ Action = 'sleep'; Title = 'Sleep' })) {
         $action = [string]$spec.Action
         $armed = ($script:PowerDeadline -and $script:PowerAction -eq $action)
@@ -983,15 +1092,15 @@ $menu.add_Opening({
             $parent.Font = Get-UiFont -Scale $scale -Semibold
             $parent.ShortcutKeyDisplayString = Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))
 
-            # Заведённый таймер чаще двигают, чем отменяют: «ещё пятнадцать минут»
-            # — это то, ради чего к нему обычно и возвращаются.
+            # A timer that is set gets moved more often than cancelled: "another fifteen
+            # minutes" is what people usually come back to it for.
             foreach ($shift in 15, -15) {
                 $move = New-Object System.Windows.Forms.ToolStripMenuItem
                 $move.Text = $(if ($shift -gt 0) { 'Add {0} minutes' -f $shift }
                                else { 'Take {0} minutes off' -f [math]::Abs($shift) })
                 $move.Tag = $shift
-                # Убавлять нечего, когда осталось меньше: таймер не должен уметь
-                # выключить компьютер прямо сейчас, мимо предупреждения за минуту.
+                # There is nothing to take off when less than that is left: the timer must not
+                # be able to turn the computer off right now, past the one-minute warning.
                 $move.Enabled = ($shift -gt 0 -or $left -gt ([math]::Abs($shift) + 1) * 60)
                 $move.add_Click({ Add-PowerTime -Minutes ([int]$this.Tag) }.GetNewClosure())
                 [void]$parent.DropDownItems.Add($move)
@@ -1014,15 +1123,15 @@ $menu.add_Opening({
         }
         [void]$parent.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-        # Своё время — окном (Show-TimerDialog в SettingsDialog.ps1): ползунок,
-        # таблетки, колесо и то же время на часах, что и у готовых величин. Ноль
-        # оттуда означает «передумал», и заводить тогда нечего.
+        # Your own time gets a window (Show-TimerDialog in SettingsDialog.ps1): a slider,
+        # pills, the wheel and the same time on the clock as the ready-made amounts have. A
+        # zero from there means "changed my mind", and then there is nothing to set.
         $custom = New-Object System.Windows.Forms.ToolStripMenuItem 'Pick a time...'
         $custom.Tag = $action
         $custom.add_Click({
             $act = [string]$this.Tag
-            # Ошибку в построении окна WinForms показывает безымянным системным
-            # окном, без подробностей. Ловим сами и пишем в журнал.
+            # An error while building a WinForms window is shown as a nameless system window
+            # with no detail. We catch it ourselves and write it to the log.
             try {
                 $minutes = Show-TimerDialog -Action $act -Minutes (Get-PowerPrefill -Action $act)
                 if ($minutes -gt 0) { Start-PowerTimer -Minutes $minutes -Action $act }
@@ -1031,7 +1140,7 @@ $menu.add_Opening({
                 Write-DisplayLog "timer dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
                 Show-Balloon 'Could not open the timer' 'Details are in the log.' 'Warning'
             }
-            # Окно WPF, как и настройки, оставляет за собой рабочий набор.
+            # A WPF window, like the settings one, leaves a working set behind it.
             Optimize-TrayMemory
         }.GetNewClosure())
         [void]$parent.DropDownItems.Add($custom)
@@ -1041,8 +1150,8 @@ $menu.add_Opening({
     $statsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Statistics...'
     $statsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     if (-not (Get-ActiveSettings).stats) {
-        # Дневник выключен — пункт видно, но он объясняет, почему пуст, вместо
-        # того чтобы открыть страницу с нулями.
+        # The diary is off — the item is visible, but it explains why it is empty instead of
+        # opening a page full of zeroes.
         $statsItem.Text = 'Statistics (diary is off)'
         $statsItem.add_Click({
             Show-Balloon 'The diary is off' 'Turn on "Keep a diary" in Settings, and statistics appear as the day goes.' 'Warning'
@@ -1051,8 +1160,8 @@ $menu.add_Opening({
     else {
         $statsItem.add_Click({
             try {
-                # Пишем копилку на диск перед отчётом: последние минуты живут в
-                # памяти, и без этого отчёт отставал бы от жизни на две минуты.
+                # The pot is written to disk before the report: the last few minutes live in
+                # memory, and without this the report would lag two minutes behind life.
                 Save-ActivityStore -Force
                 [void](Show-ActivityReport -Days 30)
             }
@@ -1084,12 +1193,12 @@ $menu.add_Opening({
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
 
-    # Версия — через всплывашку, а не через MessageBox: модальное окно из трея
-    # останавливает цикл сообщений, а вместе с ним и сторожа частоты, и таймер
-    # выключения.
-    # Имя берётся из $script:AppName, а не пишется буквами: оно же стоит в
-    # подсказке иконки, в заголовках ошибок и в приветствии первого запуска, и
-    # разъехавшееся имя — первое, что человек заметит в отчёте о баге.
+    # The version goes through a balloon rather than a MessageBox: a modal window from the
+    # tray stops the message loop, and with it the refresh-rate watchdog and the shutdown
+    # timer.
+    # The name comes from $script:AppName rather than being spelled out: the same name is in
+    # the icon's tooltip, in error captions and in the first-run greeting, and a name that
+    # drifted is the first thing a person notices in a bug report.
     $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem "About $script:AppName"
     $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $aboutItem.add_Click({ Show-Balloon $script:AppName (Get-VersionLine) -Always })
@@ -1103,49 +1212,43 @@ $menu.add_Opening({
     [void]$menu.Items.Add($exitItem)
 })
 
-# Меню открывается только правой кнопкой — это делает сам NotifyIcon, раз ему
-# назначен ContextMenuStrip. Открывать его ещё и левым кликом (через приватный
-# ShowContextMenu) намеренно не стали: это сбивает с толку.
+# The menu opens on the right button only — NotifyIcon does that itself once it has been
+# given a ContextMenuStrip. Opening it on a left click as well (through the private
+# ShowContextMenu) was deliberately left alone: it is confusing.
 
-# --- первый запуск ----------------------------------------------------------
-# Клавиши по умолчанию раскладываются один раз: соло-режимы получают F1, F2, …,
-# затем комбинации. Дальше их правит пользователь, и мы больше не вмешиваемся.
+# --- the first run ----------------------------------------------------------
+# The default shortcuts are laid out once: the solo modes get F1, F2, …, then the combos.
+# After that the user edits them, and we never interfere again.
 
-# Набор ПОДКЛЮЧЁННЫХ мониторов заполняется первым же обновлением кэша, поэтому
-# объявлен ДО него: присваивание после затирало бы то, что уже узнали, и первое
-# подключение монитора за запуск проходило бы незамеченным.
+# The set of CONNECTED monitors is filled by the very first cache refresh, which is why it
+# is declared BEFORE it: an assignment afterwards would wipe what we already learned, and
+# the first monitor plugged in during a run would go unnoticed.
 $script:PresentIds = @()
 
-# Когда и кто пропал с шины в прошлый раз. Нужно карантину в Invoke-PlugCheck:
-# монитор, появившийся через секунду после чужой пропажи, — это Windows
-# перекладывает стол, а не человек воткнул кабель. На диск не пишется намеренно:
-# после перезапуска трея карантина нет, и это правильно — пропажа, о которой
-# помнят со вчера, запрещала бы настоящее подключение.
+# When, and who, last went off the bus. The quarantine in Invoke-PlugCheck needs it: a
+# monitor that appears a second after somebody else's disappearance is Windows rearranging
+# the desk, not a person plugging a cable in. Deliberately not written to disk: after the
+# tray restarts there is no quarantine, and that is right — a disappearance remembered since
+# yesterday would forbid a real plug-in.
 $script:LastVanishAt = $null
 $script:LastVanishIds = @()
 
-# Последняя записанная строка стола — чтобы не повторять её на каждом событии.
+# The last desk line written — so as not to repeat it on every event.
 $script:LastDeskLine = ''
 
-# Путь устройства -> имя, всё, что видели за этот запуск. Нужно, чтобы назвать
-# монитор, которого в состоянии УЖЕ НЕТ: убранный драйвером с шины исчезает из
-# перечисления целиком, и спрашивать его имя в момент пропажи поздно.
-$script:KnownLabels = @{}
+Update-StateCache   # so the first menu open is as fast as all the others, and the names are known
 
-Update-StateCache   # чтобы первое открытие меню было таким же быстрым, как остальные
-
-# Кэш обновляем по событию системы: монитор могли включить, выключить или
-# переподключить и мимо нашего приложения.
+# The cache is refreshed on the system's event: a monitor could have been switched on, off
+# or reconnected past our application too.
 #
-# $script:PresentIds — набор ПОДКЛЮЧЁННЫХ мониторов до обновления кэша: по его
-# изменению видно, воткнули монитор или выдернули (см. Invoke-PlugCheck). Наши
-# собственные переключения его не меняют, поэтому реакции на собственную работу
-# здесь быть не может.
+# $script:PresentIds is the set of CONNECTED monitors before the cache refresh: a change in
+# it shows whether a monitor was plugged in or pulled out (see Invoke-PlugCheck). Our own
+# switches do not change it, so there can be no reaction to our own work here.
 $script:DisplayChanged = {
     $before = @($script:PresentIds)
     Update-StateCache
-    # Первым делом — снимок стола: всё остальное в этом обработчике его меняет,
-    # и записанный после него снимок отвечал бы уже на другой вопрос.
+    # The desk snapshot first: everything else in this handler changes it, and a snapshot
+    # written after them would be answering a different question.
     try { Write-DeskSnapshot }
     catch { Write-DisplayLog "desk: snapshot failed - $($_.Exception.Message)" }
     Invoke-ModeWatch
@@ -1154,8 +1257,8 @@ $script:DisplayChanged = {
 }
 [Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged($script:DisplayChanged)
 
-# Выход из сна. Настройку проверяем здесь, а не в таймере: событие приходит и на
-# засыпание тоже, и заводить отсчёт на него нечего.
+# Waking from sleep. The setting is checked here rather than in the timer: the event arrives
+# on going to sleep too, and there is nothing to start a countdown for on that.
 $script:PowerModeChanged = {
     param($sender, $e)
     if ($e.Mode -ne [Microsoft.Win32.PowerModes]::Resume) { return }
@@ -1165,19 +1268,23 @@ $script:PowerModeChanged = {
 }
 [Microsoft.Win32.SystemEvents]::add_PowerModeChanged($script:PowerModeChanged)
 
-# Пока открыта игра, сторож откладывает возврат частоты (см. Test-FullscreenApp).
-# Выход из безрамочного полного экрана событием DisplaySettingsChanged не
-# сопровождается, поэтому отложенное добираем таймером. Блок обычный, не
-# .GetNewClosure() — иначе $script: внутри не разрешится.
+# While a game is open the watchdog postpones putting the refresh rate back (see
+# Test-FullscreenApp). Leaving a borderless full screen comes with no DisplaySettingsChanged
+# event, so what was postponed is picked up by the timer. An ordinary block, not
+# .GetNewClosure() — otherwise $script: inside it will not resolve.
 $script:WatchTimer = New-Object System.Windows.Forms.Timer
 $script:WatchTimer.Interval = 15000
 $script:WatchTimer.add_Tick({
-    # Порядок здесь осмысленный. Пробуждение — первым: пока стол не собран
-    # заново, всё остальное про него врёт. Правила — вторыми: заметить запуск
-    # игры важнее, чем добрать отложенный возврат частоты, и одно с другим не
-    # связано.
+    # The order here is deliberate. Waking first: until the desk has been assembled again,
+    # everything else about it lies. Then the desk that was postponed because of a game: that
+    # is the same "assemble again", and the rules below need it already assembled. The rules
+    # third: noticing that a game started matters more than picking up a postponed
+    # refresh-rate restore, and the two are unrelated.
     try { Invoke-ResumeCheck }
     catch { Write-DisplayLog "reapply: after sleep failed - $($_.Exception.Message)" }
+
+    try { Invoke-ReapplyCheck }
+    catch { Write-DisplayLog "reapply: postponed check failed - $($_.Exception.Message)" }
 
     try { Invoke-RulesCheck }
     catch { Write-DisplayLog "rule: check failed - $($_.Exception.Message)" }
@@ -1192,28 +1299,32 @@ $script:WatchTimer.add_Tick({
 })
 $script:WatchTimer.Start()
 
-# Дневник. Таймер крутится всегда, а вот замер делается только когда настройка
-# включена: проверка внутри стоит одно обращение к словарю, а таймер, который
-# приходится заводить и останавливать при каждом сохранении настроек, — это
-# лишнее состояние, которое рано или поздно разойдётся с настройкой.
+# The diary. The timer always runs, but a sample is only taken while the setting is on: the
+# check inside costs one dictionary lookup, whereas a timer that has to be started and
+# stopped on every settings save is extra state that sooner or later drifts apart from the
+# setting.
 $script:ActivityTimer.Start()
 
-# Снимки позиций окон из прошлого входа в Windows бесполезны: HWND действительны
-# только в рамках одной logon-сессии, а после перезагрузки те же номера достанутся
-# другим окнам. Чистим записи, все процессы которых уже мертвы.
+# Window-position snapshots from a previous Windows logon are useless: HWNDs are valid only
+# within one logon session, and after a reboot the same numbers go to other windows. We
+# clean out entries whose every process is already dead.
 try { Remove-DeadWindowLayouts }
 catch { Write-DisplayLog "windows: could not clean stale snapshots - $($_.Exception.Message)" }
 
-# Монитор мог переехать на другой вход, пока приложение не работало — тогда
-# привязка сама переезжает на новый ключ. Делаем это до регистрации клавиш.
+# A monitor could have moved to another input while the application was not running — then
+# the binding moves to the new key by itself. We do this before registering the shortcuts.
 if (Update-HotkeyKeys -Settings $script:Settings -State (Get-CachedState)) {
-    Save-DisplaySettings $script:Settings
+    # [void]: Save-DisplaySettings answers whether the file was written, and here there is nothing to be
+    # done about a "no" — the migration lives on in memory for this run, the log says why, and the tray
+    # starts either way. Which is the point: this line runs before the message loop, and a refusal used
+    # to take the whole application down without a word.
+    [void](Save-DisplaySettings $script:Settings)
 }
 
-# Признак первого запуска — ОТСУТСТВИЕ файла настроек, а не пустой список клавиш.
-# Пустой список — законный выбор: человек снял все привязки в окне настроек, и
-# возвращать их на следующем старте нельзя. По ключу «файл есть» испорченный
-# settings.json тоже не затирается значениями по умолчанию.
+# The tell of a first run is the ABSENCE of the settings file, not an empty shortcut list.
+# An empty list is a legitimate choice: the person cleared every binding in the Settings
+# window, and putting them back on the next start is not allowed. Keying on "the file
+# exists" also keeps a damaged settings.json from being overwritten with the defaults.
 $script:FirstRun = $false
 if (-not (Test-Path $script:SettingsFile)) {
     $script:FirstRun = $true
@@ -1224,20 +1335,20 @@ if (-not (Test-Path $script:SettingsFile)) {
         $script:Settings.hotkeys[$mode.Key] = "Ctrl+Alt+F$i"
         $i++
     }
-    Save-DisplaySettings $script:Settings
+    [void](Save-DisplaySettings $script:Settings)
     Write-DisplayLog 'settings: first run - assigned the default shortcuts'
 }
 
 Register-Hotkeys
 Write-DisplayLog ("tray: started in {0} ms" -f [int]$script:StartWatch.ElapsedMilliseconds)
 
-# Возврат последнего режима — не здесь, а через одноразовый таймер: цикл сообщений
-# должен уже крутиться, иначе на несколько секунд переключения не открывается меню
-# и не показываются всплывашки. Полторы секунды — чтобы стол после входа в Windows
-# устоялся; человек к этому моменту обычно ещё смотрит на рабочий стол.
+# Restoring the last mode does not happen here but through a one-shot timer: the message
+# loop has to be running already, otherwise for a few seconds the menu does not open and no
+# balloons show. A second and a half — so the desk settles after logging in to Windows; by
+# then a person is usually still looking at the desktop.
 #
-# После «tray: started» намеренно: строка меряет, как быстро становятся рабочими
-# клавиши, и переключение экранов не должно попадать в этот замер.
+# After "tray: started" deliberately: that line measures how fast the shortcuts become
+# usable, and switching the screens must not land inside that measurement.
 $script:StartupTimer = New-Object System.Windows.Forms.Timer
 $script:StartupTimer.Interval = 1500
 $script:StartupTimer.add_Tick({
@@ -1245,10 +1356,10 @@ $script:StartupTimer.add_Tick({
     try { Invoke-StartupRestore }
     catch { Write-DisplayLog "startup: could not restore the last mode - $($_.Exception.Message)" }
 
-    # Первый запуск — единственный, когда человек ещё не знает, что значок вообще
-    # появился и что меню у него правое. Здесь, а не сразу после создания настроек:
-    # к этому моменту цикл сообщений крутится, а до него всплывашка не показывается,
-    # а окно настроек встало бы поперёк старта.
+    # The first run is the only time a person does not yet know the icon has appeared at all,
+    # or that its menu is the right-hand one. Here rather than right after the settings are
+    # created: by this point the message loop is running, and before it a balloon does not
+    # show, while the Settings window would have stood across the startup.
     if ($script:FirstRun) {
         try {
             Show-Balloon $script:AppName 'Right-click the icon for your displays and Settings.'
@@ -1257,7 +1368,7 @@ $script:StartupTimer.add_Tick({
         catch { Write-DisplayLog "startup: first-run welcome failed - $($_.Exception.Message)" }
     }
 
-    # Старт закончился — вернуть системе то, что было нужно только на старте.
+    # Startup is over — give the system back what was only needed during it.
     Optimize-TrayMemory
 })
 $script:StartupTimer.Start()
@@ -1267,9 +1378,9 @@ try {
 }
 finally {
     Write-DisplayLog 'tray: stopped'
-    # Копилку дневника — на диск: последние минуты живут в памяти, и выход из
-    # приложения не повод их терять.
-    try { Save-ActivityStore } catch { }   # на выходе ронять уже нечего
+    # The diary's pot goes to disk: the last few minutes live in memory, and quitting the
+    # application is no reason to lose them.
+    try { Save-ActivityStore } catch { }   # on the way out there is nothing left to drop
     foreach ($timer in $script:WatchTimer, $script:StartupTimer, $script:ActivityTimer,
                        $script:PowerTicker) {
         if ($timer) { $timer.Stop(); $timer.Dispose() }

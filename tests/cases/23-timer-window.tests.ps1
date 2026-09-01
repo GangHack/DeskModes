@@ -1,6 +1,6 @@
-﻿# --- окно таймера -----------------------------------------------------------
-# Собирается без показа, как и окно настроек: обработчики поля и ползунка — это и
-# есть вся работа окна, и они срабатывают от простого присваивания.
+﻿# --- the timer window -------------------------------------------------------
+# Built without being shown, like the Settings window: the field's and the slider's handlers ARE all
+# the work the window does, and they fire off a plain assignment.
 
 Write-Host ''
 Write-Host 'the timer window' -ForegroundColor White
@@ -35,15 +35,15 @@ Test-Case 'timer window: typing moves the slider, the slider rewrites the field'
 Test-Case 'timer window: the button hands the value back, Enter and Esc reach it' {
     $ui = New-TimerWindow -Action 'sleep' -Minutes 45
     try {
-        # Клавиатурный уговор окна: Enter — на кнопку, Esc — на отмену. Проверяем
-        # его на самих кнопках: нажатия в непоказанном окне взять негде.
+        # The window's keyboard bargain: Enter goes to the button, Esc to cancel. We check it on the
+        # buttons themselves: there is nowhere to get key presses from in a window that is not shown.
         Assert-True $ui.StartBtn.IsDefault 'Enter goes to the button'
         Assert-True $ui.CancelBtn.IsCancel 'Esc cancels'
 
         $ui.ValueBox.Text = '2h'
-        # Обработчик кнопки кладёт значение и закрывает окно. Закрыть непоказанное
-        # окно нельзя (WPF отвечает отказом на DialogResult) — значение к этому
-        # моменту уже отдано, и проверяем именно его.
+        # The button's handler puts the value down and closes the window. A window that was never shown
+        # cannot be closed (WPF answers a DialogResult with a refusal) — the value has already been
+        # handed over by that point, and it is what we check.
         try { $ui.StartBtn.RaiseEvent(
                 (New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) }
         catch { }
@@ -60,7 +60,7 @@ Test-Case 'timer window: nothing is armed on what we cannot read' {
         Assert-True (-not $ui.StartBtn.IsEnabled) 'the button is off'
         Assert-True ($ui.TargetText.Text -like '*1h30*') 'and it says what we do read'
 
-        # Потолок — те же двенадцать часов, что и последняя ступень ползунка.
+        # The ceiling is the same twelve hours as the slider's last step.
         $ui.ValueBox.Text = '20h'
         Assert-Equal 0 $ui.Minutes 'beyond the ceiling is not a value either'
 

@@ -35,8 +35,9 @@ list of changes against something earlier.
 ### While it runs
 
 - Puts back a refresh rate Windows silently dropped, and rebuilds the desk after
-  sleep or a hotplug — without ever overwriting the mode you chose, and without
-  mistaking Windows lighting up the remaining screens for a hand on a cable.
+  sleep or a hotplug — without ever overwriting the mode you chose, without
+  mistaking a display waking from its own sleep for a hand on a cable, and never
+  while a game is on the screen: that work waits until you are out of it.
 - The log names displays, not "a display", and writes the whole desk on every
   change: who is gone from the bus, who is merely switched off, who is showing
   what. A display the driver removed is still named, from what was seen before.
@@ -69,4 +70,4 @@ list of changes against something earlier.
   your system. Deleting the folder uninstalls it.
 - One `Add-Type` for all the embedded C#, cached as `native-*.dll` next to the
   scripts and rebuilt automatically when the source changes.
-- 304 test cases and one command that runs every gate: `.\tools\check.ps1`.
+- 341 test cases and one command that runs every gate: `.\tools\check.ps1`.

@@ -1,4 +1,4 @@
-﻿# --- настройки --------------------------------------------------------------
+﻿# --- the settings -----------------------------------------------------------
 
 Write-Host ''
 Write-Host 'settings' -ForegroundColor White
@@ -25,7 +25,7 @@ Test-Case 'settings: a damaged file falls back to defaults and keeps a copy' {
 }
 
 Test-Case 'settings: a half-written reapply keeps the other defaults' {
-    # Файл правится руками, в нём легко оказаться половине ключей.
+    # The file gets edited by hand, and it easily ends up holding half the keys.
     Set-Content -Path $script:SettingsFile -Value '{ "reapply": { "onResume": false } }' -Encoding UTF8
     $s = Get-DisplaySettings
     Assert-True (-not $s.reapply.onResume) 'onResume read'
@@ -35,8 +35,8 @@ Test-Case 'settings: a half-written reapply keeps the other defaults' {
 }
 
 Test-Case 'settings: restoreLastMode survives a round-trip when turned off' {
-    # Отсутствие ключа означает «по умолчанию», то есть включено, — а вот честный
-    # false обязан доехать. На этой паре уже ломался restoreWindows.
+    # A missing key means "the default", that is, on — whereas an honest false has to make it
+    # through. restoreWindows has already broken on this pair.
     Set-Content -Path $script:SettingsFile -Value '{ "restoreLastMode": false }' -Encoding UTF8
     $s = Get-DisplaySettings
     Assert-True (-not $s.restoreLastMode) 'false read from the file'
@@ -60,5 +60,24 @@ Test-Case 'settings: round-trip through disk preserves everything' {
     Assert-Equal 'ULTRAGEAR' $back.primary 'primary'
     Assert-True (-not $back.restoreWindows) 'restoreWindows false survived'
     Assert-Equal 'ULTRAFINE' $back.audio['combo:Work'] 'audio mapping'
+    Remove-Item $script:SettingsFile -Force
+}
+
+Test-Case 'settings: a file that cannot be written is a false answer, not an exception' {
+    # The tray saves at the TOP LEVEL of its startup - before the message loop, with the console hidden.
+    # A folder without write rights (a shared Tools\, a read-only share, an editor holding the file open)
+    # used to take the whole application down there: no window, no line in the log, nothing to go on.
+    # A directory in place of the file is the cheapest refusal there is.
+    $was = $script:SettingsFile
+    try {
+        $script:SettingsFile = $script:TestDir
+        Assert-True (-not (Save-DisplaySettings (Get-DefaultSettings))) 'answered no instead of throwing'
+    }
+    finally { $script:SettingsFile = $was }
+}
+
+Test-Case 'settings: a write that went through answers yes' {
+    Assert-True (Save-DisplaySettings (Get-DefaultSettings)) 'answered yes'
+    Assert-True (Test-Path $script:SettingsFile) 'and the file is there'
     Remove-Item $script:SettingsFile -Force
 }

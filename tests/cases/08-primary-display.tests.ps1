@@ -1,7 +1,7 @@
-﻿# --- выбор основного монитора -----------------------------------------------
-# Лестница из шести ступеней в Select-PrimaryDisplay. Внутри Switch-DisplayMode
-# она была непроверяемой; с собственным primary у комбинаций это стало
-# недопустимо — семантика «жёсткий/мягкий» держится только на этих тестах.
+﻿# --- choosing the primary monitor -------------------------------------------
+# A ladder of six rungs in Select-PrimaryDisplay. Inside Switch-DisplayMode it was untestable; once
+# combos got a primary of their own that became unacceptable — the "hard/soft" semantics rests on
+# these tests alone.
 
 Write-Host ''
 Write-Host 'choosing the primary display' -ForegroundColor White
@@ -28,8 +28,8 @@ Test-Case 'primary: the combination speaks next, softly' {
                                  -SettingsPrimary 'ULTRAGEAR' -Layout @()
     Assert-Equal 'XG27AQDMGR' $hit.Label 'combo primary beats the settings preference'
 
-    # Монитора из primary комбинации нет среди включаемых — молча идём дальше:
-    # комбинация обязана работать и без него, это не опечатка человека.
+    # The monitor from the combo's primary is not among those being switched on — we move on quietly:
+    # the combo has to work without it, and this is not a person's typo.
     $without = @($script:PrimState | Where-Object { $_.Label -ne 'XG27AQDMGR' })
     $hit = Select-PrimaryDisplay -Wanted $without -ModePrimary 'XG27' `
                                  -SettingsPrimary 'ULTRAGEAR' -Layout @()

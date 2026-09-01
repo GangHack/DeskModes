@@ -1,13 +1,12 @@
-﻿# --- комбинации -------------------------------------------------------------
-# Комбинация — единственный способ сказать «вот эти два и вон тот»: набор
-# мониторов под своим именем, с необязательной своей панелью задач. Один монитор
-# может входить в любое их число.
+﻿# --- combos -----------------------------------------------------------------
+# A combo is the only way to say "these two and that one over there": a set of monitors under a name
+# of its own, with an optional taskbar of its own. One monitor can belong to any number of them.
 
 Write-Host ''
 Write-Host 'combinations' -ForegroundColor White
 
 Test-Case 'combos: settings survive a round-trip, in all three spellings' {
-    # Полную форму пишет окно настроек; массив и голую строку — человек рукой.
+    # The full form is what the Settings window writes; the array and the bare string, a person by hand.
     $json = '{ "combos": { ' +
             '"Movie night": { "displays": ["ULTRAFINE", "XG27AQDMGR"], "primary": "ULTRAFINE" }, ' +
             '"Side pair": ["ULTRAGEAR", "ULTRAFINE"], ' +
@@ -48,8 +47,8 @@ Test-Case 'combos: a combination becomes a mode named exactly as typed' {
     Assert-Equal 'XG27AQDMGR' $movie.Primary 'carries its own taskbar display'
     Assert-True $movie.Available 'available - its displays are on the desk'
 
-    # Порядок: после режимов отдельных мониторов, перед «все», между собой — как в
-    # файле: их порядок выбрал человек, и переставлять его не наше дело.
+    # The order: after the individual monitors' modes, before "all", and among themselves as in the
+    # file — a person chose their order, and rearranging it is not our business.
     $ix = @{}
     for ($i = 0; $i -lt $keys.Count; $i++) { $ix[$keys[$i]] = $i }
     Assert-True ($ix['solo:XG27AQDMGR'] -lt $ix['combo:Movie night']) 'after the single displays'
@@ -81,8 +80,8 @@ Test-Case 'combos: nothing connected means unavailable, not a guess' {
 }
 
 Test-Case 'combos: no settings passed means no combo modes, not a crash' {
-    # Get-DisplayModes сам на диск не ходит никогда: меню зовёт её на каждое
-    # открытие. Без настроек комбинаций в списке просто нет.
+    # Get-DisplayModes never goes to disk itself: the menu calls it on every open. Without the
+    # settings there simply are no combos in the list.
     $state = @((New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3'))
     $kinds = @(Get-DisplayModes $state | ForEach-Object { $_.Kind })
     Assert-True (-not ($kinds -contains 'combo')) 'no combos out of thin air'

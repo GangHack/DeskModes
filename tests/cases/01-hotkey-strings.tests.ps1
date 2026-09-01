@@ -1,4 +1,4 @@
-﻿# --- разбор и печать комбинаций клавиш --------------------------------------
+﻿# --- parsing and printing key combinations ----------------------------------
 
 Write-Host 'hotkey strings' -ForegroundColor White
 
@@ -47,7 +47,7 @@ Test-Case 'hotkey: letters and digits work' {
 }
 
 Test-Case 'hotkey: modifier order is normalised, aliases understood' {
-    # Порядок в тексте всегда Ctrl, Alt, Shift, Win — независимо от того, как ввели.
+    # The order in the text is always Ctrl, Alt, Shift, Win — whatever order it was entered in.
     Assert-Equal 'Ctrl+Alt+F5' (ConvertFrom-HotkeyString 'Alt+Ctrl+F5').Text 'reordered'
     Assert-Equal 'Ctrl+F5' (ConvertFrom-HotkeyString 'CONTROL+f5').Text 'alias and case'
     Assert-Equal 'Ctrl+Alt+Shift+Win+F2' (ConvertFrom-HotkeyString 'win+shift+alt+ctrl+F2').Text 'all four'

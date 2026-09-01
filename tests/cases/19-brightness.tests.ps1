@@ -1,4 +1,4 @@
-﻿# --- яркость ----------------------------------------------------------------
+﻿# --- brightness -------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'brightness and contrast as part of a mode' -ForegroundColor White
@@ -27,7 +27,7 @@ Test-Case 'levels: a display named by its short id is found too' {
 }
 
 Test-Case 'levels: numbers outside 0..100 are clamped, not obeyed' {
-    # Опечатка в настройках не должна уводить монитор в чёрный.
+    # A typo in the settings must not take a monitor to black.
     $plan = Get-LevelPlan -Setting 500 -Wanted $script:LevelWanted
     Assert-Equal 100 $plan['XG27AQDMGR'] 'above the range'
     $plan = Get-LevelPlan -Setting -20 -Wanted $script:LevelWanted

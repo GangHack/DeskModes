@@ -1,15 +1,15 @@
-﻿# --- имя комбинации — это её ключ -------------------------------------------
-# Комбинацию можно стереть из файла рукой, а её клавишу, яркость, звук и команды
-# оставить: они лежат под ключом `combo:<имя>`, и окно показывает их строкой-
-# сиротой. Завести комбинацию с тем же именем — значит занять тот самый ключ.
-# Звук и команды достаются ей в любом случае, поэтому клавиша с яркостью обязаны
-# и достаться, и БЫТЬ ВИДНЫ: пустые поля редактора молча стирали две настройки из
-# четырёх, а сохранённая клавиша сироты вдобавок считалась чужой.
+﻿# --- a combo's name IS its key ----------------------------------------------
+# A combo can be wiped out of the file by hand while its shortcut, brightness, audio and commands are
+# left behind: they sit under the key `combo:<name>`, and the window shows them as an orphan row.
+# Creating a combo with the same name means claiming that very key. The audio and the commands go to it
+# in any case, so the shortcut and the brightness have both to go to it and to BE VISIBLE: empty editor
+# fields used to erase two settings out of four silently, and a saved orphan's shortcut was counted as
+# somebody else's on top of that.
 
 Write-Host ''
 Write-Host 'a name that was already used once' -ForegroundColor White
 
-# Настройки-сироты: комбинации Movie нет, а всё, что к ней было привязано, есть.
+# Orphan settings: there is no Movie combo, but everything that was tied to it is there.
 function New-OrphanSettings {
     $s = Get-DefaultSettings
     $s.brightness['combo:Movie'] = 55
@@ -39,9 +39,8 @@ Test-Case 'orphan: a new combination with that name is shown what it inherits' {
 }
 
 Test-Case 'orphan: its own shortcut is not somebody else - the editor takes it' {
-    # Так это и ломалось: клавиша сироты считалась занятой, и редактор ссылался на
-    # режим, которого в окне нет и открыть который нельзя. Выйти можно было только
-    # удалив строку-сироту.
+    # This is how it used to break: an orphan's shortcut was counted as taken, and the editor referred to
+    # a mode that is not in the window and cannot be opened. The only way out was to delete the orphan row.
     $settings = New-OrphanSettings
     $ui = New-DialogUi -Settings $settings
     try {
@@ -91,7 +90,7 @@ Test-Case 'orphan: what the person set himself beats what the name would bring' 
         $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State `
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Dark $false
         try {
-            # Сначала своя клавиша и своя яркость, и только потом имя.
+            # First its own shortcut and its own brightness, and only then the name.
             $ed.HotkeyBox.Text = 'Ctrl+Alt+F7'
             $ed.LevelKindBox.SelectedIndex = 1
             $ed.LevelOneSlider.Value = 20
@@ -105,8 +104,8 @@ Test-Case 'orphan: what the person set himself beats what the name would bring' 
 }
 
 Test-Case 'orphan: renaming a combination onto that name does not wipe the shortcut' {
-    # Тот же путь с другой стороны: у комбинации своей клавиши нет, а у имени, в
-    # которое её переименовали, — есть. Пустое поле редактора не должно её снять.
+    # The same path from the other side: the combo has no shortcut of its own, while the name it was
+    # renamed to does. An empty editor field must not clear it.
     $settings = New-OrphanSettings
     $settings.hotkeys.Remove('combo:Movie')
     $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }

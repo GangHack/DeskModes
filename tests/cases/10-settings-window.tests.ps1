@@ -1,15 +1,15 @@
-﻿# --- окно настроек ----------------------------------------------------------
-# Окно теперь WPF и собирается БЕЗ показа: New-SettingsWindow строит дерево
-# элементов, а Read-SettingsFromUi — настоящая ветка Save — читает его. ShowDialog
-# в тестах не зовётся вовсе, поэтому непроверенным остаётся только сам показ.
-# Жать Save таймером в настоящем показанном окне не нужно: сохранение вынесено в
-# чистую функцию, и тесты не мигают окном.
+﻿# --- the Settings window ----------------------------------------------------
+# The window is WPF now and is built WITHOUT being shown: New-SettingsWindow builds the element
+# tree, and Read-SettingsFromUi — the real Save branch — reads it. ShowDialog is not called in the
+# tests at all, so the only thing left untested is the showing itself. There is no need to press
+# Save on a timer in a real shown window: the saving is lifted into a pure function, and the tests
+# do not flash a window.
 
 Write-Host ''
 Write-Host 'the settings window' -ForegroundColor White
 
 Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
-    # Ветка сохранения — настоящая функция, и проверяется она сама, а не её пересказ.
+    # The save branch is the real function, and it is what gets tested rather than a retelling of it.
     $settings = Get-DefaultSettings
     $settings.hotkeys['solo:LG ULTRAGEAR'] = 'Ctrl+Alt+F1'
     $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
@@ -26,9 +26,9 @@ Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
         Assert-True $got.Ok 'the save was accepted'
         $updated = $got.Settings
 
-        # XG27AQDMGR сейчас не подключён — его место в ряду обязано выжить.
+        # The XG27AQDMGR is not connected right now — its place in the row has to survive.
         Assert-Equal @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR') @($updated.layout) 'layout survived, absent display included'
-        # Звезда стояла по шаблону ULTRAGEAR — в файл уезжает точное название.
+        # The star was set by the ULTRAGEAR pattern — the exact name is what leaves for the file.
         Assert-Equal 'LG ULTRAGEAR' $updated.primary 'primary written as the exact name'
         Assert-Equal 'ULTRAFINE' $updated.audio['combo:Work'] 'audio survived'
         Assert-Equal 'x.cmd' $updated.hooks['combo:Work'].after 'the command survived'
@@ -44,7 +44,7 @@ Test-Case 'dialog: settings tied to modes keep mode order so Save does not shuff
         [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Patterns = @('A', 'B'); Available = $true }
         [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     )
-    # Порядок в файле — какой попало: окно обязано выстроить его по режимам.
+    # The order in the file is any old order: the window has to line it up by the modes.
     $settings = Get-DefaultSettings
     $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
     $settings.hotkeys['combo:Work'] = 'Ctrl+Alt+F3'
@@ -83,7 +83,7 @@ Test-Case 'dialog: moving a desk card changes the saved order' {
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($got.Settings.layout) 'the card really moved'
 
-        # За край ряда карточка не двигается и не теряется.
+        # A card does not move past the end of the row and does not get lost.
         Move-DeskCard -Panel $ui.DeskPanel -Card $first -Delta 5
         Assert-Equal 2 $ui.DeskPanel.Children.Count 'nothing lost at the edge'
     }
@@ -123,7 +123,7 @@ Test-Case 'dialog: renaming a combination carries its shortcut and audio' {
 
     $ui = New-DialogUi -Settings $settings
     try {
-        # Ровно то, что возвращает редактор режима по кнопке Save.
+        # Exactly what the mode editor hands back from its Save button.
         $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Cinema'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = 'LG ULTRAFINE'
@@ -156,7 +156,7 @@ Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shor
         foreach ($cb in $ed.Checks) { $byTag[[string]$cb.Tag] = [bool]$cb.IsChecked }
         Assert-True $byTag['LG ULTRAGEAR'] 'matched display ticked'
         Assert-True (-not $byTag['LG ULTRAFINE']) 'unrelated display not ticked'
-        # Монитор увезли, но выбрасывать его из комбинации молча нельзя.
+        # The monitor was taken away, but throwing it out of the combo silently is not allowed.
         Assert-True $byTag['GONE PANEL'] 'a pattern with no display kept as its own ticked row'
         Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem) 'taskbar pick found by pattern'
         Assert-Equal 'Ctrl+Alt+F9' $ed.HotkeyBox.Text 'shortcut prefilled'
@@ -175,9 +175,9 @@ Test-Case 'dialog: the editor shows no-shortcut for rubbish instead of pretendin
 }
 
 Test-Case 'dialog: a shortcut can be removed, and the mode row stays' {
-    # «Клавиши не убираются» — так это выглядело, когда снять привязку можно было
-    # только Backspace'ом по мелкой строчке-подсказке. Теперь она снимается в
-    # редакторе режима, и пустой ответ редактора обязан её убрать.
+    # "The shortcuts will not come off" — that is how it looked when a binding could only be cleared
+    # with Backspace on a tiny hint line. Now it comes off in the mode editor, and an empty answer
+    # from the editor has to remove it.
     $settings = Get-DefaultSettings
     $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
     $ui = New-DialogUi -Settings $settings
@@ -190,8 +190,8 @@ Test-Case 'dialog: a shortcut can be removed, and the mode row stays' {
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True $got.Ok 'saved'
         Assert-True (-not $got.Settings.hotkeys.Contains('all')) 'the binding is gone from the file'
-        # А сама строка режима осталась: режимы не удаляются здесь, они следуют из
-        # мониторов и комбинаций.
+        # And the mode's row itself stayed: modes are not deleted here, they follow from the monitors
+        # and the combos.
         Assert-Equal 3 $ui.ModesPanel.Children.Count 'two displays and all of them are still listed'
     }
     finally { $ui.Window.Close() }
@@ -215,14 +215,14 @@ Test-Case 'dialog: a shortcut picked in the mode editor lands on the mode' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
     try {
-        # Ровно то, что возвращает редактор по Save, вместе с клавишей.
+        # Exactly what the editor hands back on Save, together with the shortcut.
         Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited ([pscustomobject]@{
             Name = 'Movie'; Patterns = @('LG ULTRAGEAR'); Primary = ''; Hotkey = 'Ctrl+Alt+F7' })
         Assert-Equal 'Ctrl+Alt+F7' $ui.Hotkeys['combo:Movie'] 'the mode got the keys'
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal 'Ctrl+Alt+F7' $got.Settings.hotkeys['combo:Movie'] 'and they save'
 
-        # Снять клавишу в редакторе — тоже правка, а не «оставить как было».
+        # Clearing a shortcut in the editor is an edit too, not "leave it as it was".
         $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Movie'; Patterns = @('LG ULTRAGEAR'); Primary = ''; Hotkey = '' })
@@ -232,8 +232,8 @@ Test-Case 'dialog: a shortcut picked in the mode editor lands on the mode' {
 }
 
 Test-Case 'dialog: every mode row says what kind of mode it is' {
-    # Подпись отвечает на вопрос, почему у одной строки есть Remove, а у другой
-    # нет: режим монитора и «все» появляются сами, комбинацию создаёшь ты.
+    # The caption answers the question of why one row has a Remove and another does not: a monitor
+    # mode and "all" appear by themselves, a combo is something you create.
     $state = @(
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
@@ -251,8 +251,7 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
 }
 
 Test-Case 'dialog: every mode is set up in one place, and only combinations can be removed' {
-    # На каждый режим одна строка с кнопкой Edit, а Remove есть только у того, что
-    # человек завёл сам.
+    # One row per mode with an Edit button, and a Remove only on what a person created themselves.
     $settings = Get-DefaultSettings
     $settings.combos['Movie'] = [ordered]@{ displays = @('ULTRAGEAR'); primary = '' }
     $ui = New-DialogUi -Settings $settings
@@ -263,8 +262,7 @@ Test-Case 'dialog: every mode is set up in one place, and only combinations can 
         Assert-True ($null -ne $ui.ModesPanel) 'modes are the one place'
         Assert-True ($null -ne $ui.AddComboBtn) 'with a button to add a combination'
 
-        # solo:UG, solo:UF, combo:Movie, all — у каждой строки Edit, Remove только
-        # у комбинации.
+        # solo:UG, solo:UF, combo:Movie, all — every row has an Edit, and a Remove only on the combo.
         $buttons = @()
         foreach ($row in $ui.ModesPanel.Children) {
             $names = @($row.Children | Where-Object { $_ -is [System.Windows.Controls.Button] } | ForEach-Object { [string]$_.Content })
@@ -278,8 +276,8 @@ Test-Case 'dialog: every mode is set up in one place, and only combinations can 
 }
 
 Test-Case 'dialog: the cross clears a shortcut and greys itself out when there is nothing to clear' {
-    # Кнопка и поле находят друг друга через .Tag — без этого крестик молча не
-    # работал бы (замыкания в обработчиках теряют и функции, и $script:).
+    # The button and the field find each other through .Tag — without that the cross would silently
+    # not work (closures in handlers lose both functions and $script:).
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -TakenNames @() `
                                -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
@@ -293,7 +291,7 @@ Test-Case 'dialog: the cross clears a shortcut and greys itself out when there i
         Assert-Equal $script:NoHotkeyText $box.Text 'the click cleared the box'
         Assert-True (-not $clear.IsEnabled) 'and greyed itself out'
 
-        # Назначили снова — крестик снова живой (следит за полем, а не за кликами).
+        # Assigned again — the cross is alive again (it follows the field, not the clicks).
         $box.Text = 'Ctrl+Alt+F8'
         Assert-True $clear.IsEnabled 'awake again'
     }
@@ -304,31 +302,31 @@ Test-Case 'mode editor: what it reads, and every refusal' {
     $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState `
                                -TakenNames @('Movie') -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
     try {
-        # Пустое имя.
+        # An empty name.
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'no name is refused'
         Assert-True ($got.Problem -like '*name*') 'and says so'
 
-        # Имя занято.
+        # The name is taken.
         $ed.NameBox.Text = 'movie'
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'a taken name is refused, case aside'
         Assert-True ($got.Problem -like "*already exists*") 'and says so'
 
-        # Ни одного монитора.
+        # Not a single monitor.
         $ed.NameBox.Text = 'Cinema'
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'no displays is refused'
         Assert-True ($got.Problem -like '*at least one display*') 'and says so'
 
-        # Чужая клавиша.
+        # Somebody else's shortcut.
         $ed.Checks[0].IsChecked = $true
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'a shortcut owned by another mode is refused'
         Assert-True ($got.Problem -like "*already drives 'All displays'*") 'and names the mode holding it'
 
-        # Всё в порядке.
+        # Everything in order.
         $ed.HotkeyBox.Text = 'Ctrl+Alt+F6'
         $got = Read-ModeFromUi -Editor $ed
         Assert-True $got.Ok 'accepted'
@@ -345,7 +343,7 @@ Test-Case 'combo editor: the taskbar display must be one of the ticked ones' {
     try {
         $ed.NameBox.Text = 'Pair'
         $ed.Checks[0].IsChecked = $true
-        $ed.PrimaryBox.SelectedItem = [string]$ed.Checks[1].Tag   # не отмечен
+        $ed.PrimaryBox.SelectedItem = [string]$ed.Checks[1].Tag   # not ticked
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'refused'
         Assert-True ($got.Problem -like '*must be one of the ticked*') 'and says why'
@@ -384,7 +382,7 @@ Test-Case 'dialog: a binding without its display still gets a row' {
     try {
         Assert-True ($ui.Hotkeys.Contains('solo:GONE MONITOR')) 'orphan binding kept'
         Assert-Equal 'Ctrl+Alt+F8' $ui.Hotkeys['solo:GONE MONITOR'] 'with its combination shown'
-        # Строка-сирота есть в списке: снять привязку можно только отсюда.
+        # The orphan row is in the list: the binding can only be cleared from here.
         Assert-Equal 4 $ui.ModesPanel.Children.Count 'two displays, all of them, and the orphan'
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal 'Ctrl+Alt+F8' $got.Settings.hotkeys['solo:GONE MONITOR'] 'and it survives a save'
@@ -393,8 +391,8 @@ Test-Case 'dialog: a binding without its display still gets a row' {
 }
 
 Test-Case 'dialog: WPF modifier bits equal the RegisterHotKey bits' {
-    # Register-HotkeyCapture отдаёт [Keyboard]::Modifiers прямо в Format-HotkeyString,
-    # без перекодировки — это законно только пока номера битов совпадают.
+    # Register-HotkeyCapture hands [Keyboard]::Modifiers straight to Format-HotkeyString, with no
+    # re-encoding — which is only legitimate as long as the bit numbers coincide.
     Initialize-WpfRuntime
     Assert-Equal 1 ([int][System.Windows.Input.ModifierKeys]::Alt) 'Alt'
     Assert-Equal 2 ([int][System.Windows.Input.ModifierKeys]::Control) 'Ctrl'

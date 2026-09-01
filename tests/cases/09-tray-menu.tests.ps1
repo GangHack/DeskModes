@@ -1,14 +1,13 @@
-﻿# --- отрисовка меню трея ----------------------------------------------------
-# Два бага подряд были невидимы в коде и видны только в пикселях: базовый
-# ToolStripRenderer для ВЫКЛЮЧЕННОГО пункта подменяет наш цвет текста системным
-# GrayText, а картинку прогоняет через DrawImageDisabled. Строки раздела CONNECTED
-# DISPLAYS выключены намеренно (по ним нельзя щёлкать) — и весь раздел выцветал:
-# текст еле читался, а зелёная/янтарная/серая точки состояния превращались в три
-# одинаковых серых пятна.
+﻿# --- drawing the tray menu --------------------------------------------------
+# Two bugs in a row were invisible in the code and visible only in the pixels: for a DISABLED item
+# the base ToolStripRenderer substitutes the system GrayText for our text colour, and runs the image
+# through DrawImageDisabled. The rows of the CONNECTED DISPLAYS section are disabled deliberately
+# (they cannot be clicked) — and the whole section faded out: the text was barely readable, and the
+# green/amber/grey status dots turned into three identical grey smudges.
 #
-# Проверяем не «код на месте», а результат: рисуем настоящим отрисовщиком в
-# Bitmap через публичные DrawItemText/DrawItemImage (окна не нужно) и смотрим
-# пиксели. Верни base — тесты покраснеют.
+# What we check is not "the code is in place" but the result: we draw with the real renderer into a
+# Bitmap through the public DrawItemText/DrawItemImage (no window needed) and look at the pixels.
+# Put base back and the tests turn red.
 
 Write-Host ''
 Write-Host 'the tray menu renderer' -ForegroundColor White
@@ -26,7 +25,7 @@ function New-DisabledInfoItem {
     return $item
 }
 
-# Самый яркий и самый цветной пиксель — по ним и судим.
+# The brightest and the most colourful pixel — those are what we judge by.
 function Measure-Bitmap {
     param($Bitmap)
     $maxLum = 0; $bestGreen = -999
@@ -57,8 +56,8 @@ Test-Case 'menu: a disabled display row is drawn in our bright colour, not syste
         $renderer.DrawItemText($ev)
 
         $seen = Measure-Bitmap $bmp
-        # SystemColors.GrayText, которым рисует base, даёт яркость около 110.
-        # Наш _text (#F2F2F2) - выше 200. Порог между ними с большим запасом.
+        # SystemColors.GrayText, which base draws with, gives a brightness of about 110.
+        # Our _text (#F2F2F2) is above 200. The threshold between them has plenty of room.
         Assert-True ($seen.MaxLuminance -gt 170) "display name is bright (saw $($seen.MaxLuminance))"
         $font.Dispose()
     }
@@ -83,15 +82,15 @@ Test-Case 'menu: a status dot keeps its colour on a disabled row' {
         $renderer.DrawItemImage($ev)
 
         $seen = Measure-Bitmap $bmp
-        # DrawImageDisabled, которым рисует base, отдаёт серое: зелень уходит в 0.
+        # DrawImageDisabled, which base draws with, hands back grey: the green goes to 0.
         Assert-True ($seen.Greenness -gt 40) "the dot is still green (saw $($seen.Greenness))"
     }
     finally { $g.Dispose(); $bmp.Dispose(); $dot.Dispose() }
 }
 
 Test-Case 'menu: an unavailable mode stays readable too, just quieter' {
-    # Недоступный режим («not connected») тоже выключен, но он не info-строка:
-    # рисуется приглушённым тоном - и всё же не системным серым.
+    # An unavailable mode ("not connected") is disabled too, but it is not an info line: it is drawn
+    # in a dimmed tone - and still not in the system grey.
     $renderer = New-Object ModernMenuRenderer $true, ([System.Drawing.Color]::FromArgb(0x4C, 0xC2, 0xFF))
     $strip = New-Object System.Windows.Forms.ToolStrip
     $item = New-Object System.Windows.Forms.ToolStripMenuItem 'Only DELL U2720Q   (not connected)'

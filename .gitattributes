@@ -1,21 +1,20 @@
-# Одна конвенция концов строк на весь репозиторий.
+# One line-ending convention for the whole repository.
 #
-# Без этого файла раскол приезжает из истории и сам не исчезает: часть файлов
-# лежала с CRLF, часть с LF. Ничего не ломалось, но любой редактор с привычкой
-# «нормализовать при сохранении» переворачивал файл целиком, и в коммите
-# оказывались тысячи изменённых строк, среди которых прячется одна настоящая
-# правка. Второй случай — клон с core.autocrlf=true (это вариант по умолчанию в
-# установщике Git for Windows): тогда LF-файлы приезжают как CRLF, и первое же
-# сохранение выглядит как полная перезапись.
+# Without this file the split arrives out of the history and does not go away by itself: some files
+# were stored with CRLF and some with LF. Nothing broke, but any editor with a habit of
+# "normalising on save" turned a file over whole, and a commit ended up with thousands of changed
+# lines with one real edit hiding among them. The second case is a clone with core.autocrlf=true
+# (which is the default in the Git for Windows installer): then the LF files arrive as CRLF, and the
+# very first save looks like a complete rewrite.
 #
-# text=auto  — в репозитории всё хранится с LF: так диффы и слияния не зависят
-#              от платформы, и так принято на GitHub;
-# eol=crlf   — в рабочей копии всё выкладывается с CRLF: инструмент работает
-#              только на Windows, и это его родная конвенция.
+# text=auto  — everything is stored with LF in the repository: that way diffs and merges do not
+#              depend on the platform, and that is the convention on GitHub;
+# eol=crlf   — everything is checked out with CRLF in the working copy: the tool only works on
+#              Windows, and that is its native convention.
 * text=auto eol=crlf
 
-# Иконка — двоичный файл, ей переводы строк противопоказаны. Git и сам это
-# определяет, но лучше сказать прямо, чем полагаться на угадывание.
+# The icon is a binary file, and line-ending translation is bad for it. Git works this out by itself,
+# but saying so outright is better than relying on guesswork.
 *.ico binary
 *.png binary
 *.dll binary

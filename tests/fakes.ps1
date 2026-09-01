@@ -1,14 +1,14 @@
 ﻿<#
-    tests\fakes.ps1 — подделки, которые нужны больше чем одной группе случаев.
+    tests\fakes.ps1 — the fakes that more than one group of cases needs.
 
-    Тесты не должны зависеть от того, что сейчас на столе, и не должны
-    показывать окон. Всё, что нужно только одной группе, живёт в её файле в
-    cases/ — здесь только общее.
+    The tests must not depend on what is on the desk right now, and must not show any windows.
+    Everything that only one group needs lives in that group's file under cases/ — only what is
+    shared is here.
 #>
 
-# Фиктивные мониторы: тесты не должны зависеть от того, что сейчас на столе.
-# Поля ровно те, что отдаёт Get-DisplayState: фальшивка не должна знать о полях,
-# которых у настоящего состояния нет.
+# Fictional monitors: the tests must not depend on what is on the desk right now.
+# The fields are exactly the ones Get-DisplayState hands back: a fake must not know about fields
+# the real state does not have.
 function New-FakeMonitor {
     param([string]$Label, [string]$ShortId, [string]$Id = '',
           [bool]$Active = $true, [bool]$Disconnected = $false)
@@ -21,7 +21,7 @@ function New-FakeMonitor {
     }
 }
 
-# Настройки с комбинациями, одной строкой: их пишет почти каждый тест.
+# Settings with combos, in one line: almost every test writes them.
 function New-TestSettings {
     param([hashtable]$Combos = @{})
     $s = Get-DefaultSettings
@@ -37,14 +37,14 @@ function New-TestSettings {
     return $s
 }
 
-# Экран для расчёта раскладки: только те поля, по которым считают позиции.
+# A screen for working out the layout: only the fields the positions are computed from.
 function New-FakeScreen {
     param([string]$Path, [string]$Label, [int]$Width, [int]$Height)
     return [pscustomobject]@{ DevicePath = $Path; Label = $Label; Width = $Width; Height = $Height }
 }
 
-# Стол по умолчанию для окна настроек и его редакторов: два монитора, и обоих
-# хватает всем четырём группам, которые окно проверяют.
+# The default desk for the Settings window and its editors: two monitors, and both are enough for
+# all four groups that test the window.
 $script:DlgState = @(
     (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
     (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')

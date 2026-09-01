@@ -1,4 +1,4 @@
-﻿# --- команды вокруг переключения --------------------------------------------
+﻿# --- commands around a switch -----------------------------------------------
 
 Write-Host ''
 Write-Host 'the commands around a switch' -ForegroundColor White

@@ -1,9 +1,9 @@
-﻿# --- стол одним переходом ---------------------------------------------------
-# Переключение с изменением набора экранов перестраивало стол трижды: набор,
-# потом позиции, потом частоты. Каждый переход замораживает ввод — курсор замирал
-# и «выстреливал» вперёд. Здесь прибито то, из чего собран единый переход:
-# раскладка считается одинаково для обоих путей, целевой режим находится даже для
-# спящего монитора, а отказ системы не теряет переключение.
+﻿# --- the desk in one transition ---------------------------------------------
+# A switch that changed the set of screens used to rebuild the desk three times: the set, then the
+# positions, then the refresh rates. Every transition freezes input — the cursor stalled and then
+# "shot" forward. What is nailed down here is what the single transition is assembled from: the
+# layout is worked out identically for both paths, a target mode is found even for a sleeping
+# monitor, and a refusal from the system does not lose the switch.
 
 Write-Host ''
 Write-Host 'one desktop transition instead of three' -ForegroundColor White
@@ -13,16 +13,16 @@ Test-Case 'layout math: displays line up left to right in the settings order' {
         (New-FakeScreen 'p-ug' 'LG ULTRAGEAR' 2560 1440)
         (New-FakeScreen 'p-uf' 'LG ULTRAFINE' 3840 2160)
     )
-    # Порядок обратный списку экранов: считаться должен ПОРЯДОК, а не то, в каком
-    # виде мониторы отдала система.
+    # The order is the reverse of the screen list: what has to count is the ORDER, not the shape the
+    # system handed the monitors back in.
     $pos = Get-LayoutPositions -Screens $screens -Order @('ULTRAFINE', 'ULTRAGEAR') -PrimaryPath 'p-uf'
     Assert-Equal 0 $pos['p-uf'].X 'primary sits at the origin'
     Assert-Equal 3840 $pos['p-ug'].X 'the next one starts where the first ends'
 }
 
 Test-Case 'layout math: the primary display lands at (0,0), whatever its place' {
-    # Основной в Windows — не флаг, а место: левый верхний угол в начале
-    # координат. Стоит он справа — значит вся раскладка уезжает в минус.
+    # In Windows the primary is not a flag but a place: the top-left corner at the coordinate origin.
+    # It stands on the right — so the whole layout goes into the negative.
     $screens = @(
         (New-FakeScreen 'p-uf' 'LG ULTRAFINE' 3840 2160)
         (New-FakeScreen 'p-ug' 'LG ULTRAGEAR' 2560 1440)
@@ -34,8 +34,8 @@ Test-Case 'layout math: the primary display lands at (0,0), whatever its place' 
 }
 
 Test-Case 'layout math: different heights are centred, not top-aligned' {
-    # По верху внизу высокого монитора остаётся полоса, из которой курсор не может
-    # перейти на соседний — ровно то, обо что человек спотыкается мышкой.
+    # Aligned at the top, a strip is left at the bottom of the tall monitor that the cursor cannot
+    # cross to the neighbour from — exactly what a person stumbles over with the mouse.
     $screens = @(
         (New-FakeScreen 'p-tall'  'TALL'  1000 2000)
         (New-FakeScreen 'p-short' 'SHORT' 1000 1000)
@@ -56,8 +56,8 @@ Test-Case 'layout math: a display missing from the order goes last' {
 }
 
 Test-Case 'layout math: partial names match, as everywhere else in the settings' {
-    # «UltraGear» обязан находить «LG ULTRAGEAR»: система знает мониторы короче,
-    # чем люди, и это правило общее для layout, primary и состава комбинаций.
+    # "UltraGear" has to find "LG ULTRAGEAR": the system knows monitors by shorter names than people
+    # do, and this rule is shared by layout, primary and a combo's membership.
     $screens = @(
         (New-FakeScreen 'p-ug' 'LG ULTRAGEAR' 2560 1440)
         (New-FakeScreen 'p-xg' 'XG27AQDMGR'   2560 1440)
@@ -77,8 +77,8 @@ Test-Case 'targets: an active display goes to its best mode' {
 }
 
 Test-Case 'targets: a sleeping display takes its mode from the cache' {
-    # Главный случай: монитор погашен, EnumDisplaySettings по нему молчит, и без
-    # кэша частоту пришлось бы править вторым перестроением стола.
+    # The main case: the monitor is out, EnumDisplaySettings says nothing about it, and without the
+    # cache the refresh rate would have to be fixed by a second rebuild of the desk.
     $m = New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D' 'p-xg' $false
     $m.BestMode = $null
     $cache = @{ 'p-xg' = [pscustomobject]@{
@@ -91,9 +91,9 @@ Test-Case 'targets: a sleeping display takes its mode from the cache' {
 }
 
 Test-Case 'targets: an exact rate is asked for only when it belongs to that mode' {
-    # 144 Гц в кэше и просят 240 — дроби для 240 у нас нет. Просить «240/1»
-    # нельзя: CCD отвергает такой запрос целиком (validate -> 1610),
-    # и вместе с частотой терялись бы разрешение и раскладка.
+    # 144 Hz is in the cache and 240 is being asked for — we have no fraction for 240. Asking for
+    # "240/1" is not allowed: CCD rejects such a request entirely (validate -> 1610), and the
+    # resolution and the layout would be lost along with the refresh rate.
     $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
     $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 240 }
     $cache = @{ 'p-ug' = [pscustomobject]@{
@@ -122,8 +122,8 @@ Test-Case 'targets: without a cache a sleeping display falls back to its EDID si
 }
 
 Test-Case 'targets: nothing known about a display drops the whole set' {
-    # Мешать заданные режимы с незаданными в одном запросе значит гадать, что
-    # система сделает с остатком. Такой набор целиком уходит старой дорогой.
+    # Mixing specified modes with unspecified ones in one request means guessing what the system will
+    # do with the remainder. Such a set goes the old road whole.
     $known = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
     $known.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 240 }
     $blank = New-FakeMonitor 'MYSTERY' 'XXX0000' 'p-x' $false
@@ -140,16 +140,16 @@ Test-Case 'targets: -KeepMode leaves the mode alone' {
 }
 
 Test-Case 'already best: every display sitting in its maximum mode' {
-    # Третья проверка «уже сделано»: на ней стоит пропуск перечисления выходов и
-    # двух запросов режима на каждый монитор при повторном нажатии хоткея.
+    # The third "already done" check: skipping the output enumeration and two mode queries per monitor
+    # on a repeat press of the shortcut rests on it.
     $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
     $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
     Assert-True (Test-ModesAlreadyBest @($m)) 'current mode equals the best one'
 }
 
 Test-Case 'already best: a lower refresh rate is not "already best"' {
-    # Ровно тот случай, ради которого сторож частоты и существует: разрешение то
-    # же, а герцы Windows уронила.
+    # Exactly the case the refresh-rate watchdog exists for: the resolution is the same, and Windows
+    # dropped the hertz.
     $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'p-ug'
     $m.Hz = 60
     $m.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
@@ -157,8 +157,8 @@ Test-Case 'already best: a lower refresh rate is not "already best"' {
 }
 
 Test-Case 'already best: a display that is off or has no best mode is not' {
-    # У только что проснувшегося монитора BestMode ещё $null — перебор режимов
-    # обязан состояться, иначе он останется на частоте из реестра Windows.
+    # For a monitor that has just woken, BestMode is still $null — the pass over the modes has to
+    # happen, or it will stay at the refresh rate out of the Windows registry.
     $off = New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D' 'p-xg' $false
     $off.BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
     Assert-True (-not (Test-ModesAlreadyBest @($off))) 'a dark display proves nothing'
@@ -178,8 +178,8 @@ Test-Case 'already best: one display out of three is enough to spoil it' {
 }
 
 Test-Case 'full config: the refresh rate is dropped before the whole switch is' {
-    # У ASUS частота 240 не записывается вообще, у ULTRAGEAR по HDMI её нет —
-    # отказ по герцам не повод терять разрешения и раскладку.
+    # On the ASUS a 240 refresh rate is not written at all, and on the ULTRAGEAR over HDMI it does not
+    # exist — a refusal over hertz is no reason to lose the resolutions and the layout.
     $script:FullCalls = @()
     function Invoke-CcdFullConfigAttempt {
         param($Targets, [string]$PrimaryPath, [string[]]$Order, [switch]$WithHz)
@@ -219,8 +219,8 @@ Test-Case 'full config: no exact rate means no pointless first attempt' {
 }
 
 Test-Case 'full config: a refused transition is reported, not swallowed' {
-    # Провал обязан вернуться наверх: там переключение уходит на старую дорогу из
-    # трёх шагов. Молчаливое «да» оставило бы человека с чёрным экраном.
+    # The failure has to come back up: there the switch goes to the old road of three steps. A silent
+    # "yes" would leave a person with a black screen.
     function Invoke-CcdFullConfigAttempt {
         param($Targets, [string]$PrimaryPath, [string[]]$Order, [switch]$WithHz)
         return $false
@@ -235,10 +235,31 @@ Test-Case 'full config: a target without a size is refused before Windows sees i
 }
 
 Test-Case 'full config: no display order in the settings means the long way round' {
-    # Задавая стол целиком, координаты приходится назвать каждому экрану — и без
-    # порядка из настроек мы расставили бы мониторы по алфавиту там, где человек
-    # об этом не просил. Старый путь в этом случае честнее: он двигает только
-    # основной монитор.
+    # Setting the whole desk means naming coordinates for every screen — and without the order out of
+    # the settings we would arrange the monitors alphabetically where nobody asked us to. The old path
+    # is more honest in that case: it moves only the primary monitor.
+    $script:FullCalls = @()
+    function Invoke-CcdFullConfigAttempt {
+        param($Targets, [string]$PrimaryPath, [string[]]$Order, [switch]$WithHz)
+        $script:FullCalls += [bool]$WithHz
+        return $true
+    }
+    # TWO screens, because that is where the question arises at all: with two of them somebody has to
+    # stand on the left, and only the settings know who.
+    $targets = @(
+        [pscustomobject]@{ DevicePath = 'p-a'; Label = 'A'; Width = 2560; Height = 1440
+                           Hz = 144; RateNum = 143999; RateDen = 1000 }
+        [pscustomobject]@{ DevicePath = 'p-b'; Label = 'B'; Width = 3840; Height = 2160
+                           Hz = 60; RateNum = 59997; RateDen = 1000 })
+    Assert-True (-not (Set-CcdFullConfig -Targets $targets -Order @())) 'refused without an order'
+    Assert-True (-not (Set-CcdFullConfig -Targets $targets -Order @('', $null))) 'blank names are not an order either'
+    Assert-Equal 0 $script:FullCalls.Count 'Windows was never asked'
+}
+
+Test-Case 'full config: one display needs no order - its place is the origin' {
+    # A solo mode is the mode pressed most often of all, and there is nothing to arrange one screen
+    # against: it stands at (0, 0) whatever anybody wrote in the settings. Refusing here sent every desk
+    # whose owner has never opened the Settings window down the three-transition road for no reason.
     $script:FullCalls = @()
     function Invoke-CcdFullConfigAttempt {
         param($Targets, [string]$PrimaryPath, [string[]]$Order, [switch]$WithHz)
@@ -247,9 +268,8 @@ Test-Case 'full config: no display order in the settings means the long way roun
     }
     $targets = @([pscustomobject]@{ DevicePath = 'p'; Label = 'A'; Width = 2560; Height = 1440
                                     Hz = 144; RateNum = 143999; RateDen = 1000 })
-    Assert-True (-not (Set-CcdFullConfig -Targets $targets -Order @())) 'refused without an order'
-    Assert-True (-not (Set-CcdFullConfig -Targets $targets -Order @('', $null))) 'blank names are not an order either'
-    Assert-Equal 0 $script:FullCalls.Count 'Windows was never asked'
+    Assert-True (Set-CcdFullConfig -Targets $targets -Order @()) 'the one-call road is taken'
+    Assert-Equal 1 $script:FullCalls.Count 'and Windows was asked exactly once'
 }
 
 Test-Case 'mode cache: what a display showed comes back next time' {
@@ -264,8 +284,8 @@ Test-Case 'mode cache: what a display showed comes back next time' {
 }
 
 Test-Case 'mode cache: a display absent from this switch keeps its entry' {
-    # Иначе соло-режим стирал бы память об остальных мониторах, и они снова
-    # просыпались бы на чужой частоте.
+    # Otherwise a solo mode would erase the memory of the other monitors, and they would wake up at
+    # somebody else's refresh rate again.
     Remove-Item $script:ModeCacheFile -Force -ErrorAction SilentlyContinue
     Save-ModeCache -Modes @{ 'p-ug' = [pscustomobject]@{
         Width = 2560; Height = 1440; Hz = 144; RateNum = 143999; RateDen = 1000 } }
@@ -277,8 +297,8 @@ Test-Case 'mode cache: a display absent from this switch keeps its entry' {
 }
 
 Test-Case 'mode cache: an entry without a fraction reads as no fraction, not as junk' {
-    # Такие записи будут: монитор мог не отдать частоту вовсе. Ноль здесь честнее
-    # выдумки — тогда частоту выбирает система.
+    # Such records will happen: the monitor may not have given a refresh rate at all. A zero here is
+    # more honest than an invention — then the system chooses the rate.
     Set-Content -Path $script:ModeCacheFile -Encoding UTF8 `
         -Value '{"p-ug":{"w":2560,"h":1440,"hz":144}}'
     $back = Get-ModeCache
@@ -306,8 +326,7 @@ Test-Case 'verdict: clean success' {
 }
 
 Test-Case 'verdict: a failed layout is not a success' {
-    # Иначе трей показывает зелёное «Displays switched», хотя мониторы стоят не в
-    # том порядке.
+    # Otherwise the tray shows a green "Displays switched" while the monitors stand in the wrong order.
     $v = Format-SwitchResult -Summary @('A') -LayoutFailed $true
     Assert-True (-not $v.Ok) 'not ok'
     Assert-True ($v.Text -like '*positions not arranged*') 'says what went wrong'
@@ -324,8 +343,7 @@ Test-Case 'verdict: every problem lands in the text' {
 }
 
 Test-Case 'verdict: problems without a summary still read as a sentence' {
-    # Пустая сводка бывает, когда ни один монитор не прицепился; текст не должен
-    # начинаться с точки.
+    # An empty summary happens when not one monitor attached; the text must not begin with a full stop.
     $v = Format-SwitchResult -Summary @() -Failed @('B')
     Assert-True (-not $v.Ok) 'not ok'
     Assert-True ($v.Text -like 'did not come up*') 'starts with the problem, not punctuation'
@@ -337,7 +355,7 @@ Test-Case 'phases: breakdown keeps switch order and drops the invisible' {
 }
 
 Test-Case 'phases: a quiet switch prints nothing at all' {
-    # Иначе каждый no-op тащил бы в done: хвост из нулей.
+    # Otherwise every no-op would drag a tail of zeroes into done:.
     Assert-Equal '' ([string](Format-PhaseTimes ([ordered]@{ apply = 0.01 }))) 'all quiet - empty'
     Assert-Equal '' ([string](Format-PhaseTimes $null)) 'no phases at all is fine too'
 }

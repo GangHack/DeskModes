@@ -1,4 +1,4 @@
-﻿# --- ключ раскладки столов --------------------------------------------------
+﻿# --- the desk-layout key ----------------------------------------------------
 
 Write-Host ''
 Write-Host 'window layout keys' -ForegroundColor White

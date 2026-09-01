@@ -1,6 +1,6 @@
-﻿# --- правила ----------------------------------------------------------------
-# Живьём это проверяется запуском игры и двадцатиминутным ожиданием, поэтому
-# решение отделено от исполнения и проверяется здесь целиком.
+﻿# --- rules ------------------------------------------------------------------
+# Live, this is tested by starting a game and waiting twenty minutes, so the decision is separated
+# from carrying it out and is tested here in full.
 
 Write-Host ''
 Write-Host 'rules' -ForegroundColor White
@@ -76,8 +76,8 @@ Test-Case 'rule: already in that mode means there is nothing to take over' {
 }
 
 Test-Case 'rule: no way back means we do not go' {
-    # Текущий набор экранов не совпал ни с одним режимом: уйти можно, вернуться
-    # некуда. Это тот случай, ради которого решение отделено от действия.
+    # The current set of screens matched no mode: leaving is possible, going back is not. This is the
+    # case the decision is separated from the action for.
     $rules = @((New-TestRule -Process 'cs2' -Mode 'solo:B'))
     $d = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode ''
     Assert-Equal 'blocked' $d.Action 'refused'

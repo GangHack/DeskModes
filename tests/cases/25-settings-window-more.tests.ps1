@@ -1,4 +1,4 @@
-﻿# --- окно настроек: новое ---------------------------------------------------
+﻿# --- the Settings window: what is new ---------------------------------------
 
 Write-Host ''
 Write-Host 'the settings window, the new parts' -ForegroundColor White
@@ -41,8 +41,8 @@ Test-Case 'dialog: renaming a combination carries its command and brightness' {
     $settings.brightness['combo:Work'] = 55
     $ui = New-DialogUi -Settings $settings
     try {
-        # Через редактор режима, как в живом окне: команда переезжает на Save по
-        # карте переименований, а яркость — сразу, вместе с правкой.
+        # Through the mode editor, as in the live window: the command moves on Save by the rename map,
+        # while the brightness moves at once, along with the edit.
         $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
         Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
             Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = ''
@@ -70,8 +70,8 @@ Test-Case 'dialog: removing a combination takes its command and brightness along
     finally { $ui.Window.Close() }
 }
 
-# Сам переезд ключей — чистыми функциями, отдельно от окна: их три штуки на
-# четыре настройки, и проверять их через сборку WPF-дерева дороже и мутнее.
+# The key moving itself goes through pure functions, separately from the window: there are three of
+# them for four settings, and testing them by building a WPF tree is both dearer and murkier.
 
 Test-Case 'mode keys: a rename moves the entry and keeps the file order' {
     $renames = Get-ComboRenames -Combos @(
@@ -93,8 +93,8 @@ Test-Case 'mode keys: a removed combination takes its entry with it' {
 }
 
 Test-Case 'mode keys: an occupied new key keeps its own value' {
-    # Своё значение у занятого ключа важнее переезжающего: молча выбросить одно из
-    # двух хуже, чем оставить то, что уже там.
+    # A value of its own on a taken key matters more than the one moving: silently throwing one of the
+    # two away is worse than keeping what is already there.
     $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'B'; OriginalName = 'A' })
     $moved = Move-ModeKeyedEntries -Source ([ordered]@{ 'combo:A' = 1; 'combo:B' = 2 }) -Renames $renames
     Assert-Equal 2 $moved['combo:B'] 'the value that was already there'
@@ -102,8 +102,8 @@ Test-Case 'mode keys: an occupied new key keeps its own value' {
 }
 
 Test-Case 'mode keys: a chain of renames is applied in the order of the list' {
-    # «A» переименовали в «B», а «B» — в «C». Порядок применения тут значим,
-    # поэтому словарь переименований упорядоченный, а не хэш-таблица.
+    # "A" was renamed to "B", and "B" to "C". The order of application matters here, which is why the
+    # rename dictionary is ordered rather than a hash table.
     $renames = Get-ComboRenames -Combos @(
         [pscustomobject]@{ Name = 'C'; OriginalName = 'B' }
         [pscustomobject]@{ Name = 'B'; OriginalName = 'A' }
@@ -125,7 +125,7 @@ Test-Case 'mode keys: a rule whose mode is gone is dropped, a way back is only c
 }
 
 Test-Case 'mode keys: rules survive as objects, not just dictionaries' {
-    # Из ConvertFrom-Json правила приезжают PSCustomObject'ами.
+    # Out of ConvertFrom-Json the rules arrive as PSCustomObjects.
     $rules = @([pscustomobject]@{ when = 'process'; process = 'cs2'; mode = 'combo:Work'; back = 'all' })
     $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'Office'; OriginalName = 'Work' })
     $left = @(Move-RuleModeKeys -Rules $rules -Renames $renames)
@@ -134,11 +134,10 @@ Test-Case 'mode keys: rules survive as objects, not just dictionaries' {
     Assert-Equal 'cs2' ([string]$left[0].process) 'the rest of the rule came along'
 }
 
-# Правила и «монитор появился» держат те же ключи режимов, и переименование в
-# окне обязано доехать и до них. Иначе правило каждые пятнадцать секунд уходило
-# бы в режим, которого больше нет, а переключение отвечало бы «combination no
-# longer exists» — то же место, из-за которого этот переезд делает и
-# Update-HotkeyKeys.
+# The rules and "a monitor came up" hold the same mode keys, and a rename in the window has to reach
+# them too. Otherwise a rule would head every fifteen seconds for a mode that no longer exists, and a
+# switch would answer "combination no longer exists" — the same place Update-HotkeyKeys makes this
+# same move for.
 
 Test-Case 'dialog: renaming a combination carries its rules along' {
     $settings = Get-DefaultSettings
@@ -172,8 +171,8 @@ Test-Case 'dialog: removing a combination takes its rules along' {
     try {
         Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
-        # Первое правило уходить некуда — оно больше не правило. Второму пропал
-        # только возврат, и пустой возврат законен: «туда, где стол был до».
+        # The first rule has nowhere to go — it is no longer a rule. The second lost only its return,
+        # and an empty return is legitimate: "to wherever the desk was before".
         Assert-Equal 1 @($updated.rules).Count 'the rule with nowhere to go is gone'
         Assert-Equal 'all' ([string]$updated.rules[0].mode) 'the other one stayed'
         Assert-Equal '' ([string]$updated.rules[0].back) 'without its way back'
@@ -183,8 +182,8 @@ Test-Case 'dialog: removing a combination takes its rules along' {
 }
 
 Test-Case 'dialog: a save leaves the rules the tray is living with alone' {
-    # $updated — копия: неудачная запись на диск не должна оставлять три разные
-    # версии настроек (в памяти, на диске и в зарегистрированных клавишах).
+    # $updated is a copy: a failed write to disk must not leave three different versions of the
+    # settings (in memory, on disk, and in the registered shortcuts).
     $settings = Get-DefaultSettings
     $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
     $settings.rules = @([ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = ''; enabled = $true })

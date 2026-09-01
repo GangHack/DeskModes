@@ -1,7 +1,7 @@
-﻿# --- настройки: новые ключи -------------------------------------------------
-# Разбор настроек — единственное место, куда попадает написанное рукой, и правил
-# сокращённой записи здесь больше, чем кажется: число вместо словаря, строка
-# вместо объекта, отсутствие ключа вместо значения по умолчанию.
+﻿# --- the settings: the new keys ---------------------------------------------
+# Parsing the settings is the one place what was written by hand reaches, and there are more rules of
+# shorthand here than it seems: a number instead of a dictionary, a string instead of an object, a
+# missing key instead of a default value.
 
 Write-Host ''
 Write-Host 'the new settings keys' -ForegroundColor White
@@ -37,8 +37,8 @@ Test-Case 'settings: rules read in file order, with their defaults' {
     Assert-Equal 'combo:Work' $s.rules[1].back 'where to go back to'
 }
 
-# Разбор каждой формы записи — чистыми функциями, по одной на форму. Файл правят
-# руками, поэтому «не разобралось» обязано означать «настройки нет», а не падение.
+# Each form of entry is parsed by pure functions, one per form. The file gets edited by hand, so "it
+# did not parse" has to mean "there is no such setting" rather than a crash.
 
 Test-Case 'parse: a combination in all three spellings comes out the same shape' {
     $full = ConvertTo-ComboSetting ([pscustomobject]@{ displays = @('A', 'B'); primary = 'A' })
@@ -79,8 +79,8 @@ Test-Case 'parse: a level is a number or a map, and junk is neither' {
 }
 
 Test-Case 'parse: rules always come out as a list, even a list of one' {
-    # Функция, вернувшая массив из одного элемента, отдаёт его СКАЛЯРОМ — поэтому
-    # вызывающий обязан обернуть её в @(). Иначе $s.rules[0] перестаёт существовать.
+    # A function that returned a single-element array hands it back as a SCALAR — which is why the
+    # caller has to wrap it in @(). Otherwise $s.rules[0] stops existing.
     $one = @(ConvertTo-RuleSettings @([pscustomobject]@{ process = 'cs2'; mode = 'all' }))
     Assert-Equal 1 $one.Count 'one rule'
     Assert-Equal 'process' ([string]$one[0].when) 'when defaults to process'
@@ -133,9 +133,8 @@ Test-Case 'settings: a damaged file still gives working defaults for the new key
 }
 
 Test-Case 'hotkeys: a display on a new input takes its levels and commands with it' {
-    # Тот же случай, что и с клавишей: монитор переехал на другой вход, ключ
-    # режима сменился. Яркость обязана переехать вместе с ним, иначе одна
-    # настройка разъедется на две половины.
+    # The same case as with the shortcut: the monitor moved to another input and the mode key changed.
+    # The brightness has to move with it, or one setting will come apart into two halves.
     $s = Get-DefaultSettings
     $s.hotkeys = [ordered]@{ 'solo:GSM5BB3' = 'Ctrl+Alt+F1' }
     $s.brightness = [ordered]@{ 'solo:GSM5BB3' = 55 }

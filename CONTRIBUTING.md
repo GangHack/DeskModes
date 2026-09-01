@@ -7,17 +7,17 @@ them.
 ## Read this first
 
 **[AGENTS.md](AGENTS.md)** — how things are done here and what people trip over.
-It is short, and every rule in it cost someone an evening: comments are Russian
-while the interface is English, display switching goes through the CCD API only,
+It is short, and every rule in it cost someone an evening: everything here is written in
+English, display switching goes through the CCD API only,
 a refresh rate is the driver's exact fraction, `.GetNewClosure()` is banned in
 event handlers. Read it before the first edit, whether you are a person or an
 agent.
 
-**[docs/notes.ru.md](docs/notes.ru.md)** — the engineering diary, in Russian: a
-day-by-day account of what Windows actually does, with measurements. When a
-decision in the code looks arbitrary, this is usually where the evening that
-produced it is written down. Section «Тупики, в которые не надо возвращаться»
-lists the dead ends, so you do not have to find them again.
+**[docs/notes.md](docs/notes.md)** — the engineering diary: a day-by-day account
+of what Windows actually does, with measurements. When a decision in the code
+looks arbitrary, this is usually where the evening that produced it is written
+down. The section "Dead ends not to go back to" lists them, so you do not have
+to find them again.
 
 ## One command decides whether you are done
 
@@ -106,7 +106,7 @@ rendering; the script has no switch for it.
 not a style choice. `README.md` ships inside the release ZIP and `docs/` does not, so a
 relative `docs/images/desk.png` is four broken pictures for everyone who reads the README
 from the unpacked folder instead of on GitHub. The same goes for the links to
-`CONTRIBUTING.md` and `docs/notes.ru.md`. Only files that `tools/pack.ps1` actually
+`CONTRIBUTING.md` and `docs/notes.md`. Only files that `tools/pack.ps1` actually
 ships — `CHANGELOG.md`, `SECURITY.md`, `LICENSE`, `settings.example.json` — may be
 linked relatively.
 

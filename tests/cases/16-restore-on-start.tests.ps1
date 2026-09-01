@@ -1,9 +1,8 @@
-﻿# --- возврат режима при старте трея -----------------------------------------
-# Живьём это проверяется только перезагрузкой, поэтому решение («возвращать или
-# не трогать») тестируем отдельно от самого переключения. Функцию достаём из
-# Displays.ps1 разбором файла — дот-сорснуть его нельзя, он поднимает всё
-# приложение, а копия кода в тесте разошлась бы с оригиналом (тот же приём, что и
-# для Resolve-ModeKey выше).
+﻿# --- restoring the mode when the tray starts --------------------------------
+# Live, this can only be tested by rebooting, so the decision ("put it back or leave it alone") is
+# tested separately from the switch itself. We pull the function out of Displays.ps1 by parsing the
+# file — it cannot be dot-sourced, it brings the whole application up, and a copy of the code in the
+# test would drift apart from the original (the same trick as for Resolve-ModeKey above).
 
 Write-Host ''
 Write-Host 'restoring the mode when the tray starts' -ForegroundColor White
@@ -16,7 +15,7 @@ foreach ($name in 'Get-AvailableMode', 'Invoke-StartupRestore') {
     . ([scriptblock]::Create($found[0].Extent.Text))
 }
 
-# Окружение трея, которое эта функция вокруг себя ожидает.
+# The tray environment this function expects around itself.
 $script:TestSettings = Get-DefaultSettings
 $script:TestState = @()
 $script:Invoked = $null
@@ -29,7 +28,7 @@ function Invoke-Mode {
     $script:Invoked = [pscustomobject]@{ Key = $Key; Auto = [bool]$Auto; Silent = [bool]$Silent }
 }
 
-# Включён только ASUS, все три монитора подключены.
+# Only the ASUS is on, and all three monitors are connected.
 function Set-RestoreScene {
     param([bool]$UltraGearConnected = $true)
     $script:TestState = @(
@@ -42,7 +41,7 @@ function Set-RestoreScene {
     $script:TestSettings = Get-DefaultSettings
 }
 
-# Запомненный режим из ПРОШЛОГО включения машины: сессия чужая.
+# A remembered mode from the PREVIOUS power-on of the machine: the session is not ours.
 function Set-RememberedMode {
     param([string]$Key, [string]$Session = 'a-previous-boot')
     ([ordered]@{ key = $Key; session = $Session; when = '2026-08-12T15:28:25' } | ConvertTo-Json -Compress) |
@@ -61,7 +60,7 @@ Test-Case 'startup: a mode chosen before the last shutdown comes back' {
 }
 
 Test-Case 'startup: the same session means the tray was restarted - do not touch the displays' {
-    # Иначе перезапуск трея отменял бы Win+P или ручную правку в параметрах Windows.
+    # Otherwise restarting the tray would undo Win+P or an edit made by hand in Windows settings.
     Set-RestoreScene
     Set-RememberedMode 'solo:LG ULTRAGEAR' (Get-SystemSessionId)
     Invoke-StartupRestore
@@ -77,8 +76,8 @@ Test-Case 'startup: the right set already on means no balloon, only a layout che
 }
 
 Test-Case 'startup: all-vs-work with the ASUS unplugged is the same desk, so no balloon' {
-    # Ключи режимов разные, а стол один: сравнение по ключам объявило бы
-    # переключением то, чего не происходит.
+    # The mode keys differ while the desk is one: comparing by keys would declare a switch out of
+    # something that is not happening.
     $script:TestState = @(
         (New-FakeMonitor 'XG27AQDMGR'   'AUSAA1D' 'path-asus'      $false $true)
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ultragear' $true)
@@ -94,8 +93,8 @@ Test-Case 'startup: all-vs-work with the ASUS unplugged is the same desk, so no 
 }
 
 Test-Case 'startup: a display that is not there is never restored to' {
-    # Самая дорогая ошибка из возможных: погасить работающий монитор ради того,
-    # которого нет, — это чёрный стол после включения компьютера.
+    # The most expensive mistake there is: putting out a working monitor for the sake of one that is
+    # not there is a black desk after the computer is turned on.
     Set-RestoreScene -UltraGearConnected $false
     Set-RememberedMode 'solo:LG ULTRAGEAR'
     Invoke-StartupRestore
@@ -133,7 +132,7 @@ Test-Case 'startup: nothing remembered at all means nothing happens' {
 }
 
 Test-Case 'session id: the same within one run, and not empty' {
-    # Ровно на этом равенстве держится «трей перезапустили, экраны не трогаем».
+    # "The tray was restarted, we leave the screens alone" rests on exactly this equality.
     $a = Get-SystemSessionId
     $b = Get-SystemSessionId
     Assert-Equal $a $b 'stable inside one process'

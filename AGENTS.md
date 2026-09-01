@@ -22,7 +22,7 @@ Displays.ps1 also dot-sources       SettingsDialog.ps1
 
 `DisplayCore.ps1` holds definitions only and does nothing on load beyond compiling its
 types. It must keep working when `WindowLayout.ps1` was not dot-sourced, so it calls
-into that file through a presence check rather than blind (`DisplayCore.ps1:3780`):
+into that file through a presence check rather than blind (`DisplayCore.ps1:3887`):
 
 ```powershell
 $doWindows = ((Test-Path Function:\Save-WindowLayout) -and ...)
@@ -71,29 +71,30 @@ new file of the program ships by itself, a new file for us has to be named there
 
 | File | Lines | Go here for |
 | --- | --- | --- |
-| `DisplayCore.ps1` | 4626 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 723-1841, the compiled-assembly cache 1843-1953, `Switch-DisplayMode` at 3634 |
-| `SettingsDialog.ps1` | 3033 | all WPF: the Settings window, the mode editor, the timer popup. Building a window is separated from showing it so tests can build one and never show it |
-| `Displays.ps1` | 1115 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
-| `Activity.ps1` | 549 | the diary and its HTML report |
+| `DisplayCore.ps1` | 5037 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 793-2041, the compiled-assembly cache 2043-2152, `Switch-DisplayMode` at 3896 |
+| `SettingsDialog.ps1` | 3099 | all WPF: the Settings window, the mode editor, the timer popup. Building a window is separated from showing it so tests can build one and never show it |
+| `Displays.ps1` | 1399 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
+| `Activity.ps1` | 548 | the diary and its HTML report |
 | `Set-Display.ps1` | 207 | the command line: argument parsing and printing, no logic |
-| `WindowLayout.ps1` | 188 | window-position snapshots per display set |
+| `WindowLayout.ps1` | 190 | window-position snapshots per display set |
 | `render-preview.ps1` | 201 | dev tool: renders windows to PNG without showing them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
 | `tools/check.ps1` | 221 | the four gates, and the only answer to "am I done" |
 | `tools/trace-displays.ps1` | 103 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
-| `tools/pack.ps1` | 165 | the release archive: what the user downloads, built from `git ls-files` |
-| `tests/` | — | the runner (108), the framework (80), the fakes (58), 30 files of cases (3642) and `live.ps1` (223) |
-| `docs/notes.ru.md` | 1353 | the engineering diary, in Russian: what Windows actually does, measured, day by day |
+| `tools/pack.ps1` | 179 | the release archive: what the user downloads, built from `git ls-files` |
+| `tests/` | — | the runner (107), the framework (79), the fakes (58), 35 files of cases (4660) and `live.ps1` (252) |
+| `docs/notes.md` | 1766 | the engineering diary: what Windows actually does, measured, day by day |
 
-Line counts are signposts, not contracts — they drift. `docs/notes.ru.md` is the place
+Line counts are signposts, not contracts — they drift. `docs/notes.md` is the place
 to look when a decision here looks arbitrary; it usually records the evening that
 produced it.
 
 ## Rules you cannot infer from the code
 
-- **Two languages, on purpose.** Comments and `docs/notes.ru.md` are Russian. The
-  interface, the log, the README and this file are English. Do not translate either
-  direction.
+- **Everything here is English** — the code, the comments, the interface, the log, the
+  documentation and the commit subjects. Russian is for talking to the author, and it does
+  not go into the repository. Entries in `last-run.log` from before 2026-08-05 are Russian;
+  that is history, not a precedent.
 - **Every date and percentage goes through `InvariantCulture`.** `-f` and `ToString()`
   without a culture take the current one — including its *calendar*. On a Thai locale
   `yyyy` is a Buddhist year and the log stops being ISO. `Format-DisplayStamp` exists
@@ -101,14 +102,13 @@ produced it.
 - **No trace of any predecessor.** No third-party tool's name in the code, the docs or
   any identifier, and no "this used to be…" archaeology in comments. A comment explains
   the code as it stands.
-- **Every `.ps1` is UTF-8 with BOM, CRLF.** Without the BOM, PowerShell 5.1 reads the
-  file as Windows-1251 and the Russian comments turn to mush. `.gitattributes` fixes
+- **Every `.ps1` is UTF-8 with BOM, CRLF.** Without the BOM, PowerShell 5.1 reads the file
+  as Windows-1251, and every non-ASCII character in it turns to mush. `.gitattributes` fixes
   line endings at commit time; `tools/check.ps1` catches both on the spot.
 - **A comment says *why*, and names the real breakage.** Comment density here is a
   style choice, not decoration — keep it. A comment that restates the line below it is
   worse than none.
-- **Commit subjects are Russian, and say what changed in meaning** — not which files
-  were touched.
+- **Commit subjects say what changed in meaning** — not which files were touched.
 - **Name your arguments** when a call passes two or more of the same kind.
   `Get-DisplayModes` takes `(State, Settings)` and `Update-HotkeyKeys` takes
   `(Settings, State)`; positionally, those get swapped sooner or later.
@@ -122,9 +122,8 @@ produced it.
 
 ## Traps
 
-Most of these are written up in `docs/notes.ru.md`, section
-«Тупики, в которые не надо возвращаться» (`docs/notes.ru.md:501`). Do not rediscover
-them.
+Most of these are written up in `docs/notes.md`, section "Dead ends not to go back to"
+(`docs/notes.md:515`). Do not rediscover them.
 
 - **CCD only.** Turning a display on goes through `QueryDisplayConfig` /
   `SetDisplayConfig`. The legacy `ChangeDisplaySettingsEx` returns `-4` (bad flags) on
@@ -136,7 +135,16 @@ them.
 - **One `SetDisplayConfig` per switch, not three.** Each transition freezes input and
   blinks the screens. `Set-CcdFullConfig` sets the whole desk — set, positions, primary,
   resolutions and rates — in one call; the three-step path below it is the fallback for
-  when that call is refused.
+  when that call is refused. It needs the display order out of the settings and refuses
+  without it — except for a single display, whose place is the origin whatever anybody wrote.
+- **`Set-CcdLayout` is the only thing that moves the primary display,** and it is called on
+  every switch — not only when `layout` says what the order is. "Primary" in Windows is a
+  place (0, 0) rather than a flag: `Set-CcdTopology` cannot move it and `Set-CcdFullConfig`
+  refuses the whole job without an order, so an `if` around this call takes the taskbar away
+  from every desk whose owner has never opened the Settings window. That `if` was there until
+  2026-09-01; see the review at the end of `docs/notes.md`. With no order the call moves
+  nobody and only anchors the primary, and when that one is at (0, 0) already it applies
+  nothing and costs a single query.
 - **`.GetNewClosure()` is banned in WPF and WinForms handlers.** Inside a closure,
   `$script:X` resolves to nothing: the Settings window got `$null` and died on
   `.Contains()`, and the menu silently showed no shortcuts. Put logic in functions
@@ -152,7 +160,7 @@ them.
   text — that text is localised.
 - **`DisplayCore.ps1` deliberately does not set `$ErrorActionPreference`,** and has to
   survive a caller that set it to `Stop`. Both entry points do. See the comments at
-  `DisplayCore.ps1:55` and `:305`: that is why `Add-Content` carries an explicit
+  `DisplayCore.ps1:51` and `:297`: that is why `Add-Content` carries an explicit
   `-ErrorAction Stop`, and why settings parsing sits under one `try`.
 - **`DISPLAY1` / `DISPLAY2` / `DISPLAY3` are not a monitor's identity.** Windows hands
   those names out by position, and they move between monitors across a reboot or a
@@ -228,13 +236,14 @@ value of this project, and no fake reproduces them.
   sake of testing. Milliseconds were measured on that path, and the `done:` line in the
   log keeps measuring them on every switch, forever. Shadow functions in the test
   instead.
-- **Do not translate the comments to English**, and do not translate the interface or
-  the log to Russian.
+- **Do not write anything here in a language other than English** — not a comment, not a
+  log line, not a commit subject. The one-language rule is the whole rule; there is no
+  half of the repository it does not apply to.
 - **Do not let anything here learn where it lives.** There is not one absolute path in
   this repository — every one of them resolves through `$PSScriptRoot` or `%~dp0`, which
   is why the folder can be moved or renamed at no cost. Keep it that way. What a move
   does break is outside the repository: the startup shortcut stores an absolute path
-  (`Set-RunAtStartup`, `DisplayCore.ps1:4907`) and so does any shortcut pinned to
+  (`Set-RunAtStartup`, `DisplayCore.ps1:4838`) and so does any shortcut pinned to
   `Displays.cmd`. `Test-RunAtStartup` only checks that the `.lnk` exists, so a stale one
   reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
   new location.

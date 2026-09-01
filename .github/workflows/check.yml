@@ -1,9 +1,9 @@
-# Ворота качества. Тот же .\tools\check.ps1, что человек зовёт руками, — второй
-# способ проверки завёл бы вторую правду о том, что считается «зелено».
+# The quality gates. The same .\tools\check.ps1 a person calls by hand — a second way of checking
+# would establish a second truth about what counts as "green".
 #
-# shell: powershell — это Windows PowerShell 5.1 на раннере, ровно та версия, под
-# которую написан инструмент. pwsh (7) взял бы другой движок, и разница вылезла бы
-# не здесь, а у пользователя.
+# shell: powershell is Windows PowerShell 5.1 on the runner, exactly the version the tool is written
+# for. pwsh (7) would take a different engine, and the difference would surface not here but at the
+# user's.
 name: check
 
 on:
@@ -19,21 +19,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Концы строк проверяет сам check.ps1, поэтому выкладка обязана быть
-          # такой же, как в рабочей копии: .gitattributes велит CRLF, а раннер по
-          # умолчанию слушается его же.
+          # check.ps1 checks the line endings itself, so the checkout has to be the same as a
+          # working copy: .gitattributes calls for CRLF, and the runner obeys it by default.
           fetch-depth: 1
 
       - name: PowerShell version
         shell: powershell
         run: $PSVersionTable | Format-List
 
-      # В систему пользователя инструмент ничего не ставит — а раннер одноразовый,
-      # и здесь анализатор нужен, иначе третьи ворота молча пропускались бы.
+      # The tool installs nothing into a user's system — but the runner is disposable, and the
+      # analyzer is needed here, or the third gate would be silently skipped.
       #
-      # Версия та же, что в release.yml, и закреплена там же по той же причине:
-      # «последняя» меняет содержимое шага сама по себе, и ворота краснеют без
-      # единой правки в коде. Поднимать — сразу в обоих файлах.
+      # The version is the same as in release.yml and is pinned there for the same reason: "latest"
+      # changes a step's contents by itself, and the gates turn red without a single edit to the
+      # code. Raise it in both files at once.
       - name: Install PSScriptAnalyzer
         shell: powershell
         run: |

@@ -1,16 +1,16 @@
-﻿# --- дневник ----------------------------------------------------------------
+﻿# --- the diary --------------------------------------------------------------
 
 Write-Host ''
 Write-Host 'the diary' -ForegroundColor White
 
 function New-TestDiary {
-    # Четыре дня подряд, по три занятия в день. Числа круглые нарочно: в отчёте
-    # должны сойтись и проценты, и средние.
+    # Four days in a row, three activities a day. The numbers are round on purpose: both the
+    # percentages and the averages have to add up in the report.
     $store = [ordered]@{ days = [ordered]@{} }
     foreach ($offset in 0..3) {
-        # Ключ дня собираем той же функцией, что и код: на локали с другим
-        # календарём ToString без культуры дал бы 2569 год, и отчёт искал бы дни,
-        # которых в копилке нет (см. Format-DisplayStamp).
+        # The day's key is assembled by the same function the code uses: on a locale with a different
+        # calendar, ToString without a culture would give the year 2569, and the report would be looking
+        # for days that are not in the pot (see Format-DisplayStamp).
         $date = Format-DisplayStamp ([datetime]'2026-08-21').AddDays(-$offset) 'yyyy-MM-dd'
         $day = Get-ActivityDay -Store $store -Date $date
         Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'combo:Work' -Seconds 3600 -Time '09:00' -Hour 9
@@ -51,7 +51,7 @@ Test-Case 'diary: an empty span changes nothing' {
 }
 
 Test-Case 'diary: a window on no known display still counts as time' {
-    # Монитор мог быть выдернут между замером и обновлением кэша.
+    # The monitor could have been pulled out between the sample and the cache refresh.
     $day = New-ActivityDay
     Add-ActivitySpan -Day $day -Process 'chrome' -Display '' -Mode 'all' -Seconds 60 -Hour 9
     Assert-Equal 60 $day.active 'the time is real'
@@ -110,8 +110,8 @@ Test-Case 'diary: an empty diary reads as empty, not as a crash' {
     $lines = @(Format-ActivityReport -Report $rep)
     Assert-Equal 1 $lines.Count 'one line of explanation'
     Assert-True ($lines[0] -like '*Nothing in the diary yet*') 'and it says why'
-    # Совета «включите дневник» здесь быть не должно: с включённым дневником он
-    # был бы неправдой, а знает об этом только вызывающий.
+    # There must be no "turn the diary on" advice here: with the diary already on it would be a lie,
+    # and only the caller knows about that.
     Assert-Equal $false ($lines[0] -like '*Turn stats on*') 'and does not advise what it cannot know'
 }
 
@@ -161,7 +161,7 @@ Test-Case 'diary: a day written by an older version reads without its missing pa
 }
 
 Test-Case 'diary: the page cannot be broken by a monitor name' {
-    # Название монитора приходит из EDID, а туда производитель пишет что угодно.
+    # A monitor's name comes from EDID, and the manufacturer writes whatever it likes in there.
     $store = [ordered]@{ days = [ordered]@{} }
     $day = Get-ActivityDay -Store $store -Date '2026-08-21'
     Add-ActivitySpan -Day $day -Process 'chrome' -Display '<script>bad</script>' -Mode 'all' -Seconds 60 -Hour 9
@@ -174,13 +174,13 @@ Test-Case 'diary: the page holds the numbers and calls nobody' {
     $html = New-ActivityHtml -Report (Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21'))
     Assert-True ($html -like '*12 h 00 min*') 'the total is there'
     Assert-True ($html -like '*LG ULTRAFINE*') 'and the displays'
-    # Обещание проекта: ничего не устанавливается и никто не зовётся в гости.
+    # The project's promise: nothing is installed and nobody is invited in.
     Assert-Equal $false ($html -like '*http://*') 'no outside links'
     Assert-Equal $false ($html -like '*https://*') 'none at all'
-    # Проценты в CSS — только с точкой. «width:12,5%» браузер выбрасывает целиком,
-    # и полоски становятся нулевыми, а гистограмма плоской: на русской локали
-    # отчёт был бы пустой картинкой (см. Format-ActivityPercent). Дробные доли в
-    # копилке заведены нарочно — иначе проверять было бы нечего.
+    # Percentages in CSS take a dot only. "width:12,5%" the browser throws away entirely, and the bars
+    # go to zero width and the histogram flat: on a Russian locale the report would be an empty picture
+    # (see Format-ActivityPercent). The fractional shares in the pot are there on purpose — otherwise
+    # there would be nothing to test.
     Assert-True ($html -like '*width:33.3%*') 'a fractional share keeps its decimal point'
     Assert-Equal $false ($html -match '(width|height):[0-9]+,') 'and no locale comma anywhere in the CSS'
 }
