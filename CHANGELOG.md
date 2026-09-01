@@ -28,6 +28,18 @@ in the tray menu — that line is the right thing to paste into a bug report.
   away from any window, and an entry left behind by a mode that no longer exists gets its own
   removable row, the way a stranded shortcut always did.
 
+### Rebuilding the desk is three controls, not three keys in a file
+
+- **Rebuild after waking from sleep** and **Rebuild when a display is unplugged** are toggles in
+  **Behavior** now. Both default to on, so until now the only way to say "stop doing that" was
+  to find `reapply` in `settings.json`.
+- **When a display is plugged in, switch to** is a dropdown of every mode, empty by default.
+  It follows a combination through a rename while the window is open, and clears itself if you
+  delete the combination it pointed at. A mode that is not on the desk right now keeps its
+  place in the list rather than being quietly dropped — a monitor being asleep is not a reason
+  to cancel a decision you made.
+- Any other key you put in `reapply` by hand travels through a Save untouched.
+
 ### Fixed
 
 - **Renaming a combination no longer drops what the rename was not told about.** Everything

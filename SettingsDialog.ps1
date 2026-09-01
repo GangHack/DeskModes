@@ -808,6 +808,45 @@ $script:SettingsWindowXaml = @'
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
+                            <!-- These two carry no second line, and their neighbours do: a title
+                                 like "Best refresh rate" is a noun that needs explaining, while
+                                 "Rebuild after waking from sleep" is already the whole sentence.
+                                 Two lines that only said it again cost 34 points, and those are
+                                 the points this window scrolls over. -->
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild after waking from sleep"/>
+                            </StackPanel>
+                            <CheckBox x:Name="ResumeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild when a display is unplugged"/>
+                            </StackPanel>
+                            <CheckBox x:Name="UnplugBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="When a display is plugged in, switch to"/>
+                                <!-- Empty by default, and deliberately: putting out a display somebody
+                                     has just switched on with its own button is a fight with a person. -->
+                                <TextBlock Style="{StaticResource RowSub}" Text="Only when the display that appeared belongs to that mode."/>
+                            </StackPanel>
+                            <ComboBox x:Name="PlugModeBox" Grid.Column="1" Style="{StaticResource Select}"
+                                      Width="196" Height="30" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
                                 <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
@@ -1126,6 +1165,18 @@ function New-SettingsWindow {
         WindowsBox        = $win.FindName('WindowsBox')
         LastModeBox       = $win.FindName('LastModeBox')
         StatsBox          = $win.FindName('StatsBox')
+        ResumeBox         = $win.FindName('ResumeBox')
+        UnplugBox         = $win.FindName('UnplugBox')
+        PlugModeBox       = $win.FindName('PlugModeBox')
+        # "A display was plugged in — switch to" names a mode by the same key everything else
+        # does, so it is kept HERE and not read off the dropdown at Save time: a combo renamed
+        # while the window is open has to take this along, and a dropdown built when the window
+        # opened would still be holding the old key. Remove-UiModeKey and Move-UiModeKey are
+        # what keep it honest; the box is only a view of it (see Update-PlugModeBox).
+        OnPlugKey         = ''
+        # While the box is being rebuilt its handler keeps quiet: setting the selection in code
+        # would otherwise count as a person's choice.
+        PlugBusy          = $false
         PreviewCanvas     = $win.FindName('PreviewCanvas')
         # Mode key -> the brightness and contrast models (see ConvertTo-LevelModel), the audio
         # device (a piece of a name) and the pair of commands. All four are edited in the mode
@@ -1167,6 +1218,8 @@ function New-SettingsWindow {
     # a mode that no longer exists is what turns into an orphan row (see Resolve-PanelModes).
     Import-LevelSettings -Ui $ui -Settings $Settings
     Import-ModeExtras    -Ui $ui -Settings $Settings
+    # Before the mode list too: Update-ModesPanel builds the "switch to" dropdown out of it.
+    if ($Settings -and $Settings.reapply) { $ui.OnPlugKey = [string]$Settings.reapply.onPlug }
     Update-DeskPanel  -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
@@ -1179,9 +1232,22 @@ function New-SettingsWindow {
     # The diary is the other way round: a missing key means "off". This is data about a person,
     # and it is not collected by default.
     $ui.StatsBox.IsChecked    = [bool]$Settings.stats
+    # Both default to on, as Get-DefaultSettings has them: a half-written reapply in a
+    # hand-edited file must not read as "turn the other one off".
+    $ui.ResumeBox.IsChecked = ($null -eq $Settings.reapply -or $null -eq $Settings.reapply.onResume -or
+                               [bool]$Settings.reapply.onResume)
+    $ui.UnplugBox.IsChecked = ($null -eq $Settings.reapply -or $null -eq $Settings.reapply.onUnplug -or
+                               [bool]$Settings.reapply.onUnplug)
 
     # The window is built — from this point on the handlers find it here.
     $script:ActiveUi = $ui
+
+    $ui.PlugModeBox.add_SelectionChanged({
+        $ui = $script:ActiveUi
+        if (-not $ui -or $ui.PlugBusy) { return }
+        $item = $this.SelectedItem
+        $ui.OnPlugKey = [string]$(if ($item) { $item.Tag } else { '' })
+    })
 
     $ui.AddComboBtn.add_Click({
         $ui = $script:ActiveUi
@@ -2081,6 +2147,9 @@ function Remove-UiModeKey {
     foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Audio, $Ui.Hooks)) {
         if ($map -and $map.Contains($Key)) { $map.Remove($Key) }
     }
+    # Not a map, but keyed by mode all the same: a rule pointing at a mode that no longer exists
+    # would head for it on every hotplug and be answered with "combination no longer exists".
+    if ([string]$Ui.OnPlugKey -eq $Key) { $Ui.OnPlugKey = '' }
 }
 
 # A rename: everything under the old key MOVES to the new one. Not "remove, and let the editor
@@ -2101,6 +2170,7 @@ function Move-UiModeKey {
         $map.Remove($From)
         if (-not $map.Contains($To)) { $map[$To] = $value }
     }
+    if ([string]$Ui.OnPlugKey -eq $From) { $Ui.OnPlugKey = $To }
 }
 
 # Apply the editor's answer to the window's working state. Separate from the click handlers:
@@ -2846,6 +2916,14 @@ function Update-ModesPanel {
         $subText = Get-ModeRowSubtitle -Ui $Ui -Mode $mode
         if ($subText) {
             $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
+            # One line, cut with an ellipsis rather than wrapped. RowSub wraps everywhere else,
+            # and here it must not: this list is as long as the desk has modes, and a caption
+            # that grew a second line took the whole window past the work area into a scrollbar
+            # it did not need. What is cut is the tail of a summary — the full truth is one
+            # click away behind Edit, and the tooltip carries it meanwhile.
+            $sub.TextWrapping = 'NoWrap'
+            $sub.TextTrimming = 'CharacterEllipsis'
+            $sub.ToolTip = $subText
             [void]$textStack.Children.Add($sub)
         }
         [void]$row.Children.Add($textStack)
@@ -2910,6 +2988,55 @@ function Update-ModesPanel {
 
         [void]$Ui.ModesPanel.Children.Add($row)
     }
+
+    # The same list of modes drives "a display was plugged in — switch to", so it is rebuilt
+    # here: a combo renamed, added or deleted has to show up in that dropdown at once, and this
+    # is the one function every one of those goes through.
+    Update-PlugModeBox -Ui $Ui -Modes $modes
+}
+
+# The "switch to" dropdown: "(do nothing)" and then every mode, by title. The mode KEY rides on
+# each item's Tag — a title is what a person reads and is not unique enough to save.
+#
+# A key that matches no mode gets an item of its own rather than being dropped: the mode may
+# belong to a monitor that is unplugged right now, and silently clearing a setting because its
+# display is asleep is how a person loses a choice they never cancelled.
+function Update-PlugModeBox {
+    param($Ui, $Modes)
+
+    $box = $Ui.PlugModeBox
+    if (-not $box) { return }
+
+    $Ui.PlugBusy = $true
+    try {
+        $box.Items.Clear()
+        $none = New-Object System.Windows.Controls.ComboBoxItem
+        $none.Content = 'do nothing'
+        $none.Tag = ''
+        [void]$box.Items.Add($none)
+
+        $want = [string]$Ui.OnPlugKey
+        $found = $false
+        foreach ($mode in @($Modes)) {
+            if ([string]$mode.Kind -eq 'orphan') { continue }
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = [string]$mode.Title
+            $item.Tag = [string]$mode.Key
+            [void]$box.Items.Add($item)
+            if ($want -and [string]$mode.Key -eq $want) { $box.SelectedItem = $item; $found = $true }
+        }
+
+        if ($want -and -not $found) {
+            $item = New-Object System.Windows.Controls.ComboBoxItem
+            $item.Content = (Get-ModeTitleFromKey $want)
+            $item.Tag = $want
+            $item.Foreground = $Ui.Window.FindResource('DimBrush')
+            [void]$box.Items.Add($item)
+            $box.SelectedItem = $item
+        }
+        if (-not $want) { $box.SelectedIndex = 0 }
+    }
+    finally { $Ui.PlugBusy = $false }
 }
 
 function ConvertTo-ComboSettings {
@@ -3065,7 +3192,7 @@ function Read-SettingsFromUi {
     # without an element of its own does not bring this bug back.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
                   'restoreLastMode', 'stats', 'layout', 'primary', 'combos',
-                  'audio', 'hooks', 'brightness', 'contrast')
+                  'audio', 'hooks', 'brightness', 'contrast', 'reapply')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
@@ -3124,19 +3251,19 @@ function Read-SettingsFromUi {
     # Update-HotkeyKeys does the same when a monitor has moved to another input.
     $updated.rules = @(Move-RuleModeKeys -Rules $Settings.rules -Renames $renames -Gone $gone)
 
+    # "Rebuild when the world changes" comes out of the form now. Any other key a hand-edited
+    # file put in this section is carried through untouched: the window edits three of them and
+    # does not own the section.
+    $reapply = [ordered]@{}
     if ($Settings.reapply -is [System.Collections.IDictionary]) {
-        $reapply = [ordered]@{}
         foreach ($k in @($Settings.reapply.Keys)) { $reapply[$k] = $Settings.reapply[$k] }
-        $plug = [string]$reapply['onPlug']
-        if ($plug) {
-            if ($renames.Contains($plug)) { $reapply['onPlug'] = [string]$renames[$plug] }
-            elseif ($gone -contains $plug) {
-                $reapply['onPlug'] = ''
-                Write-DisplayLog "settings: dropped 'on plug' for removed $plug"
-            }
-        }
-        $updated.reapply = $reapply
     }
+    $reapply['onResume'] = [bool]$Ui.ResumeBox.IsChecked
+    $reapply['onUnplug'] = [bool]$Ui.UnplugBox.IsChecked
+    # No rename map here: the key follows a rename in the window itself (Move-UiModeKey) and
+    # dies with a deletion (Remove-UiModeKey), the same way every mode-keyed setting does.
+    $reapply['onPlug'] = [string]$Ui.OnPlugKey
+    $updated.reapply = $reapply
 
     return [pscustomobject]@{ Ok = $true; Settings = $updated; Problem = '' }
 }

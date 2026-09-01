@@ -149,7 +149,12 @@ Test-Case 'dialog: renaming a combination carries its rules along' {
     $settings.reapply.onPlug = 'combo:Work'
     $ui = New-DialogUi -Settings $settings
     try {
-        $ui.Combos[0].Name = 'Office'
+        # Renamed the way the window renames — through the editor's answer. "A display was
+        # plugged in" is carried by that path now rather than by a rename map at Save time, so a
+        # test that reached into the combo list directly would be testing a door nobody uses.
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = '' })
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal 2 @($updated.rules).Count 'both rules are still there'
         Assert-Equal 'combo:Office' ([string]$updated.rules[0].mode) 'the rule follows the new name'

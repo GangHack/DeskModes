@@ -225,6 +225,9 @@ Three things rearrange your desk without asking: waking from sleep, a monitor go
 and a monitor coming back. Windows decides what the desk looks like in all three cases, and
 its decision is not the one you made.
 
+All three sit in **Settings → Behavior**: two toggles and a dropdown of every mode. The same
+three keys by hand:
+
 ```json
 "reapply": { "onResume": true, "onUnplug": true, "onPlug": "" }
 ```

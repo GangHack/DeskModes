@@ -401,3 +401,134 @@ Test-Case 'dialog: WPF modifier bits equal the RegisterHotKey bits' {
     Assert-Equal 8 ([int][System.Windows.Input.ModifierKeys]::Windows) 'Win'
     Assert-Equal 0x70 ([System.Windows.Input.KeyInterop]::VirtualKeyFromKey([System.Windows.Input.Key]::F1)) 'F1 virtual key'
 }
+
+Test-Case 'dialog: rebuilding the desk is three controls, and they start where the file left them' {
+    # Until they were in the window, these three could only be changed by editing the file - and
+    # two of them default to ON, so "I never asked for this" had no answer anywhere in the app.
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-True ([bool]$ui.ResumeBox.IsChecked) 'waking from sleep rebuilds, as the defaults have it'
+        Assert-True ([bool]$ui.UnplugBox.IsChecked) 'so does a display going away'
+        Assert-Equal 0 $ui.PlugModeBox.SelectedIndex 'and a display arriving does nothing'
+        Assert-Equal '' ([string]$ui.PlugModeBox.SelectedItem.Tag) 'which is what the empty key means'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a half-written reapply does not read as the other half turned off' {
+    # The file gets edited by hand, and a section with one key in it is normal. Reading a missing
+    # key as $false would silently turn off a rebuild the person never asked to lose.
+    $settings = Get-DefaultSettings
+    $settings.reapply = [ordered]@{ onUnplug = $false }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-True ([bool]$ui.ResumeBox.IsChecked) 'the key that is absent keeps its default'
+        Assert-Equal $false ([bool]$ui.UnplugBox.IsChecked) 'and the one that is written is obeyed'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the two rebuild toggles survive a Save' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui.ResumeBox.IsChecked = $false
+        $ui.UnplugBox.IsChecked = $false
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal $false ([bool]$updated.reapply.onResume) 'sleep is off'
+        Assert-Equal $false ([bool]$updated.reapply.onUnplug) 'unplug is off'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: "when a display is plugged in" offers every mode and saves the key' {
+    $settings = New-TestSettings -Combos @{ Work = @('LG ULTRAGEAR') }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        # "do nothing", two displays, all, and the combination.
+        Assert-Equal 5 $ui.PlugModeBox.Items.Count 'nothing plus every mode'
+        $pick = @($ui.PlugModeBox.Items | Where-Object { [string]$_.Tag -eq 'combo:Work' })[0]
+        Assert-True ($null -ne $pick) 'the combination is offered'
+        Assert-Equal 'Work' ([string]$pick.Content) 'by its title, not its key'
+
+        $ui.PlugModeBox.SelectedItem = $pick
+        Assert-Equal 'combo:Work' ([string]$ui.OnPlugKey) 'picking it is remembered as a key'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'combo:Work' ([string]$updated.reapply.onPlug) 'and that is what reaches the file'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: an orphan row is not offered as somewhere to switch to' {
+    # A key with no mode behind it can be seen and cleared in the mode list. Offering it here as
+    # a destination would let a person choose a mode the switch cannot reach.
+    $settings = Get-DefaultSettings
+    $settings.hotkeys['combo:Gone'] = 'Ctrl+Alt+F8'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 4 $ui.ModesPanel.Children.Count 'the orphan has its row'
+        Assert-Equal 4 $ui.PlugModeBox.Items.Count 'but the dropdown is nothing plus the three real modes'
+        Assert-Equal 0 @($ui.PlugModeBox.Items | Where-Object { [string]$_.Tag -eq 'combo:Gone' }).Count `
+            'and it is not among them'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a stored destination whose mode is not here keeps its place' {
+    # The mode may belong to a monitor that is unplugged right now. Clearing the choice because
+    # its display is asleep is losing a decision the person never cancelled.
+    $settings = Get-DefaultSettings
+    $settings.reapply.onPlug = 'solo:GONE MONITOR'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 'solo:GONE MONITOR' ([string]$ui.PlugModeBox.SelectedItem.Tag) 'it is still the choice'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'solo:GONE MONITOR' ([string]$updated.reapply.onPlug) 'and a plain Save leaves it alone'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: renaming a combination moves the plug destination with it' {
+    $settings = New-TestSettings -Combos @{ Work = @('LG ULTRAGEAR') }
+    $settings.reapply.onPlug = 'combo:Work'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        Set-UiMode -Ui $ui -Mode $mode -Combo $ui.Combos[0] -Edited ([pscustomobject]@{
+            Name = 'Office'; Patterns = @('LG ULTRAGEAR'); Primary = '' })
+        Assert-Equal 'combo:Office' ([string]$ui.OnPlugKey) 'the destination followed the rename'
+        Assert-Equal 'combo:Office' ([string]$ui.PlugModeBox.SelectedItem.Tag) 'and the dropdown shows it'
+        Assert-Equal 'Office' ([string]$ui.PlugModeBox.SelectedItem.Content) 'under the new name'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'combo:Office' ([string]$updated.reapply.onPlug) 'and that is what is saved'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: deleting the combination it pointed at clears the plug destination' {
+    $settings = New-TestSettings -Combos @{ Work = @('LG ULTRAGEAR') }
+    $settings.reapply.onPlug = 'combo:Work'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Remove-UiCombo -Ui $ui -Combo $ui.Combos[0]
+        Assert-Equal '' ([string]$ui.OnPlugKey) 'nowhere to switch to any more'
+        Assert-Equal 0 $ui.PlugModeBox.SelectedIndex 'the dropdown says so'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal '' ([string]$updated.reapply.onPlug) 'and the file agrees'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a key the window does not edit survives inside reapply' {
+    # The window owns three of the keys in that section and not the section itself.
+    $settings = Get-DefaultSettings
+    $settings.reapply['somethingElse'] = 'keep me'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'keep me' ([string]$updated.reapply['somethingElse']) 'carried through untouched'
+        Assert-True ([bool]$updated.reapply.onResume) 'and the ones it does own are still written'
+    }
+    finally { $ui.Window.Close() }
+}
