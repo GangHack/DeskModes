@@ -154,6 +154,11 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   cost a third of a second on every start. Editing the block changes its SHA, so a new
   `native-*.dll` is compiled and the stale ones are cleaned up on the next run — you
   cannot forget to rebuild.
+- **Windows PowerShell 5.1 only, and `#Requires` cannot say so** — it takes a minimum, so PowerShell 7
+  passes it and then dies on `Add-Type` with `CS0246: List<> could not be found`: on .NET Core only
+  what `-ReferencedAssemblies` names is referenced, and `System.Runtime` is not in that list. The
+  refusal is at the top of `DisplayCore.ps1` — the file every caller dot-sources and the file that
+  fails — and it must stay above the `Add-Type` it stands in front of.
 - **Smart App Control can refuse the unsigned `native-*.dll`.** The refusal is by
   reputation, not by content, and it arrives as HRESULT `0x800711C7`. The code deletes
   the file and the next start rebuilds it. Match on the number, never on the message

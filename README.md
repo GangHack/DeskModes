@@ -84,6 +84,12 @@ Windows 10 or 11, and Windows PowerShell 5.1 — which ships with Windows. Nothi
 install, no admin rights, no change to your execution policy (the launchers pass
 `-ExecutionPolicy Bypass` for themselves).
 
+PowerShell 7 is not it. The `.cmd` files call `powershell.exe` by name, so the ordinary
+way in works whatever your terminal opens with; running a script by hand from a `pwsh`
+prompt is refused with a line telling you so, because the Windows API layer here is
+compiled against .NET Framework and would fail further down with nothing readable to
+show for it.
+
 ## Quickstart
 
 Download the ZIP from [Releases](https://github.com/GangHack/ScreenDeck/releases) and

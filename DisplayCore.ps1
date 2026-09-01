@@ -11,6 +11,20 @@
     actually works on this machine.
 #>
 
+# Windows PowerShell 5.1, and #Requires cannot say that: it takes a MINIMUM, so PowerShell 7 walks
+# straight past it and dies two thousand lines further down on "error CS0246: the type or namespace
+# name 'List<>' could not be found". Add-Type on .NET Core references only what -ReferencedAssemblies
+# names, and System.Runtime is not in that list. Running on 7 is a different project - WinForms, WPF
+# and every P/Invoke here would have to be measured again - so this is a refusal, not a fallback. What
+# it buys is that whoever typed .\Set-Display.ps1 in their own terminal is told which shell to use,
+# instead of reading a C# compiler complaint about a type they never wrote. The .cmd files call
+# powershell.exe by name and never reach this.
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    throw ("ScreenDeck needs Windows PowerShell 5.1, and this is PowerShell {0}. Start it from the " +
+           ".cmd files in this folder, or name the shell yourself: " +
+           "powershell -ExecutionPolicy Bypass -File .\Set-Display.ps1 status") -f $PSVersionTable.PSVersion
+}
+
 $script:ToolRoot     = $PSScriptRoot
 # The log's path is redirected by an environment variable — for the tests' sake: the first lines
 # (compiling the types, rotating the log) are written while this file is being loaded, and replacing

@@ -2115,3 +2115,39 @@ failure by a channel the caller is not listening on. `WaitOne` is a callee that 
 throwing. `Skipped` versus `Ok` is one answer that two callers read as two. `$screens[0]` is a callee
 inventing an answer rather than admitting it has none. They are not five kinds of bug; they are one, and
 the place to look for the next one is wherever a return value is read in pieces.
+
+## The archive was rehearsed, and PowerShell 7 was found in the way (2026-09-01)
+
+The first CI run went green with the analyzer actually installed — 1.25.0, clean, 1099 assertions — so
+the third gate, which is skipped here for want of the module, finally had a verdict rather than a
+warning. That left the release itself untested, so it was built by hand the way the tag will build it:
+`pack.ps1 -ExpectVersion 1.0.0`, 17 files, 189 KB, one `ScreenDeck` folder inside, the CHANGELOG section
+pulled out whole. Unpacked into a folder of its own, `.ps1` still carried the BOM and `.cmd` still did
+not, and `Set-Display.ps1 status` printed the desk.
+
+Then the same command in the terminal that happened to be open, which was **pwsh 7**:
+
+```
+Add-Type: DisplayCore.ps1:2145
+(292,20): error CS0246: The type or namespace name 'List<>' could not be found
+```
+
+`using System.Collections.Generic;` is at the top of the embedded block and always was. The difference
+is the compiler underneath: on .NET Framework `Add-Type` references mscorlib whatever else is asked for,
+on .NET Core it references what `-ReferencedAssemblies` names and nothing more — here
+`System.Windows.Forms` and `System.Drawing`, which do not bring `System.Runtime` with them. The generic
+collections are simply not in scope, and the error names a type nobody wrote.
+
+What let it happen is that `#Requires -Version 5.1` is a **minimum**. Seven satisfies it and walks on.
+Every `.cmd` here calls `powershell` by name, so the ordinary way in was never affected — which is
+exactly why it went unnoticed: nobody on this desk types the script name into a shell they did not
+choose for it. Whoever unpacks the ZIP and tries it in Windows Terminal, where the default profile is
+increasingly pwsh, gets a C# compiler error as their first impression of the tool.
+
+Making it *work* on 7 is a different project: WinForms, WPF and every P/Invoke here would have to be
+measured again, and the measurements are the whole value of this code. So it is a refusal, and it sits
+at the top of `DisplayCore.ps1` rather than in the two entry points — that file is what the tray, the
+command line, `render-preview.ps1` and the test runner all dot-source, and it is what fails. One copy,
+and no new entry point can forget it. The test does not spawn a shell; it reads the source and asserts
+the guard still stands **before** the `Add-Type` it protects, because below it the refusal would arrive
+after the error it exists to replace.
