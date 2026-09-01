@@ -187,7 +187,7 @@ function Get-DefaultSettings {
         # about a person, and it is not ours to turn on for them.
         stats           = $false
         # Audio following the mode: mode key -> a piece of an output device's name.
-        # An empty dictionary = off. Edited by hand:
+        # An empty dictionary = off. Edited in the mode editor, and by hand:
         #   "audio": { "solo:XG27AQDMGR": "ROG", "combo:Work": "ULTRAFINE" }
         audio           = [ordered]@{}
         # Run-at-startup is deliberately not here: the truth about it lives in whether
@@ -4550,8 +4550,10 @@ function Set-DefaultAudioDevice {
 
     $hit = $devices | Where-Object { $_.Name -like ('*' + $Match + '*') } | Select-Object -First 1
     if (-not $hit) {
-        # The names are listed in the log: without them it is unclear what to write into the settings,
-        # and there is no window for this.
+        # The names are listed in the log: the setting is a PIECE of a name, and when it matches
+        # nothing the only useful answer is what there was to match against. The mode editor offers
+        # the same list in its dropdown, but a device can go away between one switch and the next —
+        # and then this line is the only place the change is written down.
         Write-DisplayLog ("warn: audio device '{0}' not found - have: {1}" -f `
             $Match, (($devices | ForEach-Object { $_.Name }) -join '; '))
         return $false
