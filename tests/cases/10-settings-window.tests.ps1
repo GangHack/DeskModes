@@ -238,7 +238,9 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC')
     )
-    Assert-Equal 'Display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'solo' })) 'a single display'
+    # A display's mode says nothing under its title: "Only LG ULTRAFINE" needs no line saying
+    # "Display" beneath it. The row is one line high until the mode has something set on it.
+    Assert-Equal '' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'solo' })) 'a single display'
 
     $combo = Get-ModeSubtitle -Mode ([pscustomobject]@{
         Kind = 'combo'; Patterns = @('LG ULTRAFINE', 'XG27AQDMGR'); Primary = 'LG ULTRAFINE' }) -State $state

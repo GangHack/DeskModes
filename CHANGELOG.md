@@ -38,13 +38,16 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **Additional settings** folds away the four with a right default — the refresh-rate watchdog and
   the three "when Windows rearranges the desk behind my back" answers. They are still saved
   whether the fold is open or shut.
-- With the two together the window fits a 1440p screen without a scrollbar again, Rules card and
-  all: 1221 points on a fresh desk and 1307 with a couple of combinations, against a 1352 limit.
-- **A combination's row no longer says "Combination".** The row stands under the Modes heading,
-  and a combination is the only kind with a **Remove** button beside it — the word said nothing
-  the row did not already show, while taking 87 points of a caption that has about 300. That
-  room now goes to what cannot be seen any other way: `LG ULTRAFINE + LG ULTRAGEAR  -  brightness
-  per display` where it used to read `Combination  -  LG ULTRAFINE + LG ULTRAGEAR  -  bri…`.
+- Together these fit the window back onto a 1440p screen without a scrollbar, Rules card and all.
+  Measured against a 1352-point limit: 1176 on a fresh desk, 1262 with a couple of combinations,
+  and 1311 for a desk with two combinations, two rules and something set on every mode.
+- **A mode's row says nothing about what kind of mode it is.** "Only LG ULTRAFINE" had a second
+  line under it reading "Display"; a combination's said "Combination" before listing anything.
+  Both repeated what the row already showed — the title in one case, the **Remove** button in the
+  other. A display's row is one line high now unless the mode actually has something set on it,
+  and a combination's caption keeps the 87 points the word was taking:
+  `LG ULTRAFINE + LG ULTRAGEAR  -  brightness per display` where it read
+  `Combination  -  LG ULTRAFINE + LG ULTRAGEAR  -  bri…`.
 - **The mode editor folds too.** What a mode *is* stays in sight — its name, its displays, the
   taskbar and the shortcut. What it does to the hardware — brightness, contrast, the playback
   device and the commands — sits behind **Brightness, sound and commands**, which halves the

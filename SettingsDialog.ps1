@@ -1182,7 +1182,12 @@ function Get-ModeSubtitle {
     param($Mode)
 
     switch ([string]$Mode.Kind) {
-        'solo'   { return 'Display' }
+        # Nothing at all: the title of a display's mode is already "Only <the display>", and a
+        # second line under it saying "Display" was a word repeating the first. Empty here means
+        # the row has one line unless the mode actually has something set on it — and on a desk
+        # of three or four displays that is the difference between a window that fits and one
+        # that scrolls.
+        'solo'   { return '' }
         'combo'  {
             # No word saying "combination": the row stands under the Modes heading, and a
             # combination is the only kind with a Remove button beside it, so the word said

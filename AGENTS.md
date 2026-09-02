@@ -72,7 +72,7 @@ new file of the program ships by itself, a new file for us has to be named there
 | File | Lines | Go here for |
 | --- | --- | --- |
 | `DisplayCore.ps1` | 5222 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 810-2042, the compiled-assembly cache 2044-2153, `Switch-DisplayMode` at 3990 |
-| `SettingsDialog.ps1` | 4611 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup and the diary window. Building a window is separated from showing it so tests can build one and never show it |
+| `SettingsDialog.ps1` | 4616 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup and the diary window. Building a window is separated from showing it so tests can build one and never show it |
 | `Displays.ps1` | 1508 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
 | `Activity.ps1` | 583 | the diary, the report both the window and the page are built from, and that page |
 | `Set-Display.ps1` | 218 | the command line: argument parsing and printing, no logic |
@@ -82,7 +82,7 @@ new file of the program ships by itself, a new file for us has to be named there
 | `tools/check.ps1` | 234 | the four gates, and the only answer to "am I done" |
 | `tools/trace-displays.ps1` | 132 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
 | `tools/pack.ps1` | 211 | the release archive: what the user downloads, built from `git ls-files` |
-| `tests/` | — | the runner (107), the framework (79), the fakes (131), 39 files of cases (6369) and `live.ps1` (252) |
+| `tests/` | — | the runner (107), the framework (79), the fakes (131), 39 files of cases (6393) and `live.ps1` (252) |
 | `docs/notes.md` | 2214 | the engineering diary: what Windows actually does, measured, day by day |
 
 Line counts are signposts, not contracts — they drift. `docs/notes.md` is the place

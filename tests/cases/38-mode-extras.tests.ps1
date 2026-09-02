@@ -483,3 +483,25 @@ Test-Case 'mode editor: a folded setting is still read on Save' {
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case "dialog: a display's row is one line until it has something set on it" {
+    # The kind of a mode is already in its title, so the caption is only ever about settings.
+    # Two lines per display, on a desk of three or four, is what pushed this window into a
+    # scrollbar.
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Kind -eq 'solo' })[0]
+        Assert-Equal '' (Get-ModeRowSubtitle -Ui $ui -Mode $mode) 'nothing set, so nothing to say'
+    }
+    finally { $ui.Window.Close() }
+
+    $settings.brightness[[string]@(Get-DialogModes -State $script:DlgState -Settings $settings |
+                                   Where-Object { $_.Kind -eq 'solo' })[0].Key] = 55
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Kind -eq 'solo' })[0]
+        Assert-Equal 'brightness 55' (Get-ModeRowSubtitle -Ui $ui -Mode $mode) 'and the setting alone when there is one'
+    }
+    finally { $ui.Window.Close() }
+}
