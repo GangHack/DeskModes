@@ -242,9 +242,11 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
 
     $combo = Get-ModeSubtitle -Mode ([pscustomobject]@{
         Kind = 'combo'; Patterns = @('LG ULTRAFINE', 'XG27AQDMGR'); Primary = 'LG ULTRAFINE' }) -State $state
-    Assert-True ($combo -like 'Combination*') 'a combination says it is a combination'
-    Assert-True ($combo -like '*LG ULTRAFINE + XG27AQDMGR*') 'and lists its displays'
-    Assert-True ($combo -like '*taskbar on LG ULTRAFINE*') 'and where the taskbar goes'
+    # No word saying "combination": the Remove button beside the row is what tells them apart,
+    # and the caption's room goes to what cannot be seen any other way.
+    Assert-True ($combo -notlike '*Combination*') 'it does not say the obvious'
+    Assert-True ($combo -like 'LG ULTRAFINE + XG27AQDMGR*') 'it opens with its displays'
+    Assert-True ($combo -like '*taskbar on LG ULTRAFINE*') 'and says where the taskbar goes'
 
     Assert-Equal 'Every connected display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'all' })) 'all'
     Assert-True ((Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'orphan' })) -like '*kept until you remove it*') 'orphan'

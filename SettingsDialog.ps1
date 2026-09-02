@@ -1184,7 +1184,12 @@ function Get-ModeSubtitle {
     switch ([string]$Mode.Kind) {
         'solo'   { return 'Display' }
         'combo'  {
-            $text = 'Combination  -  ' + (@($Mode.Patterns) -join ' + ')
+            # No word saying "combination": the row stands under the Modes heading, and a
+            # combination is the only kind with a Remove button beside it, so the word said
+            # nothing the row did not already show. It cost 87 points of a caption that has
+            # about 300 — which is exactly the room the settings behind Edit were being
+            # trimmed out of.
+            $text = @($Mode.Patterns) -join ' + '
             if ($Mode.Primary) { $text += '   (taskbar on ' + $Mode.Primary + ')' }
             return $text
         }
