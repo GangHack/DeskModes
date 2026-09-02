@@ -67,7 +67,9 @@ Every one of these exists because the naive version broke on a real desk:
 ## What it looks like
 
 Everything is set up in one window, which follows the system theme — dark, light and your
-accent color. Each mode is a row, and **Edit** opens the one place that mode is configured:
+accent color. The display cards are drawn at your desk's own scale, so the row is the layout
+rather than a picture of it. Each mode is a row, and **Edit** opens the one place that mode
+is configured; the settings with a right default are folded under **Additional settings**:
 
 ![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
 
@@ -562,7 +564,7 @@ including how mode keys follow a rename or a removal (the window is built but ne
 window-layout keys, the remembered mode, the startup-restore decision, rule decisions, the
 rebuild-the-desk decision, brightness plans and the sliders that write them (rows really
 built, not just the model), hook launching, duration parsing, the timer window (typing moves
-its slider and the slider rewrites its field), the desk preview, the diary window (each
+its slider and the slider rewrites its field), the desk drawn into its cards, the diary window (each
 period picks its own days, and the bars stay inside their tracks), and the whole
 diary — sums, report, streaks and the page it produces. **No test touches your displays, your
 `settings.json`, your log or your diary** — those are redirected to temporary files. Non-zero

@@ -28,6 +28,19 @@ in the tray menu — that line is the right thing to paste into a bug report.
   away from any window, and an entry left behind by a mode that no longer exists gets its own
   removable row, the way a stranded shortcut always did.
 
+### The Settings window is one screen again
+
+- **The display cards are the picture.** There was a second drawing under the row saying the same
+  thing twice — the same displays, the same order, the same taskbar. Each card's screen is now
+  drawn at your desk's own scale and offset, by the function the switcher itself uses: a 4K panel
+  looks bigger than the 1440p one beside it, a shorter display sits lower exactly as it will, and
+  the taskbar display is the one outlined. One control instead of two, and 132 points shorter.
+- **Additional settings** folds away the four with a right default — the refresh-rate watchdog and
+  the three "when Windows rearranges the desk behind my back" answers. They are still saved
+  whether the fold is open or shut.
+- With the two together the window fits a 1440p screen without a scrollbar again, Rules card and
+  all: 1221 points on a fresh desk and 1307 with a couple of combinations, against a 1352 limit.
+
 ### Rules are a list you can see
 
 - **A Rules card** between Modes and Behavior: what each rule watches for, where it takes the

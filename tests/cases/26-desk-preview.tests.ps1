@@ -1,9 +1,13 @@
-﻿# --- the desk preview -------------------------------------------------------
-# The picture is worked out by the same function the switcher works with (Get-LayoutPositions), so
-# there is exactly one thing to test: what goes into it.
+﻿# --- the desk drawn into its cards ------------------------------------------
+# There used to be a second picture under the row of cards saying the same thing twice: the same
+# displays, the same order, the same taskbar. The cards ARE the picture now - each card's screen
+# is sized and offset by Get-LayoutPositions, the function the switcher itself uses - so the row
+# shows what will come out, and there is no drawing left to disagree with it.
+#
+# What goes INTO that calculation is still the thing worth testing, and it is still pure.
 
 Write-Host ''
-Write-Host 'the desk preview' -ForegroundColor White
+Write-Host 'the desk drawn into its cards' -ForegroundColor White
 
 Test-Case 'preview: pixel sizes come from the cards' {
     $cards = @(
@@ -65,4 +69,68 @@ Test-Case 'preview: the taskbar display is where the coordinates start' {
     Assert-Equal 0 $pos['preview-1'].X 'the taskbar display sits at zero'
     Assert-Equal 0 $pos['preview-1'].Y 'both ways'
     Assert-Equal -3840 $pos['preview-0'].X 'and the other one is to the left of it'
+}
+
+Test-Case 'desk: a card carries a screen drawn to the desk scale' {
+    # The point of the merge: a 4K panel has to LOOK bigger than the 1440p one beside it, and be
+    # drawn at the offset the switcher will really give it.
+    $state = @(
+        (New-FakeMonitor 'BIG 4K' 'S1' 'p1')
+        (New-FakeMonitor 'SMALL QHD' 'S2' 'p2')
+    )
+    $state[0].Width = 3840; $state[0].Height = 2160
+    $state[1].Width = 2560; $state[1].Height = 1440
+    $settings = Get-DefaultSettings
+    $settings.layout = @('BIG 4K', 'SMALL QHD')
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $big = $ui.DeskPanel.Children[0].Tag
+        $small = $ui.DeskPanel.Children[1].Tag
+        Assert-True ($big.Mini.Width -gt $small.Mini.Width) 'the 4K panel is drawn wider'
+        Assert-True ($big.Mini.Height -gt $small.Mini.Height) 'and taller'
+        # 16:9 both, so the shapes must keep their proportion within a pixel of rounding.
+        Assert-True ([math]::Abs($big.Mini.Width / $big.Mini.Height - 16.0 / 9.0) -lt 0.1) 'the shape is the display'
+        # Centred vertically: (2160-1440)/2 = 360 of desk, so the smaller one sits lower.
+        Assert-Equal 0 ([int]$big.Mini.Margin.Top) 'the tallest starts at the top of the band'
+        Assert-True ([int]$small.Mini.Margin.Top -gt 0) 'and the shorter one is pushed down, as it will be'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: no card is drawn wider than the card it sits in' {
+    # One scale for the whole desk, and the card is the tighter of the two limits. Without that a
+    # 4K panel is drawn past its own border and over its neighbour.
+    $state = @((New-FakeMonitor 'HUGE' 'S1' 'p1'))
+    $state[0].Width = 7680; $state[0].Height = 2160
+    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    try {
+        $info = $ui.DeskPanel.Children[0].Tag
+        Assert-True ($info.Mini.Width -le $info.Inner) 'it stays inside the card'
+        Assert-True ($info.Mini.Height -le [double]$info.Band.Height) 'and inside the band'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the taskbar display is the one outlined' {
+    $settings = Get-DefaultSettings
+    $settings.primary = 'LG ULTRAGEAR'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $picked = @($ui.DeskPanel.Children | Where-Object { $_.Tag.Radio.IsChecked })
+        Assert-Equal 1 $picked.Count 'exactly one star is set'
+        Assert-Equal 'LG ULTRAGEAR' ([string]$picked[0].Tag.Label) 'and it is the one from the settings'
+        Assert-Equal 2 ([int]$picked[0].Tag.Mini.BorderThickness.Top) 'its screen is outlined'
+        $others = @($ui.DeskPanel.Children | Where-Object { -not $_.Tag.Radio.IsChecked })
+        Assert-Equal 1 ([int]$others[0].Tag.Mini.BorderThickness.Top) 'and nobody else is'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: there is no second picture left to disagree with the cards' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Null $ui.Window.FindName('PreviewCanvas') 'the canvas is gone'
+        Assert-Null $ui.Window.FindName('PreviewBox') 'and so is the box it sat in'
+    }
+    finally { $ui.Window.Close() }
 }

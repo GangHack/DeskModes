@@ -719,17 +719,14 @@ $script:SettingsWindowXaml = @'
                     <StackPanel>
                         <TextBlock Style="{StaticResource H2}" Text="Your desk"/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Arrange the cards from left to right; the star marks the display that keeps the taskbar."/>
+                                   Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
+                        <!-- The cards ARE the picture. There used to be a second drawing under
+                             this row saying the same thing twice: the same displays, the same
+                             order, the same taskbar. Now each card's screen is drawn at the
+                             desk's own scale and offset - by Get-LayoutPositions, the function
+                             the switcher itself uses - so the row shows what will come out and
+                             the duplicate is gone, along with its 132 points of height. -->
                         <WrapPanel x:Name="DeskPanel"/>
-                        <!-- The picture has no caption of its own: it stands right under the cards
-                             it is drawn from, and the section's hint already says what the order
-                             means. A line repeating "this is how they will be arranged" cost 24
-                             points of height, and those are the points the window scrolls over. -->
-                        <Border x:Name="PreviewBox" CornerRadius="4" Padding="10,10" Margin="0,4,0,0"
-                                Background="{StaticResource MiniBrush}"
-                                BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1">
-                            <Canvas x:Name="PreviewCanvas" Width="540" Height="112" HorizontalAlignment="Center"/>
-                        </Border>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
@@ -772,17 +769,6 @@ $script:SettingsWindowXaml = @'
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Best refresh rate"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Put every display back to its maximum refresh rate when Windows silently drops it."/>
-                            </StackPanel>
-                            <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Notifications"/>
                                 <TextBlock Style="{StaticResource RowSub}" Text="Show a notification after switching."/>
                             </StackPanel>
@@ -806,9 +792,6 @@ $script:SettingsWindowXaml = @'
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Restore the last mode"/>
-                                <!-- One line, and deliberately: at 640 points of width the longer
-                                     wording wrapped, and the second line pushed the window past the
-                                     screen into a scrollbar it did not otherwise need. -->
                                 <TextBlock Style="{StaticResource RowSub}" Text="Come back to the mode you chose last, not to whatever Windows picked."/>
                             </StackPanel>
                             <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
@@ -818,11 +801,38 @@ $script:SettingsWindowXaml = @'
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <!-- These two carry no second line, and their neighbours do: a title
-                                 like "Best refresh rate" is a noun that needs explaining, while
-                                 "Rebuild after waking from sleep" is already the whole sentence.
-                                 Two lines that only said it again cost 34 points, and those are
-                                 the points this window scrolls over. -->
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
+                                <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
+                                           Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
+                            </StackPanel>
+                            <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <!-- Four settings nobody changes twice: one is a watchdog that should
+                             just work, and three answer "what should happen when Windows
+                             rearranges the desk behind my back" - a question with a right
+                             default. They are here rather than in the file, and folded away
+                             rather than in the face of somebody setting up their displays. -->
+                        <Button x:Name="MoreBtn" Style="{StaticResource BtnSubtle}"
+                                HorizontalAlignment="Left" Margin="0,14,0,0" Padding="0,2"
+                                FontSize="13" Content="Additional settings"/>
+                        <StackPanel x:Name="MorePanel" Visibility="Collapsed">
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource RowTitle}" Text="Best refresh rate"/>
+                                <TextBlock Style="{StaticResource RowSub}" Text="Put every display back to its maximum refresh rate when Windows silently drops it."/>
+                            </StackPanel>
+                            <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild after waking from sleep"/>
                             </StackPanel>
@@ -845,25 +855,12 @@ $script:SettingsWindowXaml = @'
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Style="{StaticResource RowTitle}" Text="When a display is plugged in, switch to"/>
-                                <!-- Empty by default, and deliberately: putting out a display somebody
-                                     has just switched on with its own button is a fight with a person. -->
                                 <TextBlock Style="{StaticResource RowSub}" Text="Only when the display that appeared belongs to that mode."/>
                             </StackPanel>
                             <ComboBox x:Name="PlugModeBox" Grid.Column="1" Style="{StaticResource Select}"
                                       Width="196" Height="30" VerticalAlignment="Center"/>
                         </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
-                                <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
-                                           Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
-                            </StackPanel>
-                            <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -1231,6 +1228,8 @@ function New-SettingsWindow {
         ResumeBox         = $win.FindName('ResumeBox')
         UnplugBox         = $win.FindName('UnplugBox')
         PlugModeBox       = $win.FindName('PlugModeBox')
+        MoreBtn           = $win.FindName('MoreBtn')
+        MorePanel         = $win.FindName('MorePanel')
         # "A display was plugged in — switch to" names a mode by the same key everything else
         # does, so it is kept HERE and not read off the dropdown at Save time: a combo renamed
         # while the window is open has to take this along, and a dropdown built when the window
@@ -1240,7 +1239,6 @@ function New-SettingsWindow {
         # While the box is being rebuilt its handler keeps quiet: setting the selection in code
         # would otherwise count as a person's choice.
         PlugBusy          = $false
-        PreviewCanvas     = $win.FindName('PreviewCanvas')
         # Mode key -> the brightness and contrast models (see ConvertTo-LevelModel), the audio
         # device (a piece of a name) and the pair of commands. All four are edited in the mode
         # editor and leave for settings.json on Save — the window owns them, so they must not
@@ -1307,6 +1305,14 @@ function New-SettingsWindow {
     # The window is built — from this point on the handlers find it here.
     $script:ActiveUi = $ui
 
+    Set-MoreVisible -Ui $ui -Open $false
+
+    $ui.MoreBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        Set-MoreVisible -Ui $ui -Open ([string]$ui.MorePanel.Visibility -ne 'Visible')
+    })
+
     $ui.PlugModeBox.add_SelectionChanged({
         $ui = $script:ActiveUi
         if (-not $ui -or $ui.PlugBusy) { return }
@@ -1342,6 +1348,23 @@ function New-SettingsWindow {
     })
 
     return $ui
+}
+
+# Fold the seldom-needed half of Behavior away, or back. The arrow is in the caption rather
+# than a glyph of its own: one string is one thing to keep in step, and the button is read
+# left to right anyway.
+#
+# Collapsed and not merely hidden: a hidden panel still takes its height, and the height of
+# this window is the whole reason these four are folded away.
+function Set-MoreVisible {
+    param($Ui, [bool]$Open)
+
+    if (-not $Ui.MorePanel -or -not $Ui.MoreBtn) { return }
+    $Ui.MorePanel.Visibility = $(if ($Open) { 'Visible' } else { 'Collapsed' })
+    # A solid triangle rather than a chevron: U+2303/U+2304 are not in Segoe UI Variable and fall
+    # back to a caret and a lowercase v, which read as punctuation. U+25B4/U+25BE are.
+    $Ui.MoreBtn.Content = $(if ($Open) { [string][char]0x25B4 } else { [string][char]0x25BE }) +
+                          '  Additional settings'
 }
 
 # --- the desk: order and the taskbar ----------------------------------------
@@ -1402,7 +1425,7 @@ function Update-DeskPanel {
         }
     }
 
-    Update-DeskPreview -Ui $Ui
+    Update-DeskShapes -Ui $Ui
 }
 
 function Add-DeskCard {
@@ -1436,22 +1459,36 @@ function Add-DeskCard {
     $stack = New-Object System.Windows.Controls.StackPanel
     $outer.Child = $stack
 
-    # A mini-screen with the name inside it — the same metaphor as in Windows settings.
+    # A mini-screen with the name inside it — the same metaphor as in Windows settings. Its size
+    # and its place in the band are NOT set here: they come from the whole desk at once, in
+    # Update-DeskShapes, because a screen can only be drawn to scale against its neighbours.
+    #
+    # The band is a fixed height so the row of cards does not change height as displays come and
+    # go; the mini sits inside it, top-aligned, and is pushed down by the offset the switcher will
+    # actually give it.
+    $band = New-Object System.Windows.Controls.Grid
+    $band.Height = 76
     $mini = New-Object System.Windows.Controls.Border
-    $mini.Height = 60
     $mini.CornerRadius = New-Object System.Windows.CornerRadius 4
     $mini.Background = $win.FindResource('MiniBrush')
     $mini.BorderBrush = $win.FindResource('InputBorderBrush')
     $mini.BorderThickness = New-Object System.Windows.Thickness 1
+    $mini.HorizontalAlignment = 'Center'
+    $mini.VerticalAlignment = 'Top'
     $name = New-Object System.Windows.Controls.TextBlock
     $name.Text = $Label
-    $name.FontSize = 12
+    # Ten, not twelve: the name now lives inside a rectangle drawn at the desk's scale, and a
+    # 1440p panel beside a 4K one is under fifty points tall. This is a label on a drawing, not
+    # text to read — the card's own caption below carries the full name's tooltip.
+    $name.FontSize = 10
     $name.TextWrapping = 'Wrap'
     $name.TextAlignment = 'Center'
     $name.VerticalAlignment = 'Center'
-    $name.Margin = New-Object System.Windows.Thickness 4
+    $name.HorizontalAlignment = 'Center'
+    $name.Margin = New-Object System.Windows.Thickness 3
     $mini.Child = $name
-    [void]$stack.Children.Add($mini)
+    [void]$band.Children.Add($mini)
+    [void]$stack.Children.Add($band)
 
     $sub = New-Object System.Windows.Controls.TextBlock
     $sub.FontSize = 12
@@ -1509,6 +1546,10 @@ function Add-DeskCard {
         Radio     = $radio
         Width     = $pw
         Height    = $ph
+        # The shape to draw the desk into: Update-DeskShapes sizes it and pushes it down.
+        Mini      = $mini
+        Band      = $band
+        Inner     = [double]$outer.Width - 16
     }
 
     # The arrow needs the row and its own card — both arrive on the arrow itself (see the comment
@@ -1522,7 +1563,7 @@ function Add-DeskCard {
     # is declared active (see the comment above).
     $move = {
         Move-DeskCard -Panel $this.Tag.Panel -Card $this.Tag.Card -Delta $this.Tag.Delta
-        Update-DeskPreview -Ui $this.Tag.Ui
+        Update-DeskShapes -Ui $this.Tag.Ui
     }
     $left.add_Click($move)
     $right.add_Click($move)
@@ -1530,7 +1571,7 @@ function Add-DeskCard {
     # The taskbar star changes the picture too: the primary monitor is outlined in the accent
     # colour in it, and the whole layout's shift to the coordinate origin is counted from it.
     $radio.Tag = $Ui
-    $radio.add_Checked({ Update-DeskPreview -Ui $this.Tag })
+    $radio.add_Checked({ Update-DeskShapes -Ui $this.Tag })
 
     [void]$panel.Children.Add($outer)
 }
@@ -1600,86 +1641,71 @@ function Get-PreviewPlacement {
                                -PrimaryPath $(if ($primary.Count -gt 0) { $primary[0].DevicePath } else { '' })
 }
 
-function Update-DeskPreview {
+# Draw the desk into the cards. The sizes and the vertical offsets come from
+# Get-LayoutPositions — the same function the switcher uses — so the row of cards is not an
+# illustration of the layout but the layout itself, at a smaller scale.
+#
+# One scale for every card, worked out from the whole desk: a 4K panel has to LOOK bigger than
+# the 1440p one beside it, and two separate scales would draw them the same size.
+function Update-DeskShapes {
     param($Ui)
 
-    if (-not $Ui -or -not $Ui.PreviewCanvas) { return }
-    $canvas = $Ui.PreviewCanvas
-    $canvas.Children.Clear()
+    if (-not $Ui -or -not $Ui.DeskPanel) { return }
 
     # What we know about the cards, in their VISIBLE order: that order is the layout.
-    $cards = @()
+    $infos = @()
     foreach ($child in @($Ui.DeskPanel.Children)) {
         $info = $child.Tag
-        if (-not $info) { continue }
-        $cards += [pscustomobject]@{
-            Label     = [string]$info.Label
-            Width     = [int]$info.Width
-            Height    = [int]$info.Height
-            Connected = [bool]$info.Connected
-            Primary   = [bool]($info.Radio -and $info.Radio.IsChecked)
-        }
+        if ($info) { $infos += $info }
     }
-    if ($cards.Count -eq 0) { return }
+    if ($infos.Count -eq 0) { return }
 
+    $cards = @($infos | ForEach-Object {
+        [pscustomobject]@{
+            Label     = [string]$_.Label
+            Width     = [int]$_.Width
+            Height    = [int]$_.Height
+            Connected = [bool]$_.Connected
+            Primary   = [bool]($_.Radio -and $_.Radio.IsChecked)
+        }
+    })
     $screens = @(ConvertTo-PreviewScreens -Cards $cards)
     $positions = Get-PreviewPlacement -Screens $screens
 
-    # The scale: the whole layout has to fit inside the canvas.
-    $minX = 0; $maxX = 0; $minY = 0; $maxY = 0
+    # The span the whole desk covers, so it can be fitted into the band.
+    $minY = 0; $maxY = 0; $maxW = 1
     foreach ($s in $screens) {
         $p = $positions[$s.DevicePath]
         if (-not $p) { continue }
-        if ($p.X -lt $minX) { $minX = $p.X }
         if ($p.Y -lt $minY) { $minY = $p.Y }
-        if (($p.X + $s.Width) -gt $maxX) { $maxX = $p.X + $s.Width }
         if (($p.Y + $s.Height) -gt $maxY) { $maxY = $p.Y + $s.Height }
+        if ($s.Width -gt $maxW) { $maxW = $s.Width }
     }
-    $spanX = [math]::Max(1, $maxX - $minX)
     $spanY = [math]::Max(1, $maxY - $minY)
-    # The gap between screens is drawn, but it is not in the coordinates: on a real desk the
-    # monitors stand in their bezels and never meet flush.
-    $gap = 3
-    $room = [double]$canvas.Width - ($gap * ($screens.Count + 1))
-    $scale = [math]::Min($room / $spanX, ([double]$canvas.Height - 22) / $spanY)
+
+    # The band's height is the whole desk, and no card's screen may be wider than the card. The
+    # tighter of the two constraints wins, or a 4K panel would be drawn past its own card.
+    $band = [double]$infos[0].Band.Height
+    $inner = [double]($infos | ForEach-Object { [double]$_.Inner } | Measure-Object -Minimum).Minimum
+    $scale = [math]::Min($band / $spanY, $inner / $maxW)
     if ($scale -le 0) { return }
 
     $win = $Ui.Window
-    $offsetX = ($canvas.Width - ($spanX * $scale) - ($gap * ($screens.Count - 1))) / 2
-    $index = 0
-    foreach ($s in $screens) {
+    for ($i = 0; $i -lt $screens.Count; $i++) {
+        $s = $screens[$i]
+        $info = $infos[$i]
         $p = $positions[$s.DevicePath]
         if (-not $p) { continue }
 
-        $box = New-Object System.Windows.Controls.Border
-        $box.Width = [math]::Max(24, $s.Width * $scale)
-        $box.Height = [math]::Max(18, $s.Height * $scale)
-        $box.CornerRadius = New-Object System.Windows.CornerRadius 3
-        $box.Background = $win.FindResource('CardBrush')
-        $box.BorderThickness = New-Object System.Windows.Thickness $(if ($s.Primary) { 2 } else { 1 })
-        $box.BorderBrush = $win.FindResource($(if ($s.Primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
-        if (-not $s.Connected) { $box.Opacity = 0.5 }
-        $box.ToolTip = '{0} - {1} x {2}{3}' -f $s.Label, $s.Width, $s.Height,
-                        $(if ($s.Primary) { ', taskbar here' } else { '' })
-
-        # The one type size off the scale, and deliberately so: the caption lives inside a
-        # rectangle drawn at the desk's scale, and that can be 24 points wide. Caption 12 will
-        # not fit in it, and this is not text to read — it is a label on a drawing; the ToolTip
-        # says the same thing as a full line.
-        $text = New-Object System.Windows.Controls.TextBlock
-        $text.Text = '{0}{1}{2} x {3}' -f $s.Label, [environment]::NewLine, $s.Width, $s.Height
-        $text.FontSize = 9.5
-        $text.TextAlignment = 'Center'
-        $text.TextWrapping = 'Wrap'
-        $text.VerticalAlignment = 'Center'
-        $text.HorizontalAlignment = 'Center'
-        $text.Foreground = $win.FindResource('DimBrush')
-        $box.Child = $text
-
-        [void]$canvas.Children.Add($box)
-        [System.Windows.Controls.Canvas]::SetLeft($box, $offsetX + (($p.X - $minX) * $scale) + ($gap * $index))
-        [System.Windows.Controls.Canvas]::SetTop($box, ($p.Y - $minY) * $scale)
-        $index++
+        # Floors, not the raw numbers: a fractional width leaves a hairline of background down
+        # one edge of the border, and on a row of three that reads as sloppy drawing.
+        $info.Mini.Width = [math]::Max(22, [math]::Floor($s.Width * $scale))
+        $info.Mini.Height = [math]::Max(16, [math]::Floor($s.Height * $scale))
+        $info.Mini.Margin = New-Object System.Windows.Thickness 0, ([math]::Floor(($p.Y - $minY) * $scale)), 0, 0
+        # The taskbar display is outlined in the accent colour: "primary" in Windows is a place,
+        # and this is the card standing at the origin of it.
+        $info.Mini.BorderThickness = New-Object System.Windows.Thickness $(if ($s.Primary) { 2 } else { 1 })
+        $info.Mini.BorderBrush = $win.FindResource($(if ($s.Primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
     }
 }
 

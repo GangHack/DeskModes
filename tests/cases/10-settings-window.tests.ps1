@@ -532,3 +532,46 @@ Test-Case 'dialog: a key the window does not edit survives inside reapply' {
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case 'dialog: the seldom-needed settings start folded away' {
+    # The window has to fit a 1440p work area without a scrollbar, and four settings with a right
+    # default are what gives way. Collapsed, not merely hidden: a hidden panel still takes height.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'folded on opening'
+        Assert-True ([string]$ui.MoreBtn.Content -like '*Additional settings*') 'and the button says what it holds'
+
+        Set-MoreVisible -Ui $ui -Open $true
+        Assert-Equal 'Visible' ([string]$ui.MorePanel.Visibility) 'it opens'
+        Set-MoreVisible -Ui $ui -Open $false
+        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'and closes again'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the arrow on the fold says which way it goes' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Set-MoreVisible -Ui $ui -Open $false
+        $shut = [string]$ui.MoreBtn.Content
+        Set-MoreVisible -Ui $ui -Open $true
+        Assert-True ($shut -ne [string]$ui.MoreBtn.Content) 'open and shut do not look the same'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a folded setting is still saved' {
+    # Folded away is not switched off. The controls are built and read exactly as before; only
+    # their visibility changed.
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'still folded'
+        $ui.RefreshBox.IsChecked = $true
+        $ui.ResumeBox.IsChecked = $false
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-True ([bool]$updated.maximizeRefresh) 'the watchdog setting was read'
+        Assert-Equal $false ([bool]$updated.reapply.onResume) 'and so was the one below it'
+    }
+    finally { $ui.Window.Close() }
+}
