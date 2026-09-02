@@ -134,6 +134,23 @@ if ($Fake) {
         'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = 25; 'LG ULTRAGEAR' = 60 }
         'all'        = 80
     }
+    # The same for everything else a mode can carry. Set on the combo specifically, because that
+    # is whose editor gets rendered by default — and because a mode with something set is what
+    # opens the editor's fold, so the image shows what is behind it instead of a shut caption.
+    $settings.contrast = [ordered]@{ 'combo:Work' = 70 }
+    $settings.audio = [ordered]@{ 'combo:Work' = 'ULTRAFINE' }
+    $settings.hooks = [ordered]@{
+        'combo:Work' = [ordered]@{ before = ''; after = 'C:\tools\work-lights.cmd' }
+    }
+    # And two rules, so the Rules card is a list rather than its empty line: one of each kind,
+    # and one of them switched off — a rule that is off has to look off.
+    $settings.rules = @(
+        [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0
+                    mode = 'solo:XG27AQDMGR'; back = ''; enabled = $true }
+        [ordered]@{ when = 'idle'; process = ''; minutes = 30
+                    mode = 'combo:Movie night'; back = 'combo:Work'; enabled = $false }
+    )
+    $settings.reapply.onPlug = 'all'
 }
 else {
     $state = @(Get-DisplayState)

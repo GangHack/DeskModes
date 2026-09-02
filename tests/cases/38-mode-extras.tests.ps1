@@ -385,3 +385,101 @@ Test-Case 'orphan: what the person typed himself beats what the name would bring
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case 'mode editor: a plain mode opens with the hardware half folded away' {
+    # What a mode IS stays in sight; what it does to the hardware is four settings that all mean
+    # "leave it alone" until asked, and unfolded they made the editor a window and a half tall.
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false
+    try {
+        Assert-Equal 'Collapsed' ([string]$ed.MorePanel.Visibility) 'nothing set, so nothing to show'
+        Assert-True ([string]$ed.MoreBtn.Content -like '*Brightness, sound and commands*') `
+            'and the caption says what is behind it'
+        Assert-Equal $false ([bool]$ed.MoreOpen) 'the editor knows it is shut'
+    }
+    finally { $ed.Window.Close() }
+}
+
+Test-Case 'mode editor: the fold opens by itself for a mode that has something set' {
+    # A setting folded out of sight is invisible, and Save reads those fields - an empty one
+    # erases. So anything already set has to be on screen without being hunted for.
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    foreach ($given in @(
+        @{ What = 'a brightness'; Extra = @{ Levels = ([ordered]@{ 'all' = (ConvertTo-LevelModel 80) }) } }
+        @{ What = 'a contrast';   Extra = @{ Contrast = ([ordered]@{ 'all' = (ConvertTo-LevelModel 70) }) } }
+        @{ What = 'a device';     Extra = @{ Audio = ([ordered]@{ 'all' = 'ROG' }) } }
+        @{ What = 'a command';    Extra = @{ Hooks = ([ordered]@{ 'all' = [ordered]@{ before = ''; after = 'x.cmd' } }) } }
+    )) {
+        # Splatted from a variable, which is the only shape that splats: @($given.Extra) builds an
+        # array and hands it over as one positional argument, so nothing arrives at all.
+        $extra = $given.Extra
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Dark $false @extra
+        try {
+            Assert-Equal 'Visible' ([string]$ed.MorePanel.Visibility) "$($given.What) opens the fold"
+        }
+        finally { $ed.Window.Close() }
+    }
+}
+
+Test-Case 'mode editor: inheriting a setting from a typed name opens the fold too' {
+    # The orphan case. Inheriting a command out of sight would be worse than not inheriting it:
+    # the person never sees it, and their empty box erases it on Save.
+    $settings = Get-DefaultSettings
+    $settings.audio['combo:Movie'] = 'ROG'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $ui.State -Dark $false `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks
+        try {
+            Assert-Equal 'Collapsed' ([string]$ed.MorePanel.Visibility) 'a new combination starts folded'
+            $ed.NameBox.Text = 'Movie'
+            Assert-Equal 'ROG' ([string]$ed.AudioBox.Text) 'the device came back with the name'
+            Assert-Equal 'Visible' ([string]$ed.MorePanel.Visibility) 'and the fold opened so it can be seen'
+        }
+        finally { $ed.Window.Close() }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'mode editor: shutting the fold by hand outranks opening it by itself' {
+    # Without this, shutting it while a brightness is set would spring it open again on the very
+    # next keystroke in the name box.
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false `
+                               -Levels ([ordered]@{ 'combo:Work' = (ConvertTo-LevelModel 80) })
+    try {
+        Assert-Equal 'Visible' ([string]$ed.MorePanel.Visibility) 'the brightness opened it'
+        $ed.MoreTouched = $true
+        $ed.MoreOpen = $false
+        Set-EditorMoreVisible -Editor $ed -Open $false
+        $ed.NameBox.Text = 'Work rearranged'
+        Assert-Equal 'Collapsed' ([string]$ed.MorePanel.Visibility) 'and it stays shut while the name is typed'
+    }
+    finally { $ed.Window.Close() }
+}
+
+Test-Case 'mode editor: a folded setting is still read on Save' {
+    # Folded away is not switched off.
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    try {
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $ui.State -Dark $false `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks
+        try {
+            Assert-Equal 'Collapsed' ([string]$ed.MorePanel.Visibility) 'still folded'
+            $ed.AudioBox.Text = 'ROG'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'accepted'
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
+        }
+        finally { $ed.Window.Close() }
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 'ROG' $updated.audio['all'] 'and what was typed behind the fold was saved'
+    }
+    finally { $ui.Window.Close() }
+}

@@ -40,6 +40,12 @@ in the tray menu — that line is the right thing to paste into a bug report.
   whether the fold is open or shut.
 - With the two together the window fits a 1440p screen without a scrollbar again, Rules card and
   all: 1221 points on a fresh desk and 1307 with a couple of combinations, against a 1352 limit.
+- **The mode editor folds too.** What a mode *is* stays in sight — its name, its displays, the
+  taskbar and the shortcut. What it does to the hardware — brightness, contrast, the playback
+  device and the commands — sits behind **Brightness, sound and commands**, which halves the
+  editor: 615 points instead of 1199. It **opens by itself** for a mode that has any of them set,
+  including one inherited from a name just typed, because a setting nobody can see is a setting
+  an empty field then erases.
 
 ### Rules are a list you can see
 

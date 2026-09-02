@@ -73,9 +73,10 @@ is configured; the settings with a right default are folded under **Additional s
 
 ![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
 
-The mode editor holds everything one mode owns — which displays it turns on, where the
-taskbar goes, its shortcut, the brightness and contrast of its monitors, the playback device
-it switches the sound to, and the commands it runs around a switch:
+The mode editor holds everything one mode owns. What the mode IS stays in sight — its name,
+its displays, where the taskbar goes and the keys that reach it; what it does to the hardware
+— brightness, contrast, the playback device and the commands — is folded under one line, and
+unfolds by itself for a mode that already has any of them set:
 
 ![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-mode.png)
 

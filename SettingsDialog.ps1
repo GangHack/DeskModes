@@ -909,50 +909,63 @@ $script:ModeEditorXaml = @'
                             FontSize="15" Width="26" Margin="4,0,0,0" VerticalAlignment="Center"
                             ToolTip="Remove this shortcut"/>
                 </StackPanel>
-                <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,16,0,0"/>
-                <TextBlock Style="{StaticResource Hint}"
-                           Text="Set brightness with this mode; &quot;Ask the monitors&quot; shows which of yours can be set."/>
-                <ComboBox x:Name="LevelKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
-                <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
-                               VerticalAlignment="Center" Margin="12,0,0,0"/>
-                </Grid>
-                <StackPanel x:Name="LevelRowsPanel" Margin="0,8,0,0"/>
-                <TextBlock Style="{StaticResource H2}" Text="Contrast" Margin="0,16,0,0"/>
-                <TextBlock Style="{StaticResource Hint}"
-                           Text="The same, down the same channel in the cable. Fewer monitors answer for contrast than for brightness."/>
-                <ComboBox x:Name="ContrastKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
-                <Grid x:Name="ContrastOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Slider x:Name="ContrastOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="ContrastOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
-                               VerticalAlignment="Center" Margin="12,0,0,0"/>
-                </Grid>
-                <StackPanel x:Name="ContrastRowsPanel" Margin="0,8,0,0"/>
-                <!-- One button for both cards: a single walk of the bus answers for brightness
-                     and contrast at once, and two buttons would pay for that walk twice. -->
-                <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
-                        HorizontalAlignment="Left" Margin="0,12,0,0"/>
-                <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,16,0,0"/>
-                <TextBlock Style="{StaticResource Hint}"
-                           Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
-                <ComboBox x:Name="AudioBox" Style="{StaticResource SelectEdit}" Height="30" Margin="0,4,0,0"/>
-                <TextBlock Style="{StaticResource H2}" Text="Commands" Margin="0,16,0,0"/>
-                <TextBlock Style="{StaticResource Hint}"
-                           Text="Run something around the switch. The command is started and not waited for - switching never hangs on it."/>
-                <TextBlock Style="{StaticResource RowSub}" Text="Before switching" Margin="0,4,0,3"/>
-                <TextBox x:Name="HookBeforeBox" Style="{StaticResource Input}"/>
-                <TextBlock Style="{StaticResource RowSub}" Text="After switching" Margin="0,8,0,3"/>
-                <TextBox x:Name="HookAfterBox" Style="{StaticResource Input}"/>
+                <!-- Everything a mode does to the HARDWARE, folded away. What a mode IS
+                     stays above: its name, its displays, where the taskbar goes and the keys
+                     that reach it. These four all mean "leave it alone" until asked, and the
+                     editor was a window and a half tall with them unfolded.
+
+                     It opens by itself when any of them is set, including a setting inherited
+                     from the name just typed (see Sync-EditorInheritance) - a setting nobody
+                     can see is the one bug this whole change exists to close. -->
+                <Button x:Name="MoreBtn" Style="{StaticResource BtnSubtle}"
+                        HorizontalAlignment="Left" Margin="0,18,0,0" Padding="0,2"
+                        FontSize="13" Content="Brightness, sound and commands"/>
+                <StackPanel x:Name="MorePanel" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource H2}" Text="Brightness" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Set brightness with this mode; &quot;Ask the monitors&quot; shows which of yours can be set."/>
+                    <ComboBox x:Name="LevelKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                    <Grid x:Name="LevelOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="LevelOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="LevelOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </Grid>
+                    <StackPanel x:Name="LevelRowsPanel" Margin="0,8,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Contrast" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="The same, down the same channel in the cable. Fewer monitors answer for contrast than for brightness."/>
+                    <ComboBox x:Name="ContrastKindBox" Style="{StaticResource Select}" Height="30" Margin="0,4,0,0"/>
+                    <Grid x:Name="ContrastOnePanel" Margin="0,12,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="ContrastOneSlider" Style="{StaticResource Level}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ContrastOneValue" Grid.Column="1" Width="34" TextAlignment="Right"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </Grid>
+                    <StackPanel x:Name="ContrastRowsPanel" Margin="0,8,0,0"/>
+                    <!-- One button for both cards: a single walk of the bus answers for brightness
+                         and contrast at once, and two buttons would pay for that walk twice. -->
+                    <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
+                            HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                    <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
+                    <ComboBox x:Name="AudioBox" Style="{StaticResource SelectEdit}" Height="30" Margin="0,4,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="Commands" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Run something around the switch. The command is started and not waited for - switching never hangs on it."/>
+                    <TextBlock Style="{StaticResource RowSub}" Text="Before switching" Margin="0,4,0,3"/>
+                    <TextBox x:Name="HookBeforeBox" Style="{StaticResource Input}"/>
+                    <TextBlock Style="{StaticResource RowSub}" Text="After switching" Margin="0,8,0,3"/>
+                    <TextBox x:Name="HookAfterBox" Style="{StaticResource Input}"/>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
@@ -1350,21 +1363,66 @@ function New-SettingsWindow {
     return $ui
 }
 
-# Fold the seldom-needed half of Behavior away, or back. The arrow is in the caption rather
-# than a glyph of its own: one string is one thing to keep in step, and the button is read
-# left to right anyway.
+# A fold: one caption that opens and shuts the panel under it. Both windows have one — the
+# Settings window for the settings with a right default, the mode editor for what a mode does to
+# the hardware — so it is one function rather than two that drift apart.
 #
-# Collapsed and not merely hidden: a hidden panel still takes its height, and the height of
-# this window is the whole reason these four are folded away.
+# The arrow lives in the caption rather than in a glyph of its own: one string is one thing to
+# keep in step, and the button reads left to right anyway.
+#
+# Collapsed and not merely hidden: a hidden panel still takes its height, and the height of these
+# windows is the whole reason anything is folded away.
+function Set-DisclosureOpen {
+    param($Button, $Panel, [string]$Label, [bool]$Open)
+
+    if (-not $Button -or -not $Panel) { return }
+    $Panel.Visibility = $(if ($Open) { 'Visible' } else { 'Collapsed' })
+    # A solid triangle rather than a chevron: U+2303/U+2304 are not in Segoe UI Variable and fall
+    # back to a caret and a lowercase v, which read as punctuation. U+25B4/U+25BE are.
+    $Button.Content = $(if ($Open) { [string][char]0x25B4 } else { [string][char]0x25BE }) +
+                      '  ' + $Label
+}
+
 function Set-MoreVisible {
     param($Ui, [bool]$Open)
 
-    if (-not $Ui.MorePanel -or -not $Ui.MoreBtn) { return }
-    $Ui.MorePanel.Visibility = $(if ($Open) { 'Visible' } else { 'Collapsed' })
-    # A solid triangle rather than a chevron: U+2303/U+2304 are not in Segoe UI Variable and fall
-    # back to a caret and a lowercase v, which read as punctuation. U+25B4/U+25BE are.
-    $Ui.MoreBtn.Content = $(if ($Open) { [string][char]0x25B4 } else { [string][char]0x25BE }) +
-                          '  Additional settings'
+    Set-DisclosureOpen -Button $Ui.MoreBtn -Panel $Ui.MorePanel `
+                       -Label 'Additional settings' -Open $Open
+}
+
+function Set-EditorMoreVisible {
+    param($Editor, [bool]$Open)
+
+    Set-DisclosureOpen -Button $Editor.MoreBtn -Panel $Editor.MorePanel `
+                       -Label 'Brightness, sound and commands' -Open $Open
+}
+
+# Is anything set behind the editor's fold? A pure question over the controls, so the answer is
+# the same one Read-ModeFromUi would give.
+function Test-EditorExtrasSet {
+    param($Editor)
+
+    if ($null -ne (ConvertFrom-LevelModel $Editor.Brightness.Model)) { return $true }
+    if ($null -ne (ConvertFrom-LevelModel $Editor.Contrast.Model))   { return $true }
+    if (([string]$Editor.AudioBox.Text).Trim())                      { return $true }
+    if (Get-HookFingerprint -Before $Editor.HookBeforeBox.Text -After $Editor.HookAfterBox.Text) { return $true }
+    return $false
+}
+
+# Open the fold if there is something inside it to see. A setting folded out of sight is
+# invisible, and an invisible setting that an empty field then erases is exactly the bug the
+# inheritance code exists to prevent — so this runs after inheritance too, not only on opening.
+#
+# It only ever OPENS, and never against a person who worked the fold themselves: without that
+# last guard, shutting it while a brightness is set would have it spring open again on the next
+# keystroke in the name box.
+function Update-EditorDisclosure {
+    param($Editor)
+
+    if ($Editor.MoreTouched -or $Editor.MoreOpen) { return }
+    if (-not (Test-EditorExtrasSet -Editor $Editor)) { return }
+    $Editor.MoreOpen = $true
+    Set-EditorMoreVisible -Editor $Editor -Open $true
 }
 
 # --- the desk: order and the taskbar ----------------------------------------
@@ -2571,6 +2629,11 @@ function Sync-EditorInheritance {
         $Editor.HookAfterBox.Text = $after
         $Editor.AutoHook = Get-HookFingerprint -Before $before -After $after
     }
+
+    # Typing a name can inherit a brightness, a device or a command from the key that name owns.
+    # Inheriting one out of sight would be worse than not inheriting it at all: the fields below
+    # are read on Save, and an empty one erases.
+    Update-EditorDisclosure -Editor $Editor
 }
 
 function New-ModeEditorWindow {
@@ -2661,6 +2724,12 @@ function New-ModeEditorWindow {
         AudioBox       = $win.FindName('AudioBox')
         HookBeforeBox  = $win.FindName('HookBeforeBox')
         HookAfterBox   = $win.FindName('HookAfterBox')
+        MoreBtn        = $win.FindName('MoreBtn')
+        MorePanel      = $win.FindName('MorePanel')
+        # Whether the fold is open, and whether the PERSON is the one who last said so (see
+        # Update-EditorDisclosure).
+        MoreOpen       = $false
+        MoreTouched    = $false
         # The two level cards. Filled in below: a card needs the editor it belongs to, and the
         # editor is only an object once this literal is closed.
         Brightness     = $null
@@ -2700,6 +2769,19 @@ function New-ModeEditorWindow {
     $ed.AudioBox.add_DropDownOpened({
         $ed = $script:ActiveEditor
         if ($ed) { Add-AudioDeviceItems -Editor $ed }
+    })
+
+    # Shut unless this mode already has something behind it to show.
+    Set-EditorMoreVisible -Editor $ed -Open $false
+    Update-EditorDisclosure -Editor $ed
+
+    $ed.MoreBtn.add_Click({
+        $ed = $script:ActiveEditor
+        if (-not $ed) { return }
+        # The person has an opinion about the fold now, and it outranks ours from here on.
+        $ed.MoreTouched = $true
+        $ed.MoreOpen = -not $ed.MoreOpen
+        Set-EditorMoreVisible -Editor $ed -Open $ed.MoreOpen
     })
 
     # The name is watched rather than asked for on OK: the name is the mode key, and whose
