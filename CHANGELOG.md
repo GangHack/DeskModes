@@ -30,6 +30,16 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **A Support card** with a **Donate** button. There is no address behind it yet, and until there
   is, the button says so instead of opening a page that would not be there.
 
+### Windows' display timeout, where the desk is
+
+- **Displays go to sleep after** is a row on the **Your desk** page: the same setting Windows keeps
+  under Power, next to the question it belongs with. It is read when the window opens and written
+  on **Save**, and only if you changed it - like **Start with Windows**, it is the system's state
+  and not something `settings.json` carries.
+- A value you set in Windows itself keeps its place in the list rather than being rounded to the
+  nearest ready answer, and if Windows will not say what the timeout is, the row says so instead
+  of offering to change something it could not read.
+
 ### The diary is a page of the same window
 
 - **Statistics...** in the tray opens the Settings window on its **Diary** page instead of a

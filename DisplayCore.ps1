@@ -1330,9 +1330,31 @@ public class NativeDdc {
 
 // Sleep is the only state with no console command for it: shutdown.exe can do a shutdown, a reboot and a
 // hibernation, and "sleep" is not in it at all.
+//
+// The other four are "how long until the displays go dark", which is Windows' own setting and not ours.
+// Through the API and never through powercfg.exe: its output is LOCALISED - on a Russian Windows the line
+// to parse reads "Текущий индекс параметра питания от сети" - and parsing a translated table is the same
+// trap as matching Smart App Control on the text of its error instead of on the number.
+//
+// PowerGetActiveScheme allocates the GUID it hands back, so it is freed with LocalFree; a write is
+// PowerWriteACValueIndex followed by PowerSetActiveScheme, because the write alone changes the stored
+// scheme without applying it.
 public class NativePower {
     [DllImport("powrprof.dll", SetLastError = true)]
     public static extern bool SetSuspendState(bool hibernate, bool force, bool wakeupEventsDisabled);
+
+    [DllImport("powrprof.dll")]
+    public static extern uint PowerGetActiveScheme(IntPtr rootPowerKey, out IntPtr activePolicyGuid);
+    [DllImport("powrprof.dll")]
+    public static extern uint PowerReadACValueIndex(IntPtr rootPowerKey, ref Guid scheme, ref Guid subGroup,
+                                                    ref Guid setting, ref uint value);
+    [DllImport("powrprof.dll")]
+    public static extern uint PowerWriteACValueIndex(IntPtr rootPowerKey, ref Guid scheme, ref Guid subGroup,
+                                                     ref Guid setting, uint value);
+    [DllImport("powrprof.dll")]
+    public static extern uint PowerSetActiveScheme(IntPtr rootPowerKey, ref Guid scheme);
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr LocalFree(IntPtr mem);
 }
 
 // Who is in the foreground right now, on which monitor, and how long ago the keyboard was last touched.
@@ -5177,6 +5199,104 @@ function Format-Duration {
 # Format-Duration puts "1 h 00 min" — in a countdown that is right (the width of the line does
 # not jump every minute), but on a pill and in a menu item the extra zero only gets in the way.
 # It reads back through the same ConvertFrom-DurationText.
+# --- how long until the displays go dark ------------------------------------
+# Windows' own setting, on the page where the desk is arranged: it is the same question as
+# "which displays are on", and looking for it in the Control Panel in the middle of setting up
+# a desk is a detour. It is NOT in settings.json - this is the system's state, and ScreenDeck
+# only shows it and writes it back.
+#
+# "From the mains" only. A desktop has no battery, and a laptop with different answers for the
+# two cases will have set them in Windows, where both are offered.
+
+# The subsystem and the setting, out of WinNT.h: GUID_VIDEO_SUBGROUP and GUID_VIDEO_POWERDOWN_TIMEOUT.
+$script:VideoSubGroupGuid = [guid]'7516b95f-f776-4464-8c53-06167f40cc99'
+$script:VideoIdleGuid     = [guid]'3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e'
+
+# The active power scheme, or $null. Whoever asks has to free nothing: that is done here.
+function Get-ActivePowerScheme {
+    $pointer = [IntPtr]::Zero
+    try {
+        if ([NativePower]::PowerGetActiveScheme([IntPtr]::Zero, [ref]$pointer) -ne 0) { return $null }
+        if ($pointer -eq [IntPtr]::Zero) { return $null }
+        return [System.Runtime.InteropServices.Marshal]::PtrToStructure($pointer, [type][guid])
+    }
+    catch { return $null }   # no such API, or it refused: the setting is simply not shown
+    finally {
+        if ($pointer -ne [IntPtr]::Zero) { [void][NativePower]::LocalFree($pointer) }
+    }
+}
+
+# How many minutes of nobody working before the displays go dark. 0 is "never", which is what
+# Windows stores as a timeout of nought seconds; -1 is "could not be read", and that is not the
+# same answer - a window must not offer to change a setting it could not find.
+function Get-DisplaySleepMinutes {
+    $scheme = Get-ActivePowerScheme
+    if ($null -eq $scheme) { return -1 }
+    try {
+        $seconds = [uint32]0
+        $sub = $script:VideoSubGroupGuid
+        $setting = $script:VideoIdleGuid
+        if ([NativePower]::PowerReadACValueIndex([IntPtr]::Zero, [ref]$scheme, [ref]$sub, [ref]$setting, [ref]$seconds) -ne 0) {
+            return -1
+        }
+        return [int]([math]::Round($seconds / 60.0))
+    }
+    catch {
+        Write-DisplayLog "power: could not read the display timeout - $($_.Exception.Message)"
+        return -1
+    }
+}
+
+# Write it back and apply it. The write alone only changes the stored scheme - it is
+# PowerSetActiveScheme that makes Windows pick the change up.
+function Set-DisplaySleepMinutes {
+    param([int]$Minutes)
+
+    if ($Minutes -lt 0) { return $false }
+    $scheme = Get-ActivePowerScheme
+    if ($null -eq $scheme) { return $false }
+    try {
+        $sub = $script:VideoSubGroupGuid
+        $setting = $script:VideoIdleGuid
+        $code = [NativePower]::PowerWriteACValueIndex([IntPtr]::Zero, [ref]$scheme, [ref]$sub, [ref]$setting,
+                                                      [uint32]($Minutes * 60))
+        if ($code -ne 0) {
+            Write-DisplayLog "power: the display timeout was refused, code $code"
+            return $false
+        }
+        [void][NativePower]::PowerSetActiveScheme([IntPtr]::Zero, [ref]$scheme)
+        Write-DisplayLog ("power: displays go to sleep after {0}" -f $(if ($Minutes -eq 0) { 'never' } else { Format-DurationShort $Minutes }))
+        return $true
+    }
+    catch {
+        Write-DisplayLog "power: could not write the display timeout - $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# The ready answers, in minutes. Nought is "never" and stands first, the way Windows lists it.
+$script:SleepChoices = @(0, 1, 2, 5, 10, 15, 20, 30, 45, 60)
+
+# What one of them is called. A pure function, so the odd value somebody set in Windows itself
+# reads the same way as the ready ones.
+function Get-SleepChoiceTitle {
+    param([int]$Minutes)
+
+    if ($Minutes -le 0) { return 'Never' }
+    return Format-DurationShort $Minutes
+}
+
+# The list to offer, given what Windows says right now: the ready answers, plus that value if it
+# is not one of them, in order. A setting made in Windows itself must not be quietly rounded to
+# the nearest thing this list happens to hold.
+function Get-SleepChoices {
+    param([int]$Current = -1)
+
+    $all = @($script:SleepChoices)
+    if ($Current -gt 0 -and $all -notcontains $Current) { $all += $Current }
+    return @($all | Sort-Object)
+}
+
 function Format-DurationShort {
     param([int]$Minutes)
 

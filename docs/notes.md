@@ -2365,3 +2365,32 @@ repeated on the page — it stands on the Behavior page under **Keep a diary**, 
 clicks away at most. The window's Close button is gone: the page has the Save and Cancel the window
 already has. And the tray's **Statistics…** now writes the pot out and opens Settings on the Diary page,
 so the diary is read where everything else about the app is.
+
+## "Displays go to sleep after", through the API (2026-09-03)
+
+Windows' own display timeout, on the page where the desk is arranged: it is the same question as "which
+displays are on", and going to the Control Panel in the middle of setting one up is a detour.
+
+**Never powercfg.exe.** Its output is localised — on a Russian Windows the line to parse reads
+«Текущий индекс параметра питания от сети» — and parsing a translated table is the same trap as matching
+Smart App Control on the text of its refusal instead of on the number. Four signatures from `powrprof.dll`
+next to the `SetSuspendState` that was already there: `PowerGetActiveScheme`, `PowerReadACValueIndex`,
+`PowerWriteACValueIndex`, `PowerSetActiveScheme`. The subsystem is `GUID_VIDEO_SUBGROUP` and the setting
+`GUID_VIDEO_POWERDOWN_TIMEOUT`, the value in seconds.
+
+Three things the API makes you get right:
+
+- `PowerGetActiveScheme` **allocates** the GUID it hands back, and it is freed with `LocalFree`.
+  `Get-ActivePowerScheme` owns that and hands back a plain `[guid]`, so no caller has to remember.
+- **A write alone does nothing.** `PowerWriteACValueIndex` changes the stored scheme;
+  `PowerSetActiveScheme` on the same scheme is what makes Windows pick it up.
+- **-1 is not nought.** "Never" is a stored timeout of nought seconds, and "could not be read" is a
+  different answer: the row is disabled and says so, because a dropdown showing "Never" over a setting
+  nobody could read is a lie a person would act on.
+
+Measured on this desk: read 15 min, wrote 20, `powercfg /query SCHEME_CURRENT SUB_VIDEO VIDEOIDLE` came
+back with `0x000004b0` — 1200 seconds — and the value was put back. AC only: a desktop has no battery, and
+a laptop with different answers for the two cases will have set them in Windows, where both are offered.
+
+Written on Save and only when it changed, like **Start with Windows**. Rewriting the system's setting with
+the same number on every Save would put this program's name on a change nobody made.

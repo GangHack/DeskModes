@@ -748,7 +748,7 @@ $script:SettingsWindowXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ScreenDeck - Settings"
-        Width="980" Height="660" MinWidth="820" MinHeight="560"
+        Width="980" Height="700" MinWidth="820" MinHeight="560"
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
@@ -847,6 +847,24 @@ $script:SettingsWindowXaml = @'
                                                Text="What each one reports about itself. The Monitor ID is the name settings.json and the log use."/>
                                     <Grid x:Name="DisplaysTable"/>
                                 </StackPanel>
+                            </Border>
+                            <!-- Windows' own setting, not one of ours: it is the same question as
+                                 "which displays are on", and looking for it in the Control Panel in
+                                 the middle of arranging a desk is a detour. -->
+                            <Border Style="{StaticResource Card}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Style="{StaticResource RowTitle}" Text="Displays go to sleep after"/>
+                                        <TextBlock x:Name="SleepHint" Style="{StaticResource RowSub}"
+                                                   Text="Windows' own setting, for when the computer is plugged in. Changed on Save."/>
+                                    </StackPanel>
+                                    <ComboBox x:Name="SleepBox" Grid.Column="1" Style="{StaticResource Select}"
+                                              Width="196" Height="30" VerticalAlignment="Center"/>
+                                </Grid>
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
@@ -1791,6 +1809,51 @@ function Set-UiPage {
     finally { $Ui.NavBusy = $false }
 }
 
+# The display-sleep row, filled from what Windows says. -1 is "it would not say": the row then
+# says so and cannot be used, because a dropdown that shows "Never" over a setting nobody could
+# read is a lie a person would act on.
+function Set-UiSleepMinutes {
+    param($Ui, [int]$Minutes)
+
+    if (-not $Ui -or -not $Ui.SleepBox) { return }
+    $Ui.SleepMinutes = $Minutes
+    $Ui.SleepBox.Items.Clear()
+    if ($Minutes -lt 0) {
+        $Ui.SleepBox.IsEnabled = $false
+        $Ui.SleepHint.Text = 'Windows would not say. Change it in Settings - System - Power.'
+        return
+    }
+    $Ui.SleepBox.IsEnabled = $true
+    foreach ($choice in @(Get-SleepChoices -Current $Minutes)) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = Get-SleepChoiceTitle $choice
+        $item.Tag = [int]$choice
+        [void]$Ui.SleepBox.Items.Add($item)
+        if ([int]$choice -eq $Minutes) { $Ui.SleepBox.SelectedItem = $item }
+    }
+    if (-not $Ui.SleepBox.SelectedItem -and $Ui.SleepBox.Items.Count -gt 0) { $Ui.SleepBox.SelectedIndex = 0 }
+}
+
+# What the box says now, or -1 when there is nothing to say.
+function Get-UiSleepMinutes {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.SleepBox -or -not $Ui.SleepBox.IsEnabled) { return -1 }
+    $item = $Ui.SleepBox.SelectedItem
+    if (-not $item) { return -1 }
+    return [int]$item.Tag
+}
+
+# Written on Save, and only when it changed: this is Windows' setting, and rewriting it with the
+# same number on every Save would put ScreenDeck's name on a change nobody made.
+function Save-UiSleepMinutes {
+    param($Ui)
+
+    $wanted = Get-UiSleepMinutes -Ui $Ui
+    if ($wanted -lt 0 -or $wanted -eq [int]$Ui.SleepMinutes) { return }
+    [void](Set-DisplaySleepMinutes -Minutes $wanted)
+}
+
 # A page, a folder or a file, opened by whatever Windows uses for it. Every button on the About
 # page goes through here: a browser that will not start is a shrug, not a window that dies on
 # somebody looking at the version number.
@@ -1850,6 +1913,12 @@ function New-SettingsWindow {
         UnplugBox         = $win.FindName('UnplugBox')
         PlugModeBox       = $win.FindName('PlugModeBox')
         DisplaysTable     = $win.FindName('DisplaysTable')
+        SleepBox          = $win.FindName('SleepBox')
+        SleepHint         = $win.FindName('SleepHint')
+        # What Windows said when the window opened, in minutes; -1 is "it would not say". Kept so
+        # that Save writes only a value somebody actually changed - like "Start with Windows",
+        # this is the system's state and not ours to rewrite on every Save.
+        SleepMinutes      = -1
         NavList           = $win.FindName('NavList')
         NavAbout          = $win.FindName('NavAbout')
         # Page name -> the panel that is that page. One map, so Set-UiPage does not have to know
@@ -1943,6 +2012,10 @@ function New-SettingsWindow {
                                [bool]$Settings.reapply.onResume)
     $ui.UnplugBox.IsChecked = ($null -eq $Settings.reapply -or $null -eq $Settings.reapply.onUnplug -or
                                [bool]$Settings.reapply.onUnplug)
+
+    # The ready answers, so a window built without being shown (the tests, render-preview) has a
+    # list rather than an empty box. What Windows actually says arrives in Show-SettingsDialog.
+    Set-UiSleepMinutes -Ui $ui -Minutes 0
 
     # The diary reads the pot as it stands right now. The tray writes it out before opening this
     # window (Statistics...), so the last few minutes are in it.
@@ -4606,6 +4679,8 @@ function Show-SettingsDialog {
     # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
     # from the settings: the shortcut could have been deleted by hand.
     $ui.StartupBox.IsChecked = (Test-RunAtStartup)
+    # And the display timeout from Windows, for the same reason: it is the system's, not ours.
+    Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
 
     try {
         if (-not $ui.Window.ShowDialog()) { return $null }
@@ -4625,6 +4700,7 @@ function Show-SettingsDialog {
             return $null
         }
         Set-RunAtStartup ([bool]$ui.StartupBox.IsChecked)
+        Save-UiSleepMinutes -Ui $ui
         return $updated
     }
     finally {

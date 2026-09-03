@@ -75,6 +75,10 @@ themselves — read out of each monitor's EDID, not guessed from its resolution 
 the layout rather than a picture of it, and the table under it says what each display reports
 about itself.
 
+The same page carries **Displays go to sleep after** - Windows' own timeout, read when the
+window opens and written back on Save, so setting up a desk does not mean a detour through the
+Control Panel.
+
 **Modes** is everything you can switch to. Each one is a row, and **Edit** opens the one place
 that mode is configured:
 

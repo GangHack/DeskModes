@@ -669,3 +669,57 @@ Test-Case 'window rect: the second monitor is a place to open on' {
     Assert-True (Test-WindowRectVisible -Left 3000 -Top -200 -Width 980 -Height 660 -Screens $screens) `
                 'on the one to the right, above the primary'
 }
+
+# --- how long until the displays go dark -------------------------------------
+# Windows' own setting, shown on the desk page and written back on Save. Nothing here touches the
+# real power scheme: what is tested is the list, the naming and the rule about writing.
+
+Test-Case 'sleep: a timeout is named the way a person would say it' {
+    Assert-Equal 'Never' (Get-SleepChoiceTitle 0) 'nought is not "0 min"'
+    Assert-Equal 'Never' (Get-SleepChoiceTitle -5) 'and neither is anything below it'
+    Assert-Equal '15 min' (Get-SleepChoiceTitle 15) 'minutes as minutes'
+    Assert-Equal '1 h' (Get-SleepChoiceTitle 60) 'an hour as an hour'
+    Assert-Equal '1 h 30 min' (Get-SleepChoiceTitle 90) 'and the odd one in both'
+}
+
+Test-Case 'sleep: a value set in Windows itself keeps its place in the list' {
+    # The ready answers are not the only ones there are: Windows offers more in its own dialog,
+    # and a person who set thirteen minutes there must not have it rounded to fifteen by opening
+    # this window.
+    $ready = @(Get-SleepChoices)
+    Assert-Equal 0 $ready[0] '"never" stands first'
+    Assert-True ($ready -contains 60) 'an hour is offered'
+
+    $odd = @(Get-SleepChoices -Current 13)
+    Assert-Equal ($ready.Count + 1) $odd.Count 'the odd value is added'
+    Assert-True ($odd -contains 13) 'and it is there'
+    Assert-Equal @($odd | Sort-Object) $odd 'in its place, not at the end'
+
+    Assert-Equal $ready.Count @(Get-SleepChoices -Current 15).Count 'one that is already there is not doubled'
+}
+
+Test-Case 'dialog: the sleep row offers the timeout Windows reports' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Set-UiSleepMinutes -Ui $ui -Minutes 13
+        Assert-True $ui.SleepBox.IsEnabled 'the row can be used'
+        Assert-Equal 13 (Get-UiSleepMinutes -Ui $ui) 'and it opens on what Windows said'
+        Assert-Equal '13 min' ([string]$ui.SleepBox.SelectedItem.Content) 'in words'
+        Assert-Equal (@(Get-SleepChoices -Current 13).Count) $ui.SleepBox.Items.Count 'the ready answers and that one'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a timeout Windows would not report leaves the row alone' {
+    # -1 is not nought. A dropdown saying "Never" over a setting nobody could read is a lie a
+    # person would act on.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Set-UiSleepMinutes -Ui $ui -Minutes -1
+        Assert-Equal $false ([bool]$ui.SleepBox.IsEnabled) 'it cannot be used'
+        Assert-Equal 0 $ui.SleepBox.Items.Count 'and offers nothing'
+        Assert-Equal -1 (Get-UiSleepMinutes -Ui $ui) 'which is what a Save would be told'
+        Assert-True ([string]$ui.SleepHint.Text -like '*would not say*') 'the row says why'
+    }
+    finally { $ui.Window.Close() }
+}
