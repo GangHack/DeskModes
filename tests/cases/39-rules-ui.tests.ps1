@@ -308,3 +308,34 @@ Test-Case 'rules: editing the holding rule changes its signature, and the desk c
     Assert-Equal 'return' ([string]$decision.Action) 'the rule that held the desk is no longer there'
     Assert-Equal 'solo:LG ULTRAGEAR' ([string]$decision.Mode) 'so the desk goes back where it came from'
 }
+
+Test-Case 'rules: the program is offered from a list, and typed by hand just as well' {
+    $ui, $settings = New-RuleUi
+    try {
+        $ed = New-RuleEditorWindow -Rule $null -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false
+        try {
+            # Building the window must not walk every process on the machine: the editor is built
+            # by the dozen in these tests, and by every person who opens Add a rule.
+            Assert-Equal 0 $ed.ProcessBox.Items.Count 'the list is empty until it is opened'
+            Assert-True (-not $ed.ProcessListed) 'and nobody has gathered it'
+
+            # Opening it fills it once. What is there depends on what is running, so what is
+            # checked is the shape: names, no .exe, no repeats, in order.
+            Add-ProcessItems -Editor $ed
+            Add-ProcessItems -Editor $ed
+            $names = @($ed.ProcessBox.Items)
+            Assert-True $ed.ProcessListed 'gathered'
+            Assert-Equal 0 @($names | Where-Object { $_ -like '*.exe' }).Count 'stored the way a rule stores it'
+            Assert-Equal @($names | Sort-Object -Unique).Count $names.Count 'once each, and in order'
+
+            # Typing is still typing: a program that is neither running nor in the diary.
+            $ed.ProcessBox.Text = 'some-game.exe'
+            $ed.ModeBox.SelectedIndex = 0
+            $got = Read-RuleFromUi -Editor $ed
+            Assert-True $got.Ok 'accepted'
+            Assert-Equal 'some-game.exe' ([string]$got.Rule.process) 'exactly what was typed'
+        }
+        finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
+    }
+    finally { $ui.Window.Close() }
+}

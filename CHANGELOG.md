@@ -80,6 +80,11 @@ in the tray menu — that line is the right thing to paste into a bug report.
   where to go and where to come back to. It refuses a rule with no mode, a program rule with no
   program, an idle rule of less than a minute, and one that goes back to the mode it switches to
   (which would flicker the desk every fifteen seconds).
+- **The program is picked from a list.** The box offers what has a window open right now and what
+  the diary has seen in the last month — because a rule for a game is usually written while the
+  game is not running. The names are offered the way a rule stores them, without `.exe`, and
+  typing one in by hand works exactly as before. The list is gathered when you first open it,
+  never when the window is built.
 - Renaming a combination carries the rules that point at it, in the window and at once; deleting
   one drops the rules that needed it and clears the way back of the rest. That used to happen
   in a rename map at Save time and is now the same path every other mode-keyed setting takes.

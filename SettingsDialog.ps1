@@ -1002,7 +1002,9 @@ $script:RuleEditorXaml = @'
                      one, and a person who tries both ways round does not retype it. -->
                 <StackPanel x:Name="ProcessPanel" Margin="0,12,0,0">
                     <TextBlock Style="{StaticResource RowSub}" Text="Process name, with or without .exe"/>
-                    <TextBox x:Name="ProcessBox" Style="{StaticResource Input}" Margin="0,3,0,0"/>
+                    <!-- Editable: the list is what is running now and what the diary has seen, and a
+                         rule is often written for a game that is doing neither at that moment. -->
+                    <ComboBox x:Name="ProcessBox" Style="{StaticResource SelectEdit}" Height="30" Margin="0,3,0,0"/>
                 </StackPanel>
                 <StackPanel x:Name="IdlePanel" Margin="0,12,0,0" Visibility="Collapsed">
                     <TextBlock Style="{StaticResource RowSub}" Text="Minutes with nobody at the keyboard"/>
@@ -3490,6 +3492,45 @@ function Set-RuleModeItems {
     if (-not $Selected -and $Box.Items.Count -gt 0) { $Box.SelectedIndex = 0 }
 }
 
+# What to offer for "watch for this program", gathered when the list is first opened and never
+# while the window is being built: Get-Process walks every process on the machine, and the tests
+# build this editor by the dozen.
+#
+# Two sources, because either one alone is wrong. What is running right now is what a person is
+# most likely to mean — but only what has a window of its own, or the list is forty services
+# nobody has heard of. And a rule is usually written for a game that is NOT running while you
+# write it, which is what the diary is for: it remembers what has been in front of you all month.
+#
+# Stored without .exe, which is the form a rule keeps; matching strips it either way, so a name
+# typed by hand with the extension goes on working.
+function Add-ProcessItems {
+    param($Editor)
+
+    if ($Editor.ProcessListed) { return }
+    $Editor.ProcessListed = $true
+
+    # A hashtable, so a program that is both running and in the diary is offered once. Its keys
+    # ignore case, which is what tells "Chrome" and "chrome" apart from two different programs.
+    $names = @{}
+    try {
+        foreach ($p in @(Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne 0 })) {
+            $name = ([string]$p.ProcessName) -replace '\.exe$', ''
+            if ($name) { $names[$name] = $true }
+        }
+    }
+    catch { Write-DisplayLog "settings dialog: could not list the running programs - $($_.Exception.Message)" }
+
+    try {
+        foreach ($row in @((Get-ActivityReport -Store (Get-ActivityStore) -Days 30).Apps)) {
+            $name = (([string]$row.Name) -replace '\.exe$', '').Trim()
+            if ($name) { $names[$name] = $true }
+        }
+    }
+    catch { Write-DisplayLog "settings dialog: could not read the diary for program names - $($_.Exception.Message)" }
+
+    foreach ($name in @($names.Keys | Sort-Object)) { [void]$Editor.ProcessBox.Items.Add($name) }
+}
+
 # The rule editor, built separately from being shown — for the same reason as every other window
 # here: a window built without being shown can be tested.
 function New-RuleEditorWindow {
@@ -3524,6 +3565,9 @@ function New-RuleEditorWindow {
         Rule         = $Rule
         Busy         = $false
         Result       = $null
+        # The programs are gathered when the list is first opened, never while the window is
+        # being built — same as the playback devices in the mode editor.
+        ProcessListed = $false
     }
     $script:ActiveRuleUi = $ed
 
@@ -3554,6 +3598,11 @@ function New-RuleEditorWindow {
         $ed = $script:ActiveRuleUi
         if (-not $ed -or $ed.Busy) { return }
         Update-RuleEditorPanels -Editor $ed
+    })
+
+    $ed.ProcessBox.add_DropDownOpened({
+        $ed = $script:ActiveRuleUi
+        if ($ed) { Add-ProcessItems -Editor $ed }
     })
 
     $win.FindName('OkBtn').add_Click({
