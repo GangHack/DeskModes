@@ -1,112 +1,129 @@
 ﻿# --- the desk drawn into its cards ------------------------------------------
-# There used to be a second picture under the row of cards saying the same thing twice: the same
-# displays, the same order, the same taskbar. The cards ARE the picture now - each card's screen
-# is sized and offset by Get-LayoutPositions, the function the switcher itself uses - so the row
-# shows what will come out, and there is no drawing left to disagree with it.
+# The cards ARE the picture of the desk: the same displays, the same order, the same taskbar, with
+# no second drawing under them to disagree with. What "to scale" means here is the size of the
+# PANEL and not its resolution - drawing by pixels gave a 24-inch 4K half again as much width as
+# the 27-inch 1440p beside it, which is the opposite of what is on the desk.
 #
-# What goes INTO that calculation is still the thing worth testing, and it is still pure.
+# The inches come out of the EDID, and reading one is pure: bytes in, centimetres out.
 
 Write-Host ''
 Write-Host 'the desk drawn into its cards' -ForegroundColor White
 
-Test-Case 'preview: pixel sizes come from the cards' {
-    $cards = @(
-        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
-        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $true }
-    )
-    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
-    Assert-Equal 2 $screens.Count 'both'
-    Assert-Equal 3840 $screens[0].Width 'the 4K panel'
-    Assert-Equal 1440 $screens[1].Height 'and the 1440p one'
-    Assert-True $screens[1].Primary 'the taskbar star came through'
+# The size the cards will be drawn to, seeded the way render-preview.ps1 seeds an invented desk:
+# these monitors are plugged into nothing and the registry has never heard of them.
+function Set-TestInches {
+    param([string]$Id, [double]$Inches)
+    $script:MonitorSizeCache[$Id] = $(if ($Inches -gt 0) {
+        [pscustomobject]@{ WidthCm = 0; HeightCm = 0; Inches = $Inches }
+    } else { $null })
 }
 
-Test-Case 'preview: a display of unknown size still takes its place in the row' {
-    # A reminder card from a monitor that was pulled out: it has no size, but it does take up its place
-    # in the row — otherwise the preview would show a different desk.
-    $cards = @([pscustomobject]@{ Label = 'XG27AQDMGR'; Width = 0; Height = 0; Connected = $false; Primary = $false })
-    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
-    Assert-Equal 1 $screens.Count 'still there'
-    Assert-Equal 1920 $screens[0].Width 'a plain 16:9 stands in'
-    Assert-Equal 1080 $screens[0].Height 'both ways'
+Test-Case 'edid: the panel size is two bytes of the base block, in centimetres' {
+    # A real block off this desk: 60 x 34 cm is a 27-inch 16:9.
+    $edid = New-Object byte[] 128
+    $edid[21] = 60; $edid[22] = 34
+    $size = ConvertFrom-EdidSize -Edid $edid
+    Assert-Equal 60 $size.WidthCm 'the width as written'
+    Assert-Equal 27.2 $size.Inches 'and the diagonal of it'
+
+    # A 24-inch 4K: a smaller panel with more pixels in it than the 27 above.
+    $edid[21] = 53; $edid[22] = 30
+    Assert-Equal 24 (ConvertFrom-EdidSize -Edid $edid).Inches 'the small one'
 }
 
-Test-Case 'preview: what it draws is what the switcher will do' {
-    # Screens of different heights are aligned centred, and that is exactly what has to be visible in
-    # the picture: 2160 and 1440 give an offset of (2160-1440)/2 = 360.
-    $cards = @(
-        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $true }
-        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $false }
-    )
-    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
-    Assert-Equal 0 $pos['preview-0'].X 'the first sits at zero'
-    Assert-Equal 3840 $pos['preview-1'].X 'the second right after it'
-    Assert-Equal 360 $pos['preview-1'].Y 'and lower by half the difference in height'
+Test-Case 'edid: zeros are "not said", not a tiny monitor' {
+    # Projectors and network displays write nothing there, and a television writes its aspect
+    # ratio into those bytes instead of a size.
+    $edid = New-Object byte[] 128
+    Assert-Null (ConvertFrom-EdidSize -Edid $edid) 'nothing said'
+    Assert-Null (ConvertFrom-EdidSize -Edid ([byte[]]@(1, 2, 3))) 'and a block too short to hold it'
+    Assert-Null (ConvertFrom-EdidSize -Edid $null) 'and no block at all'
 }
 
-Test-Case 'preview: the cards decide the order, not the alphabet' {
-    # A regression: with an empty Order every screen has the same rank, and the layout was sorted by
-    # name. The picture showed ULTRAFINE, ULTRAGEAR, XG27AQDMGR while the cards stood ULTRAFINE,
-    # XG27AQDMGR, ULTRAGEAR — that is, the preview promised a desk other than the one that would come out.
-    $cards = @(
-        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
-        [pscustomobject]@{ Label = 'XG27AQDMGR';   Width = 2560; Height = 1440; Connected = $true; Primary = $true }
-        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $false }
-    )
-    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
-    Assert-True ($pos['preview-0'].X -lt $pos['preview-1'].X) 'the first card is left of the second'
-    Assert-True ($pos['preview-1'].X -lt $pos['preview-2'].X) 'and the second is left of the third'
-}
-
-Test-Case 'preview: the taskbar display is where the coordinates start' {
-    # Windows makes primary whoever's top-left corner lies at (0,0) — and the picture has to show it the
-    # same way, or it is drawing somebody else's layout.
-    $cards = @(
-        [pscustomobject]@{ Label = 'LG ULTRAFINE'; Width = 3840; Height = 2160; Connected = $true; Primary = $false }
-        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; Width = 2560; Height = 1440; Connected = $true; Primary = $true }
-    )
-    $pos = Get-PreviewPlacement -Screens @(ConvertTo-PreviewScreens -Cards $cards)
-    Assert-Equal 0 $pos['preview-1'].X 'the taskbar display sits at zero'
-    Assert-Equal 0 $pos['preview-1'].Y 'both ways'
-    Assert-Equal -3840 $pos['preview-0'].X 'and the other one is to the left of it'
-}
-
-Test-Case 'desk: a card carries a screen drawn to the desk scale' {
-    # The point of the merge: a 4K panel has to LOOK bigger than the 1440p one beside it, and be
-    # drawn at the offset the switcher will really give it.
+Test-Case 'desk: the bigger panel is drawn wider, but not by as much as it is bigger' {
+    # 24 against 27 inches: the square root damps 89 % down to 94 %. Visible, and neither of them
+    # a thumbnail - which is what the row of cards is for.
     $state = @(
-        (New-FakeMonitor 'BIG 4K' 'S1' 'p1')
-        (New-FakeMonitor 'SMALL QHD' 'S2' 'p2')
+        (New-FakeMonitor 'SMALL 4K' 'S1' 'inch-24')
+        (New-FakeMonitor 'BIG QHD' 'S2' 'inch-27')
     )
     $state[0].Width = 3840; $state[0].Height = 2160
-    $state[1].Width = 2560; $state[1].Height = 1440
+    Set-TestInches -Id 'inch-24' -Inches 24.0
+    Set-TestInches -Id 'inch-27' -Inches 27.2
     $settings = Get-DefaultSettings
-    $settings.layout = @('BIG 4K', 'SMALL QHD')
+    $settings.layout = @('SMALL 4K', 'BIG QHD')
     $ui = New-DialogUi -Settings $settings -State $state
     try {
-        $big = $ui.DeskPanel.Children[0].Tag
-        $small = $ui.DeskPanel.Children[1].Tag
-        Assert-True ($big.Mini.Width -gt $small.Mini.Width) 'the 4K panel is drawn wider'
-        Assert-True ($big.Mini.Height -gt $small.Mini.Height) 'and taller'
-        # 16:9 both, so the shapes must keep their proportion within a pixel of rounding.
-        Assert-True ([math]::Abs($big.Mini.Width / $big.Mini.Height - 16.0 / 9.0) -lt 0.1) 'the shape is the display'
-        # Centred vertically: (2160-1440)/2 = 360 of desk, so the smaller one sits lower.
-        Assert-Equal 0 ([int]$big.Mini.Margin.Top) 'the tallest starts at the top of the band'
-        Assert-True ([int]$small.Mini.Margin.Top -gt 0) 'and the shorter one is pushed down, as it will be'
+        $small = $ui.DeskPanel.Children[0].Tag
+        $big = $ui.DeskPanel.Children[1].Tag
+        Assert-True ($big.Mini.Width -gt $small.Mini.Width) 'the 27-inch panel is the wider one'
+        $ratio = [double]$small.Mini.Width / [double]$big.Mini.Width
+        Assert-True ($ratio -gt 0.9 -and $ratio -lt 0.98) "damped, not proportional (came out $ratio)"
+        # And the drawing by resolution is gone: the 4K one used to be half again as wide.
+        Assert-True ($small.Mini.Width -lt $big.Mini.Width) 'pixels no longer decide the size'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a monitor whose EDID says no size is drawn like its neighbours' {
+    $state = @(
+        (New-FakeMonitor 'KNOWN' 'S1' 'inch-27b')
+        (New-FakeMonitor 'SILENT' 'S2' 'inch-none')
+    )
+    Set-TestInches -Id 'inch-27b' -Inches 27.2
+    Set-TestInches -Id 'inch-none' -Inches 0
+    $settings = Get-DefaultSettings
+    $settings.layout = @('KNOWN', 'SILENT')
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $known = $ui.DeskPanel.Children[0].Tag
+        $silent = $ui.DeskPanel.Children[1].Tag
+        Assert-Equal 0 ([double]$silent.Inches) 'nothing is known about it'
+        Assert-Equal ([double]$known.Mini.Width) ([double]$silent.Mini.Width) 'and it is drawn like the one that is'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the shape of the screen is still the resolution' {
+    # The size comes from the inches, the proportion from the pixels: a 21:9 panel stays a long
+    # one, and it is not stretched to the shape of the card.
+    $state = @((New-FakeMonitor 'ULTRAWIDE' 'S1' 'inch-uw'))
+    $state[0].Width = 3440; $state[0].Height = 1440
+    Set-TestInches -Id 'inch-uw' -Inches 34.0
+    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    try {
+        $info = $ui.DeskPanel.Children[0].Tag
+        $shape = [double]$info.Mini.Width / [double]$info.Mini.Height
+        Assert-True ([math]::Abs($shape - 3440.0 / 1440.0) -lt 0.15) "the shape is the display's ($shape)"
+        Assert-True ($info.Mini.Width -le $info.Inner) 'and it stays inside its card'
+        Assert-True ($info.Mini.Height -le [double]$info.Band.Height) 'and inside the band'
     }
     finally { $ui.Window.Close() }
 }
 
 Test-Case 'desk: no card is drawn wider than the card it sits in' {
-    # One scale for the whole desk, and the card is the tighter of the two limits. Without that a
-    # 4K panel is drawn past its own border and over its neighbour.
-    $state = @((New-FakeMonitor 'HUGE' 'S1' 'p1'))
-    $state[0].Width = 7680; $state[0].Height = 2160
-    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    # A 32:9 panel drawn to the full width of its card would still be short enough for the band,
+    # but a 4:3 one would not - and the whole row shrinks together rather than one card alone.
+    $state = @(
+        (New-FakeMonitor 'SQUARE' 'S1' 'inch-sq')
+        (New-FakeMonitor 'WIDE' 'S2' 'inch-wide')
+    )
+    $state[0].Width = 1600; $state[0].Height = 1200
+    $state[1].Width = 3840; $state[1].Height = 1080
+    Set-TestInches -Id 'inch-sq' -Inches 21.0
+    Set-TestInches -Id 'inch-wide' -Inches 49.0
+    $settings = Get-DefaultSettings
+    $settings.layout = @('SQUARE', 'WIDE')
+    $ui = New-DialogUi -Settings $settings -State $state
     try {
-        $info = $ui.DeskPanel.Children[0].Tag
-        Assert-True ($info.Mini.Width -le $info.Inner) 'it stays inside the card'
-        Assert-True ($info.Mini.Height -le [double]$info.Band.Height) 'and inside the band'
+        foreach ($child in @($ui.DeskPanel.Children)) {
+            $info = $child.Tag
+            Assert-True ($info.Mini.Width -le $info.Inner) 'inside the card'
+            Assert-True ($info.Mini.Height -le [double]$info.Band.Height) 'and inside the band'
+        }
+        # The bigger panel is still the bigger drawing after the shrink.
+        Assert-True ($ui.DeskPanel.Children[1].Tag.Mini.Width -gt $ui.DeskPanel.Children[0].Tag.Mini.Width) `
+                    'the 49-inch one is still the wider'
     }
     finally { $ui.Window.Close() }
 }

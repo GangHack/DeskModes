@@ -55,6 +55,22 @@ in the tray menu — that line is the right thing to paste into a bug report.
   including one inherited from a name just typed, because a setting nobody can see is a setting
   an empty field then erases.
 
+### The display cards are the size of the displays
+
+- **A card's screen is drawn to the size of the panel**, taken from the monitor's own EDID,
+  instead of to its resolution. Drawing by pixels said the opposite of what is on the desk: a
+  24-inch 4K got 128 points of width and the 27-inch 1440p beside it 85, so the smaller monitor
+  was shown half again as big as the larger one.
+- The difference is **damped** — the width follows the square root of the ratio of the diagonals
+  — because the row is for telling which panel is which, not for measuring them: 24 next to 27
+  comes out at 94 %, and 32 next to 24 at 115 %. The shape is still the resolution's, so a 21:9
+  stays a long one, and a monitor whose EDID says nothing about its size (projectors and network
+  displays write nothing there) is drawn like its neighbours rather than as a dot. The size in
+  inches is on the card's hover text next to the resolution.
+- The screens no longer step down the card as they will on the desk. That offset was the height
+  of the picture, and it made the row look broken for something a person cannot change here
+  anyway: Windows centres displays of different heights, and it does so on its own.
+
 ### Rules are a list you can see
 
 - **A Rules card** between Modes and Behavior: what each rule watches for, where it takes the

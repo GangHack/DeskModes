@@ -83,6 +83,15 @@ function New-FakeState {
     )
 }
 
+# The invented monitors are plugged into nothing, so the registry has never heard of them and
+# their EDID cannot be read. Their sizes go straight into the cache the real lookup keeps - and
+# they are the point of the picture: the 4K is the SMALLEST panel of the three.
+function Set-FakeSizes {
+    $script:MonitorSizeCache['fake-ultrafine'] = [pscustomobject]@{ WidthCm = 53; HeightCm = 30; Inches = 24.0 }
+    $script:MonitorSizeCache['fake-asus']      = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.2 }
+    $script:MonitorSizeCache['fake-ultragear'] = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.2 }
+}
+
 function New-FakeDiary {
     # Ten days of an invented fortnight. Enough that every section of the diary window has
     # something in it and the hour histogram has a shape rather than one spike — an empty diary
@@ -119,6 +128,7 @@ function New-FakeDiary {
 $settings = Get-DisplaySettings
 if ($Fake) {
     $state = @(New-FakeState)
+    Set-FakeSizes
     # Settings to match the invented desk: otherwise the cards line up by someone else's layout.
     $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
     $settings.primary = 'LG ULTRAGEAR'

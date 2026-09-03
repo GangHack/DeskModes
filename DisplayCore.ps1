@@ -2252,6 +2252,78 @@ function ConvertTo-VendorCode {
     return ''
 }
 
+# --- how big the panel actually is ------------------------------------------
+# The resolution says nothing about the size: a 4K panel can be a 24-inch one standing next to
+# a 27-inch 1440p. The picture of the desk has to be drawn to the size a person sees, and the
+# only place that number is written down is the monitor's own EDID.
+
+# Bytes 21 and 22 of the base block: the panel in whole centimetres. A pure function, so the
+# awkward cases can be pinned down by tests rather than by a monitor being plugged in.
+function ConvertFrom-EdidSize {
+    param([byte[]]$Edid)
+
+    # Zeros are not a small monitor: they are "not said". Projectors and network displays write
+    # nothing there, and a television writes its aspect ratio into these two bytes instead.
+    if ($null -eq $Edid -or $Edid.Length -lt 23) { return $null }
+    $w = [int]$Edid[21]; $h = [int]$Edid[22]
+    if ($w -le 0 -or $h -le 0) { return $null }
+
+    return [pscustomobject]@{
+        WidthCm  = $w
+        HeightCm = $h
+        Inches   = [math]::Round([math]::Sqrt(($w * $w) + ($h * $h)) / 2.54, 1)
+    }
+}
+
+# The same for a live monitor. Windows keeps the EDID of every monitor ever plugged in under
+# HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY, and the way in is the device path Get-DisplayState
+# already knows a monitor by:
+#
+#   \\?\DISPLAY#GSM5CBC#5&2b9c6f03&0&UID4357#{e6f07b5f-...}
+#              hardware id ^      ^ instance
+#
+# Deliberately NOT part of the state record: three registry reads cost 3 ms, and Get-DisplayState
+# is on the switch path, where every millisecond is measured and printed in the log. The desk
+# picture asks for this once per window instead, and the answer is kept: a panel does not change
+# size while the app is running.
+#
+# The keeping is also the way an invented desk gets sizes: render-preview.ps1 -Fake writes its
+# monitors in here by hand, because they are plugged into nothing and the registry has never
+# heard of them.
+$script:MonitorSizeCache = @{}
+
+function Get-MonitorPhysicalSize {
+    param([string]$DevicePath)
+
+    if (-not $DevicePath) { return $null }
+    if ($script:MonitorSizeCache.ContainsKey($DevicePath)) { return $script:MonitorSizeCache[$DevicePath] }
+
+    $size = $null
+    try {
+        $parts = ($DevicePath -replace '^\\\\\?\\', '') -split '#'
+        if ($parts.Count -ge 3 -and $parts[0] -eq 'DISPLAY') {
+            $key = 'HKLM:\SYSTEM\CurrentControlSet\Enum\DISPLAY\{0}\{1}\Device Parameters' -f $parts[1], $parts[2]
+            $edid = (Get-ItemProperty -LiteralPath $key -Name EDID -ErrorAction Stop).EDID
+            $size = ConvertFrom-EdidSize -Edid $edid
+        }
+    }
+    catch { }   # no such key, no EDID under it, or no permission: the size is simply not known
+
+    $script:MonitorSizeCache[$DevicePath] = $size
+    return $size
+}
+
+# The panel's diagonal in inches for a monitor of the state, or 0 when nobody knows — a monitor
+# that is not plugged in right now included: the card keeps its place in the row either way.
+function Get-DisplayInches {
+    param($Display)
+
+    if (-not $Display) { return 0.0 }
+    $size = Get-MonitorPhysicalSize -DevicePath ([string]$Display.Id)
+    if ($size) { return [double]$size.Inches }
+    return 0.0
+}
+
 # Every target the system knows about: the ones that are on and the merely connected ones alike.
 function Get-CcdTargets {
     $M = [System.Runtime.InteropServices.Marshal]

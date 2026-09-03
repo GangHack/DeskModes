@@ -67,8 +67,9 @@ Every one of these exists because the naive version broke on a real desk:
 ## What it looks like
 
 Everything is set up in one window, which follows the system theme — dark, light and your
-accent color. The display cards are drawn at your desk's own scale, so the row is the layout
-rather than a picture of it. Each mode is a row, and **Edit** opens the one place that mode
+accent color. The display cards are drawn to the size of the panels themselves — read out of
+each monitor's EDID, not guessed from its resolution — so the row is the layout rather than a
+picture of it. Each mode is a row, and **Edit** opens the one place that mode
 is configured; the settings with a right default are folded under **Additional settings**:
 
 ![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)

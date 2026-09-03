@@ -1624,12 +1624,11 @@ function Add-DeskCard {
     $outer.Child = $stack
 
     # A mini-screen with the name inside it — the same metaphor as in Windows settings. Its size
-    # and its place in the band are NOT set here: they come from the whole desk at once, in
-    # Update-DeskShapes, because a screen can only be drawn to scale against its neighbours.
+    # is NOT set here: it comes from the whole desk at once, in Update-DeskShapes, because a
+    # screen can only be drawn to scale against its neighbours.
     #
     # The band is a fixed height so the row of cards does not change height as displays come and
-    # go; the mini sits inside it, top-aligned, and is pushed down by the offset the switcher will
-    # actually give it.
+    # go; the mini stands in the middle of it, whatever size it turns out to be.
     $band = New-Object System.Windows.Controls.Grid
     $band.Height = 76
     $mini = New-Object System.Windows.Controls.Border
@@ -1638,7 +1637,7 @@ function Add-DeskCard {
     $mini.BorderBrush = $win.FindResource('InputBorderBrush')
     $mini.BorderThickness = New-Object System.Windows.Thickness 1
     $mini.HorizontalAlignment = 'Center'
-    $mini.VerticalAlignment = 'Top'
+    $mini.VerticalAlignment = 'Center'
     $name = New-Object System.Windows.Controls.TextBlock
     $name.Text = $Label
     # Ten, not twelve: the name now lives inside a rectangle drawn at the desk's scale, and a
@@ -1665,7 +1664,10 @@ function Add-DeskCard {
     if (-not $connected)      { $sub.Text = 'not connected' }
     elseif ($Display.Active)  { $sub.Text = '{0} x {1} @ {2} Hz' -f $Display.Width, $Display.Height, $Display.Hz }
     else                      { $sub.Text = 'off' }
-    $sub.ToolTip = $sub.Text
+    # The size is drawn into the card and said in words on hover. Not in the caption itself: that
+    # line is already the longest thing on the card, and it is the first to be trimmed.
+    $inches = Get-DisplayInches -Display $Display
+    $sub.ToolTip = $sub.Text + $(if ($inches -gt 0) { '   -   {0} inches' -f [int][math]::Round($inches) } else { '' })
     [void]$stack.Children.Add($sub)
 
     $radio = New-Object System.Windows.Controls.RadioButton
@@ -1710,7 +1712,10 @@ function Add-DeskCard {
         Radio     = $radio
         Width     = $pw
         Height    = $ph
-        # The shape to draw the desk into: Update-DeskShapes sizes it and pushes it down.
+        # The panel's diagonal, which is what the screen is drawn to scale by. 0 — the EDID does
+        # not say, and the card takes after its neighbours.
+        Inches    = $inches
+        # The shape to draw the desk into: Update-DeskShapes gives it its size.
         Mini      = $mini
         Band      = $band
         Inner     = [double]$outer.Width - 16
@@ -1751,66 +1756,18 @@ function Move-DeskCard {
     $Panel.Children.Insert($j, $Card)
 }
 
-# --- the desk preview -------------------------------------------------------
-# The cards say what order the monitors stand in, but they do not show what comes out of
-# that: screens of different heights (1440 and 2160) line up centred, and strips are left at
-# the edges that the cursor will not cross. Without a preview that only comes to light after
-# Save — on the live desk.
+# --- the desk drawn into its cards ------------------------------------------
+# The row of cards is the picture of the desk: their order left to right is the layout, and the
+# screen inside each card is the panel it stands for. Which means the screens have to be drawn
+# to the size a person SEES — the inches of the panel — and not to its resolution.
 #
-# The coordinates come from Get-LayoutPositions — the very function the switcher works with.
-# Not "a similar picture" but exactly what will be applied: if the picture lies, then the
-# switch lies too, and it is one and the same bug that is on show.
-
-# A pure function: the cards (in their visible order) -> screens for Get-LayoutPositions.
-# The size in pixels comes from the monitor's current mode, or from its best one if it is
-# off; an unknown one is counted as an ordinary 16:9 so that it still takes up its place in
-# the row.
-function ConvertTo-PreviewScreens {
-    param($Cards)
-
-    $screens = @()
-    $i = 0
-    foreach ($info in @($Cards)) {
-        if (-not $info) { continue }
-        $w = [int]$info.Width
-        $h = [int]$info.Height
-        if ($w -le 0 -or $h -le 0) { $w = 1920; $h = 1080 }
-        $screens += [pscustomobject]@{
-            DevicePath = 'preview-' + $i
-            Label      = [string]$info.Label
-            Width      = $w
-            Height     = $h
-            Connected  = [bool]$info.Connected
-            Primary    = [bool]$info.Primary
-        }
-        $i++
-    }
-    return $screens
-}
-
-# The coordinates for the picture come through Get-LayoutPositions, the same function the
-# switcher works with.
+# Drawing by pixels was measured and it lied: the 4K UltraFine got 128 points and the 1440p
+# beside it 85, while on the desk the 4K is the 24-inch one and the 1440p is a 27. The picture
+# said the opposite of what was standing there.
 #
-# The order has to be handed to it EXPLICITLY, as names in the cards' order: with an empty
-# Order every screen has the same rank and it sorts them by name. The first version drew it
-# exactly that way — alphabetically: ULTRAFINE, ULTRAGEAR, XG27AQDMGR instead of ULTRAFINE,
-# XG27AQDMGR, ULTRAGEAR, that is, it showed a desk other than the one that would come out.
-function Get-PreviewPlacement {
-    param($Screens)
-
-    $list = @($Screens)
-    if ($list.Count -eq 0) { return @{} }
-    $primary = @($list | Where-Object { $_.Primary } | Select-Object -First 1)
-    return Get-LayoutPositions -Screens $list -Order @($list | ForEach-Object { [string]$_.Label }) `
-                               -PrimaryPath $(if ($primary.Count -gt 0) { $primary[0].DevicePath } else { '' })
-}
-
-# Draw the desk into the cards. The sizes and the vertical offsets come from
-# Get-LayoutPositions — the same function the switcher uses — so the row of cards is not an
-# illustration of the layout but the layout itself, at a smaller scale.
-#
-# One scale for every card, worked out from the whole desk: a 4K panel has to LOOK bigger than
-# the 1440p one beside it, and two separate scales would draw them the same size.
+# The difference is damped — the width goes as the square root of the ratio of the diagonals —
+# because the row is for telling which panel is which, not for measuring them: 24 next to 27
+# comes out at 94 %, and 32 next to 24 at 115 %. Undamped, a 24 beside a 32 would be a thumbnail.
 function Update-DeskShapes {
     param($Ui)
 
@@ -1824,52 +1781,53 @@ function Update-DeskShapes {
     }
     if ($infos.Count -eq 0) { return }
 
-    $cards = @($infos | ForEach-Object {
-        [pscustomobject]@{
-            Label     = [string]$_.Label
-            Width     = [int]$_.Width
-            Height    = [int]$_.Height
-            Connected = [bool]$_.Connected
-            Primary   = [bool]($_.Radio -and $_.Radio.IsChecked)
-        }
+    # A monitor whose EDID says nothing about its size is drawn as the average of the ones that
+    # do: on a row where everybody else is a 27, the unknown one is a card like its neighbours
+    # rather than a dot. Nobody knows anything — they are all drawn the same.
+    $known = @($infos | ForEach-Object { [double]$_.Inches } | Where-Object { $_ -gt 0 })
+    $stand = $(if ($known.Count -gt 0) { [double]($known | Measure-Object -Average).Average } else { 1.0 })
+    $diagonals = @($infos | ForEach-Object {
+        $(if ([double]$_.Inches -gt 0) { [double]$_.Inches } else { $stand })
     })
-    $screens = @(ConvertTo-PreviewScreens -Cards $cards)
-    $positions = Get-PreviewPlacement -Screens $screens
+    $biggest = [double]($diagonals | Measure-Object -Maximum).Maximum
+    if ($biggest -le 0) { return }
 
-    # The span the whole desk covers, so it can be fitted into the band.
-    $minY = 0; $maxY = 0; $maxW = 1
-    foreach ($s in $screens) {
-        $p = $positions[$s.DevicePath]
-        if (-not $p) { continue }
-        if ($p.Y -lt $minY) { $minY = $p.Y }
-        if (($p.Y + $s.Height) -gt $maxY) { $maxY = $p.Y + $s.Height }
-        if ($s.Width -gt $maxW) { $maxW = $s.Width }
+    # The widest screen fills its card, and everything else is drawn against it. The narrowest
+    # card in the row sets that width: from four displays on the cards are narrower, and one
+    # measure for the row keeps the panels comparable.
+    $base = [double]($infos | ForEach-Object { [double]$_.Inner } | Measure-Object -Minimum).Minimum
+
+    $widths = @(); $heights = @()
+    for ($i = 0; $i -lt $infos.Count; $i++) {
+        $w = $base * [math]::Sqrt($diagonals[$i] / $biggest)
+        # The SHAPE is still the resolution's, so a 21:9 stays a long one. Nothing known about a
+        # monitor that is not here right now — an ordinary 16:9, and it keeps its place in the row.
+        $px = [double]$infos[$i].Width; $py = [double]$infos[$i].Height
+        if ($px -le 0 -or $py -le 0) { $px = 16; $py = 9 }
+        $widths += $w
+        $heights += $w * $py / $px
     }
-    $spanY = [math]::Max(1, $maxY - $minY)
 
-    # The band's height is the whole desk, and no card's screen may be wider than the card. The
-    # tighter of the two constraints wins, or a 4K panel would be drawn past its own card.
+    # The band is the other limit: a 16:10 panel drawn to the full width of its card would stand
+    # taller than the strip it is in. One shrink for the whole row — shrinking one card alone
+    # would make it the size of a monitor it is not.
     $band = [double]$infos[0].Band.Height
-    $inner = [double]($infos | ForEach-Object { [double]$_.Inner } | Measure-Object -Minimum).Minimum
-    $scale = [math]::Min($band / $spanY, $inner / $maxW)
-    if ($scale -le 0) { return }
+    $tallest = [double]($heights | Measure-Object -Maximum).Maximum
+    $fit = $(if ($tallest -gt $band -and $tallest -gt 0) { $band / $tallest } else { 1.0 })
 
     $win = $Ui.Window
-    for ($i = 0; $i -lt $screens.Count; $i++) {
-        $s = $screens[$i]
+    for ($i = 0; $i -lt $infos.Count; $i++) {
         $info = $infos[$i]
-        $p = $positions[$s.DevicePath]
-        if (-not $p) { continue }
 
         # Floors, not the raw numbers: a fractional width leaves a hairline of background down
         # one edge of the border, and on a row of three that reads as sloppy drawing.
-        $info.Mini.Width = [math]::Max(22, [math]::Floor($s.Width * $scale))
-        $info.Mini.Height = [math]::Max(16, [math]::Floor($s.Height * $scale))
-        $info.Mini.Margin = New-Object System.Windows.Thickness 0, ([math]::Floor(($p.Y - $minY) * $scale)), 0, 0
+        $info.Mini.Width = [math]::Max(22, [math]::Floor($widths[$i] * $fit))
+        $info.Mini.Height = [math]::Max(16, [math]::Floor($heights[$i] * $fit))
         # The taskbar display is outlined in the accent colour: "primary" in Windows is a place,
         # and this is the card standing at the origin of it.
-        $info.Mini.BorderThickness = New-Object System.Windows.Thickness $(if ($s.Primary) { 2 } else { 1 })
-        $info.Mini.BorderBrush = $win.FindResource($(if ($s.Primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
+        $primary = [bool]($info.Radio -and $info.Radio.IsChecked)
+        $info.Mini.BorderThickness = New-Object System.Windows.Thickness $(if ($primary) { 2 } else { 1 })
+        $info.Mini.BorderBrush = $win.FindResource($(if ($primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
     }
 }
 

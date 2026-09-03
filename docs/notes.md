@@ -2253,3 +2253,40 @@ Before the first layout `Top` is `NaN` — a window with no HWND stands nowhere 
 throws. So the guard is the handle rather than a flag: no window, no monitor, nothing to keep inside.
 That is also the state every test is in, which is why the whole thing can be tested without showing a
 window.
+
+## The 24-inch monitor was drawn as the big one (2026-09-03)
+
+`Update-DeskShapes` drew each card's screen from the resolution, one scale for the whole desk. On this
+desk that came out as 128 points of width for the 4K and 85 for the 1440p beside it — and the 4K is the
+24-inch panel while the "small" 1440p is a 27. The picture said the opposite of what was standing on the
+table, and it said it in the one place whose whole job is to show what is standing on the table.
+
+Where the inches come from: Windows keeps the EDID of every monitor ever plugged in under
+`HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY\<hardware id>\<instance>\Device Parameters\EDID`, and the way
+in is the `monitorDevicePath` `Get-DisplayState` already knows a monitor by — the same string, with `#`
+instead of `\`. Bytes 21 and 22 of the base block are the panel in whole centimetres.
+
+Measured here, all three: `60 x 34` cm — 27.2 inches. Which was the surprise of the evening: the plan for
+this work said the UltraFine on this desk is a 24, and its EDID says it is a 27 like the other two. The
+detailed timing descriptor agrees to the millimetre (600 x 340 against the ASUS's 597 x 336). So the
+picture the code now draws of *this* desk is three cards of one size — which is correct, and which the
+old one never was.
+
+Three decisions worth keeping:
+
+- **The difference is damped, by a square root.** Width goes as √(diagonal / the biggest diagonal): 24
+  beside 27 is 94 %, 32 beside 24 is 115 %. Straight proportion would make a 24 next to a 49 a thumbnail,
+  and the row exists to say which panel is which rather than to measure them.
+- **It is not in the state record.** Three registry reads cost 3 ms measured, and `Get-DisplayState` is on
+  the switch path where the `done:` line in the log counts every millisecond. `Get-MonitorPhysicalSize`
+  keeps its answers in a cache instead: a panel does not change size while the app runs. The cache is also
+  how `render-preview.ps1 -Fake` gives sizes to monitors that are plugged into nothing.
+- **The vertical offset is gone.** The screens used to step down the row by the offset
+  `Get-LayoutPositions` would really give them, which is honest and which cost the picture its height for
+  something a person cannot change in this window anyway. `ConvertTo-PreviewScreens` and
+  `Get-PreviewPlacement` went with it, and with them the last reason for the desk picture to know anything
+  about coordinates.
+
+The size is shown in words only on the card's hover text, next to the resolution — the caption under a
+card is already the longest line on it and the first thing to be trimmed. When the Displays table arrives
+it gets a column of its own.
