@@ -2212,3 +2212,44 @@ is built separately from being shown (`New-StatsWindow` / `Show-ActivityStats`),
 closure (the period lives on the pill's `.Tag`, the window in `$script:ActiveStatsUi`), and
 `render-preview.ps1` renders it to a PNG without showing it — which is how its layout was measured at
 every step above, on a desk that does not exist.
+
+## A window that grew off the bottom of the screen (2026-09-03)
+
+The complaint was one sentence: open **Add a combination**, unfold **Brightness, sound and commands**, and
+the window is gone under the taskbar. Measured on this desk, on the window built by hand and shown at a
+fixed place: folded 578 points, unfolded 1201, and the bottom 615 points below the edge of the work area.
+There is no border to drag it back by — the editors are `ResizeMode="NoResize"` — so the only way out is
+Escape, which throws away what was typed.
+
+Three things had to be true at once for this, and each of them is sensible on its own:
+
+- `SizeToContent="WidthAndHeight"` changes `Height` and never touches `Top`, so all growth is downwards.
+- `WindowStartupLocation="CenterOwner"` places the window **once**, when it is shown. Whatever it does
+  after that is its own business.
+- `MaxHeight` limits how tall it may become but moves nothing — and it was read off
+  `SystemParameters.WorkArea`, which is the **primary** monitor. An editor opened on the 1440p monitor to
+  the side was measured against the height of a screen it was not on.
+
+The fix is the shape `Get-PopupPlacement` / `Set-PopupPlace` already has here: the arithmetic is a pure
+function with tests (`Get-WindowShift` — a rectangle and a work area in, a corner out), and what has to be
+asked of Windows sits around it (`Get-WindowWorkArea` — `Screen.FromHandle` for the monitor,
+`TransformFromDevice` for its scale, because on a 150 % monitor pixels and points are different numbers).
+`Move-WindowIntoWorkArea` is subscribed to `SizeChanged` on all three windows that size themselves to
+their content, and `MaxHeight` now comes from the monitor the window will actually stand on: for an editor
+that is its owner's, which is on screen already and is where `CenterOwner` will put it.
+
+Two details worth writing down:
+
+- **A window taller than the work area is pinned to the top, not to the bottom.** Pinning to the bottom
+  keeps Save in view and hides the name field and the display list — that is, everything the window is
+  asking about. Pinned to the top, the rest is reached by the scrollbar that `MaxHeight` was there to
+  produce in the first place.
+- **`render-preview.ps1` has to opt out.** It shows the windows at `-10000` on purpose, so that nothing
+  flashes on the desk while they are photographed, and being pulled back onto the screen is exactly the
+  flash it avoids. Hence `$script:KeepWindowsInWorkArea`, which is `$true` everywhere else and is not a
+  setting anybody sees.
+
+Before the first layout `Top` is `NaN` — a window with no HWND stands nowhere — and assigning that back
+throws. So the guard is the handle rather than a flag: no window, no monitor, nothing to keep inside.
+That is also the state every test is in, which is why the whole thing can be tested without showing a
+window.

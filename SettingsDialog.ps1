@@ -1072,6 +1072,99 @@ function Register-WindowTheme {
     catch { }   # the icon is not required: the window opens without it
 }
 
+# --- a window that does not run off the bottom of the screen ----------------
+# SizeToContent changes Height and leaves Top alone, and WindowStartupLocation places the
+# window once, when it is shown. So a window that grows afterwards grows DOWNWARDS: open
+# "Add a combination" on the lower half of a screen, unfold "Brightness, sound and commands"
+# — 620 points become 1342 — and Save ends up under the taskbar with no way to reach it.
+# MaxHeight limits the growth but never moves anything, and it used to be read off the
+# PRIMARY monitor rather than the one the window stands on.
+#
+# The arithmetic is a pure function, the way Get-PopupPlacement is; what has to be asked of
+# Windows — which monitor, and at what scale — is around it.
+
+function Get-WindowShift {
+    param([double]$Left, [double]$Top, [double]$Width, [double]$Height,
+          [double]$AreaLeft, [double]$AreaTop, [double]$AreaRight, [double]$AreaBottom)
+
+    # Not named $left/$top: PowerShell variables have no case, and such a pair would silently
+    # turn out to be the same $Left/$Top that arrived in the parameters.
+    $px = $Left; $py = $Top
+    if ($py + $Height -gt $AreaBottom) { $py = $AreaBottom - $Height }
+    # Taller than the work area: pinned to the top, not to the bottom. The title and the first
+    # question stay reachable, and what does not fit is reached by the scrollbar.
+    if ($py -lt $AreaTop) { $py = $AreaTop }
+    if ($px + $Width -gt $AreaRight) { $px = $AreaRight - $Width }
+    if ($px -lt $AreaLeft) { $px = $AreaLeft }
+    return [pscustomobject]@{ X = $px; Y = $py }
+}
+
+# The work area of the monitor a window stands on, in WPF units. $null — the window has no
+# HWND yet: until it is shown it stands nowhere, and its Top is not even a number.
+function Get-WindowWorkArea {
+    param($Window)
+
+    if (-not $Window) { return $null }
+    $handle = (New-Object System.Windows.Interop.WindowInteropHelper $Window).Handle
+    if ($handle -eq [System.IntPtr]::Zero) { return $null }
+    $area = [System.Windows.Forms.Screen]::FromHandle($handle).WorkingArea
+
+    # Pixels -> WPF units, exactly as Set-PopupPlace does it: on a monitor at 150% those are
+    # different numbers, and a window placed by pixels would land a third of a screen away.
+    $sx = 1.0; $sy = 1.0
+    $src = [System.Windows.PresentationSource]::FromVisual($Window)
+    if ($src -and $src.CompositionTarget) {
+        $t = $src.CompositionTarget.TransformFromDevice
+        $sx = $t.M11; $sy = $t.M22
+    }
+    return [pscustomobject]@{
+        Left   = $area.Left   * $sx
+        Top    = $area.Top    * $sy
+        Right  = $area.Right  * $sx
+        Bottom = $area.Bottom * $sy
+        Height = $area.Height * $sy
+    }
+}
+
+# How tall a window is allowed to be. -Window is the one to measure by — for an editor that is
+# its owner, which is on screen already and is the monitor the editor will open on
+# (CenterOwner). Nobody to ask — the primary monitor, which is where a window with no owner
+# opens anyway (CenterScreen).
+function Get-WorkAreaHeight {
+    param($Window)
+
+    $area = Get-WindowWorkArea -Window $Window
+    if ($area) { return [double]$area.Height }
+    return [double][System.Windows.SystemParameters]::WorkArea.Height
+}
+
+# Off for render-preview.ps1 and nobody else: it shows the windows at -10000 on purpose, to
+# photograph them without anything flashing on the desk, and being pulled back onto the screen
+# is exactly what it is avoiding.
+$script:KeepWindowsInWorkArea = $true
+
+# Called from SizeChanged, so there is no closure here and the window arrives as $this (see the
+# note about .GetNewClosure() above).
+function Move-WindowIntoWorkArea {
+    param($Window)
+
+    if (-not $script:KeepWindowsInWorkArea) { return }
+    try {
+        $area = Get-WindowWorkArea -Window $Window
+        if (-not $area) { return }
+        # Before the first layout Top and Left are NaN, and assigning NaN back throws.
+        if ([double]::IsNaN($Window.Top) -or [double]::IsNaN($Window.Left)) { return }
+
+        $place = Get-WindowShift -Left $Window.Left -Top $Window.Top `
+                                 -Width $Window.ActualWidth -Height $Window.ActualHeight `
+                                 -AreaLeft $area.Left  -AreaTop $area.Top `
+                                 -AreaRight $area.Right -AreaBottom $area.Bottom
+        $Window.Top  = $place.Y
+        $Window.Left = $place.X
+    }
+    catch { }   # did not work out — the window stays where it grew, as it did before
+}
+
 # --- small factories --------------------------------------------------------
 
 function New-UiTextBlock {
@@ -1223,7 +1316,10 @@ function New-SettingsWindow {
     Register-WindowTheme -Window $win -Dark $dark
 
     # The window does not grow past the work area — beyond that it scrolls. Room for the taskbar.
-    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 40 } catch { }   # no work area — no limit then
+    # There is no owner to measure by: this window opens on the primary monitor (CenterScreen).
+    try { $win.MaxHeight = (Get-WorkAreaHeight) - 40 } catch { }   # no work area — no limit then
+    # And it grows: a mode added to the list makes it taller, and growth is downwards.
+    $win.add_SizeChanged({ Move-WindowIntoWorkArea -Window $this })
 
     $ui = [pscustomobject]@{
         Window            = $win
@@ -2676,7 +2772,11 @@ function New-ModeEditorWindow {
     if ($Owner) { $win.Owner = $Owner }
 
     # The window does not grow past the work area — beyond that it scrolls, as the main one does.
-    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 80 } catch { }   # no work area — no limit then
+    # The owner's monitor, not the primary one: the editor opens centred on the owner, and on a
+    # desk of three monitors those work areas are of different heights.
+    try { $win.MaxHeight = (Get-WorkAreaHeight -Window $Owner) - 80 } catch { }   # no work area — no limit then
+    # This is the window the disclosure doubles in height: it must not grow off the screen.
+    $win.add_SizeChanged({ Move-WindowIntoWorkArea -Window $this })
 
     # The kind of mode decides what the window shows. A new record is always a combo: monitor
     # modes and "all" are created by the desk, not by a person.
@@ -3442,7 +3542,9 @@ function New-RuleEditorWindow {
     $win = Convert-UiXaml -Xaml $script:RuleEditorXaml -Palette $palette
     Register-WindowTheme -Window $win -Dark $Dark
     if ($Owner) { $win.Owner = $Owner }
-    try { $win.MaxHeight = [System.Windows.SystemParameters]::WorkArea.Height - 80 } catch { }   # no work area — no limit then
+    # The owner's monitor, for the same reason as in the mode editor.
+    try { $win.MaxHeight = (Get-WorkAreaHeight -Window $Owner) - 80 } catch { }   # no work area — no limit then
+    $win.add_SizeChanged({ Move-WindowIntoWorkArea -Window $this })
 
     # A new rule starts on the shape everything downstream expects, not on an empty bag: then
     # there is one shape of a rule in this file and not two.

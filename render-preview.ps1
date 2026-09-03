@@ -60,6 +60,11 @@ if (-not $env:SCREENDECK_LOG_FILE) {
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
 
+# A real window is kept inside the work area of its monitor: it must not grow off the bottom
+# of the screen. Here the windows are shown at -10000 on purpose, so that nothing flashes on
+# the desk while it is photographed - and being pulled back is exactly what would flash.
+$script:KeepWindowsInWorkArea = $false
+
 function New-FakeState {
     # The desk all of this was written for: 4K in the middle, two 1440p on the sides.
     return @(

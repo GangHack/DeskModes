@@ -109,6 +109,14 @@ in the tray menu — that line is the right thing to paste into a bug report.
   twenty points taller than the work area of a 1440p screen, so a window whose content fits
   was scrolled all the same; it is a hundred points shorter now, and the desk picture lost a
   caption that only repeated the section above it.
+- **A window that grows no longer grows off the bottom of the screen.** Open **Add a
+  combination** low on the display and unfold **Brightness, sound and commands**: the editor
+  went from 578 points to 1201, all of it downwards, and **Save** ended up 615 points below
+  the edge with no way to reach it — the window has no border to drag. Every window that
+  sizes itself to its content is now kept inside the work area of the monitor it stands on,
+  and one taller than that monitor is pinned to the top so the title and the first question
+  stay reachable. The height limit is read off that same monitor too, instead of off the
+  primary one — on a desk of displays of different heights those are different numbers.
 
 ## 1.0.0 — 2026-09-01
 
