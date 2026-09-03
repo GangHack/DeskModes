@@ -537,40 +537,61 @@ Test-Case 'dialog: a key the window does not edit survives inside reapply' {
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: the seldom-needed settings start folded away' {
-    # The window has to fit a 1440p work area without a scrollbar, and four settings with a right
-    # default are what gives way. Collapsed, not merely hidden: a hidden panel still takes height.
+# --- the pane, the pages and where the window stood --------------------------
+# The window is an application now: five pages behind a pane instead of one column of cards. What
+# a test can hold on to is that the pages exist, that switching between them changes nothing but
+# what is visible, and that a remembered rectangle is refused when it is off every screen.
+
+Test-Case 'dialog: the pane opens on the desk, and every page it names exists' {
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
-        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'folded on opening'
-        Assert-True ([string]$ui.MoreBtn.Content -like '*Additional settings*') 'and the button says what it holds'
-
-        Set-MoreVisible -Ui $ui -Open $true
-        Assert-Equal 'Visible' ([string]$ui.MorePanel.Visibility) 'it opens'
-        Set-MoreVisible -Ui $ui -Open $false
-        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'and closes again'
+        Assert-Equal 'desk' ([string]$ui.Page) 'the first page is the desk'
+        Assert-Equal 5 $ui.Pages.Count 'five pages'
+        foreach ($name in @($ui.Pages.Keys)) {
+            Assert-True ($null -ne $ui.Pages[$name]) "the page '$name' is in the markup"
+        }
+        Assert-Equal 'Visible' ([string]$ui.Pages['desk'].Visibility) 'the desk is up'
+        Assert-Equal 'Collapsed' ([string]$ui.Pages['about'].Visibility) 'and About is not'
+        Assert-Equal 'desk' ([string]$ui.NavList.SelectedItem.Tag) 'the pane marks where we are'
+        Assert-Null $ui.NavAbout.SelectedItem 'and the bottom list is not marked as well'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: the arrow on the fold says which way it goes' {
-    $ui = New-DialogUi -Settings (Get-DefaultSettings)
-    try {
-        Set-MoreVisible -Ui $ui -Open $false
-        $shut = [string]$ui.MoreBtn.Content
-        Set-MoreVisible -Ui $ui -Open $true
-        Assert-True ($shut -ne [string]$ui.MoreBtn.Content) 'open and shut do not look the same'
-    }
-    finally { $ui.Window.Close() }
-}
-
-Test-Case 'dialog: a folded setting is still saved' {
-    # Folded away is not switched off. The controls are built and read exactly as before; only
-    # their visibility changed.
+Test-Case 'dialog: switching pages changes what is visible and nothing else' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-Equal 'Collapsed' ([string]$ui.MorePanel.Visibility) 'still folded'
+        $ui.NotifyBox.IsChecked = $true
+        $ui.LastModeBox.IsChecked = $false
+
+        Set-UiPage -Ui $ui -Page 'about'
+        Assert-Equal 'about' ([string]$ui.Page) 'we are on About'
+        Assert-Equal 'Visible' ([string]$ui.Pages['about'].Visibility) 'the page is up'
+        Assert-Equal 'Collapsed' ([string]$ui.Pages['desk'].Visibility) 'and the desk is away'
+        # About lives in the pane's second list, and only one of the two may look chosen.
+        Assert-Equal 'about' ([string]$ui.NavAbout.SelectedItem.Tag) 'marked at the bottom'
+        Assert-Null $ui.NavList.SelectedItem 'and unmarked at the top'
+
+        # A page nobody has: back to the first one rather than to a blank window.
+        Set-UiPage -Ui $ui -Page 'nowhere'
+        Assert-Equal 'desk' ([string]$ui.Page) 'an unknown page falls back to the desk'
+
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-True ([bool]$updated.notifications) 'what was set on another page is still set'
+        Assert-Equal $false ([bool]$updated.restoreLastMode) 'both ways round'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the seldom-needed settings are a card of their own, and still saved' {
+    # They used to be folded away to keep the window inside a 1440p screen. The page has the room,
+    # so the fold is gone - and being visible must not change what a Save writes.
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Null $ui.Window.FindName('MoreBtn') 'the fold button is gone'
+        Assert-Null $ui.Window.FindName('MorePanel') 'and so is the panel it hid'
         $ui.RefreshBox.IsChecked = $true
         $ui.ResumeBox.IsChecked = $false
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
@@ -578,4 +599,73 @@ Test-Case 'dialog: a folded setting is still saved' {
         Assert-Equal $false ([bool]$updated.reapply.onResume) 'and so was the one below it'
     }
     finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: About says the same version line the command line does' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-True ([string]$ui.VersionText.Text -like ((Get-VersionLine) + '*')) 'the same line, word for word'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: with no address the Donate button is off and says why' {
+    # The card is built before there is anywhere to send anybody: a button that opens a 404 is
+    # worse than one that is honestly not ready.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        if ($script:DonateUrl) {
+            Assert-True $ui.DonateBtn.IsEnabled 'there is an address, so the button works'
+        }
+        else {
+            Assert-Equal $false ([bool]$ui.DonateBtn.IsEnabled) 'no address, no button'
+            Assert-True ([string]$ui.DonateHint.Text -like '*no address*') 'and it says so in words'
+        }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the Displays table names every display and its Monitor ID' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $texts = @($ui.DisplaysTable.Children |
+                   Where-Object { $_ -is [System.Windows.Controls.TextBlock] } |
+                   ForEach-Object { [string]$_.Text })
+        Assert-True ($texts -contains 'Monitor ID') 'the column that settings.json is written in'
+        Assert-True ($texts -contains 'LG ULTRAFINE') 'a display by name'
+        Assert-True ($texts -contains 'GSM5CBC') 'and by the id the log calls it'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'window rect: a remembered window is refused when it is off every screen' {
+    # Monitors come and go. A window put back onto one that is no longer there cannot be reached,
+    # moved or closed - so a rectangle is only used when the title bar lands on something.
+    $screens = @([pscustomobject]@{ Left = 0; Top = 0; Right = 1920; Bottom = 1040 })
+
+    Assert-True (Test-WindowRectVisible -Left 100 -Top 100 -Width 980 -Height 660 -Screens $screens) `
+                'wholly on the screen'
+    Assert-True (Test-WindowRectVisible -Left 1700 -Top 900 -Width 980 -Height 660 -Screens $screens) `
+                'a corner with enough of the title bar on it still counts'
+    Assert-Equal $false (Test-WindowRectVisible -Left 2200 -Top 100 -Width 980 -Height 660 -Screens $screens) `
+                'the second monitor is gone'
+    Assert-Equal $false (Test-WindowRectVisible -Left 100 -Top 1100 -Width 980 -Height 660 -Screens $screens) `
+                'below the taskbar, title bar and all'
+    Assert-Equal $false (Test-WindowRectVisible -Left 1880 -Top 100 -Width 980 -Height 660 -Screens $screens) `
+                'forty points of it showing is not something to grab'
+    Assert-Equal $false (Test-WindowRectVisible -Left -9000 -Top -9000 -Width 980 -Height 660 -Screens $screens) `
+                'nowhere near any screen at all'
+    Assert-Equal $false (Test-WindowRectVisible -Left 100 -Top 100 -Width 0 -Height 0 -Screens $screens) `
+                'a window with no size was never shown'
+    Assert-Equal $false (Test-WindowRectVisible -Left 100 -Top 100 -Width 980 -Height 660 -Screens @()) `
+                'and with no screens at all, nothing is visible'
+}
+
+Test-Case 'window rect: the second monitor is a place to open on' {
+    $screens = @(
+        [pscustomobject]@{ Left = 0; Top = 0; Right = 1920; Bottom = 1040 }
+        [pscustomobject]@{ Left = 1920; Top = -400; Right = 5760; Bottom = 1760 }
+    )
+    Assert-True (Test-WindowRectVisible -Left 3000 -Top -200 -Width 980 -Height 660 -Screens $screens) `
+                'on the one to the right, above the primary'
 }

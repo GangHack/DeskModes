@@ -19,6 +19,10 @@ window-state.json
 # The last chosen mode: the machine's state, changing on every switch.
 last-mode.json
 
+# Where the Settings window stood and which page it was open on. The machine's state, and
+# deleting it costs a person nothing but a centred window.
+ui-state.json
+
 # The monitors' verified modes: the resolution and refresh rate this machine really showed.
 # Needed to set a sleeping monitor's mode in one transition.
 display-modes.json

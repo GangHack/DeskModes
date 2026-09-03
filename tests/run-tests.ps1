@@ -61,6 +61,8 @@ $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
 $script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
+# Where the Settings window stood: written when a window closes, and every test closes its window.
+$script:UiStateFile = Join-Path $script:TestDir 'ui-state.json'
 # The tests do not touch the real diary either: it is about a person, and mixing invented days into
 # it is not allowed.
 $script:ActivityFile = Join-Path $script:TestDir 'activity.json'

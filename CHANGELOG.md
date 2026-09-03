@@ -9,6 +9,27 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
 
+### The Settings window is an application
+
+- **A pane on the left, a page on the right.** Your desk, Modes, Rules and Behavior are pages
+  now instead of four cards stacked into one column 640 points wide and up to 1311 tall. Nothing
+  is folded away to make room, and the next section that comes along has somewhere to stand.
+- **The window can be resized**, and it comes back the size you left it, in the place you left
+  it, on the page you left it on. That is kept in `ui-state.json` next to the program - the
+  machine's state, like `window-state.json`, and safe to delete. A rectangle that is no longer on
+  any screen is refused: a window put back onto a monitor that has gone cannot be reached at all.
+- **Your desk has a Displays table** under the cards: what each display reports about itself, and
+  the **Monitor ID** it is called by in `settings.json` and in the log - which is the name you
+  need when you open either by hand.
+- **The commands stand in the page's heading** - *Add a combination*, *Add a rule* - rather than
+  under the list. With a dozen modes, adding one meant scrolling to the bottom first.
+- **An About page**, at the bottom of the pane where Windows keeps its own: the version line to
+  paste into a bug report, the log, the folder everything lives in, the project page and a
+  **Report a problem** button. **About ScreenDeck** in the tray menu opens the window there
+  instead of showing a notification you cannot copy from.
+- **A Support card** with a **Donate** button. There is no address behind it yet, and until there
+  is, the button says so instead of opening a page that would not be there.
+
 ### A mode's editor holds all of a mode
 
 - **Contrast has a card**, right under Brightness and working exactly like it: leave it alone,
@@ -28,19 +49,12 @@ in the tray menu — that line is the right thing to paste into a bug report.
   away from any window, and an entry left behind by a mode that no longer exists gets its own
   removable row, the way a stranded shortcut always did.
 
-### The Settings window is one screen again
+### Rows that say only what they have to
 
 - **The display cards are the picture.** There was a second drawing under the row saying the same
-  thing twice — the same displays, the same order, the same taskbar. Each card's screen is now
-  drawn at your desk's own scale and offset, by the function the switcher itself uses: a 4K panel
-  looks bigger than the 1440p one beside it, a shorter display sits lower exactly as it will, and
-  the taskbar display is the one outlined. One control instead of two, and 132 points shorter.
-- **Additional settings** folds away the four with a right default — the refresh-rate watchdog and
-  the three "when Windows rearranges the desk behind my back" answers. They are still saved
-  whether the fold is open or shut.
-- Together these fit the window back onto a 1440p screen without a scrollbar, Rules card and all.
-  Measured against a 1352-point limit: 1176 on a fresh desk, 1262 with a couple of combinations,
-  and 1311 for a desk with two combinations, two rules and something set on every mode.
+  thing twice — the same displays, the same order, the same taskbar. Each card's screen is the
+  display it stands for now, and the taskbar display is the one outlined. One control instead of
+  two, and 132 points shorter.
 - **A mode's row says nothing about what kind of mode it is.** "Only LG ULTRAFINE" had a second
   line under it reading "Display"; a combination's said "Combination" before listing anything.
   Both repeated what the row already showed — the title in one case, the **Remove** button in the

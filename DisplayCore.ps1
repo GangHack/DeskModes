@@ -34,6 +34,10 @@ $script:LogFile      = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FIL
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
+# Where the Settings window stood and which page it was on. The machine's state and not a
+# setting: it is not in settings.json, it is in .gitignore, and deleting it costs a person
+# nothing but a centred window.
+$script:UiStateFile = Join-Path $PSScriptRoot 'ui-state.json'
 
 # The version is where a person starts a bug report: without it "my monitor will not go out" cannot be
 # matched against either the log or a commit. The line is assembled by one function for everybody: keeping
@@ -49,6 +53,16 @@ function Get-VersionLine {
     return 'ScreenDeck {0} - Windows {1}, PowerShell {2}' -f $script:Version,
            [System.Environment]::OSVersion.Version, $PSVersionTable.PSVersion
 }
+
+# The addresses the About page opens. Here rather than in the window's markup for the reason the
+# version is here: README links the same project, and two copies of an address drift apart at
+# the first rename.
+$script:RepoUrl = 'https://github.com/GangHack/ScreenDeck'
+$script:IssuesUrl = 'https://github.com/GangHack/ScreenDeck/issues'
+# Empty on purpose until there is an address to put here. The Support card is built either way;
+# with no address the button says so and does nothing, which is honest, while a button that
+# opens a 404 is not.
+$script:DonateUrl = ''
 
 # The date and time for the log and for the files — the same on any locale. Both `-Format` and ToString
 # without a culture take from the current one not only the time separator but the CALENDAR: on a Thai locale

@@ -93,10 +93,15 @@ README does not depend on which monitors happen to be plugged in that day:
 .\render-preview.ps1 -Fake -Out docs\images\settings.png
 ```
 
-That writes `settings.png`, `settings-mode.png` and `settings-timer.png` in one go.
-`docs/images/desk.png` is the top of the first one, cropped to 1280×920 — a wide
-picture works better at the head of the README than a very tall one. The rendered
-files go under `docs/images/`, never the ignored `preview-*.png` names.
+That writes nine files in one go: the Settings window on each of its five pages
+(`settings.png` for the first, then `-modes`, `-rules`, `-behavior`, `-about`), the two
+editors (`-editor`, `-rule`), the timer (`-timer`) and the diary (`-stats`).
+
+**Only five of them are committed** — the four README shows plus the Modes page:
+`settings.png`, `settings-modes.png`, `settings-editor.png`, `settings-about.png` and
+`settings-timer.png`. The rest are for looking at while a window is being worked on;
+delete them before committing. The rendered files go under `docs/images/`, never the
+ignored `preview-*.png` names.
 
 The theme comes from the system, so switch Windows to the theme you want *before*
 rendering; the script has no switch for it.

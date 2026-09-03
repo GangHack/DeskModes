@@ -13,7 +13,7 @@ display you chose.
 No installer, no service, no dependencies — a folder of PowerShell scripts talking to the
 Windows display API. Delete the folder and it is gone.
 
-![The desk, as you arrange it in Settings](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/desk.png)
+![The Settings window, on the page where the desk is arranged](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
 
 ## What it actually does
 
@@ -66,24 +66,35 @@ Every one of these exists because the naive version broke on a real desk:
 
 ## What it looks like
 
-Everything is set up in one window, which follows the system theme — dark, light and your
-accent color. The display cards are drawn to the size of the panels themselves — read out of
-each monitor's EDID, not guessed from its resolution — so the row is the layout rather than a
-picture of it. Each mode is a row, and **Edit** opens the one place that mode
-is configured; the settings with a right default are folded under **Additional settings**:
+Everything is set up in one window: a pane on the left, a page on the right, **Save** and
+**Cancel** underneath. It follows the system theme — dark, light and your accent colour — and
+it can be resized; where it stood and which page you left it on come back with it.
 
-![The Settings window](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
+**Your desk** is the picture above. The display cards are drawn to the size of the panels
+themselves — read out of each monitor's EDID, not guessed from its resolution — so the row is
+the layout rather than a picture of it, and the table under it says what each display reports
+about itself.
+
+**Modes** is everything you can switch to. Each one is a row, and **Edit** opens the one place
+that mode is configured:
+
+![The Modes page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-modes.png)
 
 The mode editor holds everything one mode owns. What the mode IS stays in sight — its name,
 its displays, where the taskbar goes and the keys that reach it; what it does to the hardware
 — brightness, contrast, the playback device and the commands — is folded under one line, and
 unfolds by itself for a mode that already has any of them set:
 
-![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-mode.png)
+![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-editor.png)
 
 And the shutdown timer, from the tray menu, when a ready length is not the one you want:
 
 ![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-timer.png)
+
+**About** sits at the bottom of the pane, where Windows keeps its own: the version to paste
+into a bug report, the log, the folder everything lives in, and the project page.
+
+![The About page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-about.png)
 
 ## Requirements
 

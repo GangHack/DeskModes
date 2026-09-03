@@ -1041,10 +1041,14 @@ function Register-Hotkeys {
 # matter who called it, and $script:AppName resolves inside it. Inside .GetNewClosure() it
 # would resolve to nothing — the name used to be copied into a local for that very reason.
 function Open-SettingsWindow {
+    # -Page is what the About item passes: the same window, opened on the page that answers
+    # "what version is this and where do I report it".
+    param([string]$Page = '')
+
     # An error while building a WinForms window is shown as a nameless system window with no
     # detail. We catch it ourselves and write it to the log — there is no debugging it otherwise.
     try {
-        $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings)
+        $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings) -Page $Page
         if ($updated) {
             Set-ActiveSettings $updated
             Register-Hotkeys
@@ -1292,15 +1296,14 @@ $menu.add_Opening({
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
 
-    # The version goes through a balloon rather than a MessageBox: a modal window from the
-    # tray stops the message loop, and with it the refresh-rate watchdog and the shutdown
-    # timer.
+    # It used to be a balloon with the version line in it. The Settings window has an About page
+    # now - the version, the project, the log, the folder - so the item opens the window there.
     # The name comes from $script:AppName rather than being spelled out: the same name is in
     # the icon's tooltip, in error captions and in the first-run greeting, and a name that
     # drifted is the first thing a person notices in a bug report.
     $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem "About $script:AppName"
     $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
-    $aboutItem.add_Click({ Show-Balloon $script:AppName (Get-VersionLine) -Always })
+    $aboutItem.add_Click({ Open-SettingsWindow -Page 'about' })
     [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))

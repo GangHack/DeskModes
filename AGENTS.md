@@ -280,7 +280,7 @@ value of this project, and no fake reproduces them.
   reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
   new location.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
-  `display-modes.json`, `window-state.json`, `activity.json`, `stats.html` and
+  `display-modes.json`, `window-state.json`, `ui-state.json`, `activity.json`, `stats.html` and
   `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
   `ScreenDeck-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
   three out of what is already committed. The screenshots under `docs/images/` are the

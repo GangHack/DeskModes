@@ -68,7 +68,9 @@ function Get-UiPalette {
             BG = '#202020'; CARD = '#2B2B2B'; CARDBORDER = '#232323'; FOOTER = '#1C1C1C'
             TEXT = '#F5F5F5'; DIM = '#A0A0A0'
             INPUT = '#363636'; INPUTBORDER = '#4A4A4A'; HOVER = '#3C3C3C'; PRESSED = '#333333'
-            MINI = '#3A3A3A'; SCROLL = '#5F5F5F'
+            # The navigation pane is DARKER than the page, as it is in Windows 11 Settings: the
+            # page is where the work is, and the pane stands behind it.
+            MINI = '#3A3A3A'; PANE = '#1B1B1B'; SCROLL = '#5F5F5F'
             ACCENT = $accent; ACCENTTEXT = (Get-ContrastTextColor $accent)
         }
     }
@@ -77,7 +79,8 @@ function Get-UiPalette {
         BG = '#F3F3F3'; CARD = '#FBFBFB'; CARDBORDER = '#E5E5E5'; FOOTER = '#F3F3F3'
         TEXT = '#1B1B1B'; DIM = '#5F5F5F'
         INPUT = '#FFFFFF'; INPUTBORDER = '#D6D6D6'; HOVER = '#F0F0F0'; PRESSED = '#E8E8E8'
-        MINI = '#EDEDED'; SCROLL = '#9A9A9A'
+        # In the light theme the pane is darker than the page for the same reason.
+        MINI = '#EDEDED'; PANE = '#EBEBEB'; SCROLL = '#9A9A9A'
         ACCENT = $accent; ACCENTTEXT = (Get-ContrastTextColor $accent)
     }
 }
@@ -102,6 +105,7 @@ $script:UiResourcesXaml = @'
         <SolidColorBrush x:Key="HoverBrush" Color="%%HOVER%%"/>
         <SolidColorBrush x:Key="PressedBrush" Color="%%PRESSED%%"/>
         <SolidColorBrush x:Key="MiniBrush" Color="%%MINI%%"/>
+        <SolidColorBrush x:Key="PaneBrush" Color="%%PANE%%"/>
         <SolidColorBrush x:Key="ScrollBrush" Color="%%SCROLL%%"/>
         <SolidColorBrush x:Key="AccentBrush" Color="%%ACCENT%%"/>
         <SolidColorBrush x:Key="AccentTextBrush" Color="%%ACCENTTEXT%%"/>
@@ -215,6 +219,54 @@ $script:UiResourcesXaml = @'
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="16,16"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <!-- The navigation pane. One ListBox with a container style, which is all a Windows 11
+             sidebar is: 36 points high, radius 4, an accent bar 3 x 16 on the chosen one. The
+             chosen item is filled with the CARD colour rather than with the hover one — on the
+             pane those two are four values apart in the light theme, and the bar alone was
+             carrying the whole answer to "where am I".
+
+             The glyphs are Segoe Fluent Icons with a fallback to Segoe MDL2 Assets: both ship
+             with Windows, and nothing is installed. -->
+        <Style x:Key="NavIcon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="NavItem" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid Height="36" Margin="6,1,6,1">
+                            <Border x:Name="Bd" CornerRadius="4" Background="Transparent"/>
+                            <Border x:Name="Bar" Width="3" Height="16" CornerRadius="2" Visibility="Collapsed"
+                                    HorizontalAlignment="Left" Background="{StaticResource AccentBrush}"/>
+                            <ContentPresenter VerticalAlignment="Center" Margin="14,0,10,0"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardBrush}"/>
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Nav" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource NavItem}"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
         </Style>
 
         <Style x:Key="Btn" TargetType="Button">
@@ -697,175 +749,380 @@ $script:SettingsWindowXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ScreenDeck - Settings"
-        Width="640" SizeToContent="Height" ResizeMode="NoResize"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        Width="980" Height="660" MinWidth="820" MinHeight="560"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
         UseLayoutRounding="True">
     <Window.Resources>
 %%RES%%
     </Window.Resources>
-    <DockPanel LastChildFill="True">
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource FooterBrush}"
-                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="20,12">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="96" IsDefault="True"/>
-                <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="96" Margin="8,0,0,0" IsCancel="True"/>
-            </StackPanel>
-        </Border>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16,20,8">
-            <StackPanel>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Your desk"/>
-                        <TextBlock Style="{StaticResource Hint}"
-                                   Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
-                        <!-- The cards ARE the picture. There used to be a second drawing under
-                             this row saying the same thing twice: the same displays, the same
-                             order, the same taskbar. Now each card's screen is drawn at the
-                             desk's own scale and offset - by Get-LayoutPositions, the function
-                             the switcher itself uses - so the row shows what will come out and
-                             the duplicate is gone, along with its 132 points of height. -->
-                        <WrapPanel x:Name="DeskPanel"/>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Modes"/>
-                        <TextBlock Style="{StaticResource Hint}"
-                                   Text="Everything you can switch to; Edit opens the one place each mode is set up."/>
-                        <StackPanel x:Name="ModesPanel"/>
-                        <Button x:Name="AddComboBtn" Style="{StaticResource Btn}" Content="Add a combination"
-                                HorizontalAlignment="Left" Margin="0,12,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Rules"/>
-                        <TextBlock Style="{StaticResource Hint}"
-                                   Text="Switch by itself when something happens; switch by hand and the rule lets go."/>
-                        <StackPanel x:Name="RulesPanel"/>
-                        <Button x:Name="AddRuleBtn" Style="{StaticResource Btn}" Content="Add a rule"
-                                HorizontalAlignment="Left" Margin="0,12,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource H2}" Text="Behavior" Margin="0,0,0,4"/>
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Start with Windows"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="The tray icon and the shortcuts come back after a reboot."/>
-                            </StackPanel>
-                            <CheckBox x:Name="StartupBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Notifications"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Show a notification after switching."/>
-                            </StackPanel>
-                            <CheckBox x:Name="NotifyBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Remember window positions"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Bring windows back where they were, separately for every display set."/>
-                            </StackPanel>
-                            <CheckBox x:Name="WindowsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Restore the last mode"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Come back to the mode you chose last, not to whatever Windows picked."/>
-                            </StackPanel>
-                            <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
-                                <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
-                                           Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
-                            </StackPanel>
-                            <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <!-- Four settings nobody changes twice: one is a watchdog that should
-                             just work, and three answer "what should happen when Windows
-                             rearranges the desk behind my back" - a question with a right
-                             default. They are here rather than in the file, and folded away
-                             rather than in the face of somebody setting up their displays. -->
-                        <Button x:Name="MoreBtn" Style="{StaticResource BtnSubtle}"
-                                HorizontalAlignment="Left" Margin="0,14,0,0" Padding="0,2"
-                                FontSize="13" Content="Additional settings"/>
-                        <StackPanel x:Name="MorePanel" Visibility="Collapsed">
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Best refresh rate"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Put every display back to its maximum refresh rate when Windows silently drops it."/>
-                            </StackPanel>
-                            <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild after waking from sleep"/>
-                            </StackPanel>
-                            <CheckBox x:Name="ResumeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild when a display is unplugged"/>
-                            </StackPanel>
-                            <CheckBox x:Name="UnplugBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
-                        </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,16,0">
-                                <TextBlock Style="{StaticResource RowTitle}" Text="When a display is plugged in, switch to"/>
-                                <TextBlock Style="{StaticResource RowSub}" Text="Only when the display that appeared belongs to that mode."/>
-                            </StackPanel>
-                            <ComboBox x:Name="PlugModeBox" Grid.Column="1" Style="{StaticResource Select}"
-                                      Width="196" Height="30" VerticalAlignment="Center"/>
-                        </Grid>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- The pane. Two lists rather than one: About sits at the bottom, where Windows keeps
+             its own Settings item, and a single ListBox cannot have a gap in the middle of it.
+             What keeps them from both looking chosen at once is Set-UiPage. -->
+        <Border Background="{StaticResource PaneBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="20,16,12,14">
+                    <TextBlock Style="{StaticResource NavIcon}" Foreground="{StaticResource AccentBrush}"
+                               FontSize="18" Text="&#xE7F4;"/>
+                    <TextBlock Text="ScreenDeck" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <ListBox x:Name="NavList" DockPanel.Dock="Top" Style="{StaticResource Nav}">
+                    <ListBoxItem Tag="desk">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource NavIcon}" Text="&#xE7F4;"/>
+                            <TextBlock Text="Your desk" VerticalAlignment="Center"/>
                         </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="modes">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A9;"/>
+                            <TextBlock Text="Modes" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="rules">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource NavIcon}" Text="&#xE945;"/>
+                            <TextBlock Text="Rules" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="behavior">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource NavIcon}" Text="&#xE713;"/>
+                            <TextBlock Text="Behavior" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+                <ListBox x:Name="NavAbout" DockPanel.Dock="Bottom" Style="{StaticResource Nav}" Margin="0,0,0,10">
+                    <ListBoxItem Tag="about">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource NavIcon}" Text="&#xE946;"/>
+                            <TextBlock Text="About" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="PageHost">
+
+                <!-- Your desk -->
+                <Grid x:Name="DeskPage">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="24,20,24,10">
+                        <TextBlock Style="{StaticResource H1}" Text="Your desk"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0"
+                                   Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
                     </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
-    </DockPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                        <StackPanel>
+                            <Border Style="{StaticResource Card}">
+                                <WrapPanel x:Name="DeskPanel"/>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="Displays"/>
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="What each one reports about itself. The Monitor ID is the name settings.json and the log use."/>
+                                    <Grid x:Name="DisplaysTable"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Modes -->
+                <Grid x:Name="ModesPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="24,20,24,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H1}" Text="Modes"/>
+                            <TextBlock Style="{StaticResource Hint}" Margin="0"
+                                       Text="Everything you can switch to; Edit opens the one place each mode is set up."/>
+                        </StackPanel>
+                        <!-- The command stands in the page's head, not under the list: with a
+                             dozen modes, adding one meant scrolling to the bottom first. -->
+                        <Button x:Name="AddComboBtn" Grid.Column="1" Style="{StaticResource Btn}"
+                                Content="Add a combination" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                        <!-- Top, not stretched: a card is as tall as what is in it. A list of
+                             three modes in a card the height of the window reads as a list that
+                             lost the rest of itself. -->
+                        <Border Style="{StaticResource Card}" VerticalAlignment="Top">
+                            <StackPanel x:Name="ModesPanel"/>
+                        </Border>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Rules -->
+                <Grid x:Name="RulesPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="24,20,24,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H1}" Text="Rules"/>
+                            <TextBlock Style="{StaticResource Hint}" Margin="0"
+                                       Text="Switch by itself when something happens; switch by hand and the rule lets go."/>
+                        </StackPanel>
+                        <Button x:Name="AddRuleBtn" Grid.Column="1" Style="{StaticResource Btn}"
+                                Content="Add a rule" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                        <Border Style="{StaticResource Card}" VerticalAlignment="Top">
+                            <StackPanel x:Name="RulesPanel"/>
+                        </Border>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- Behavior -->
+                <Grid x:Name="BehaviorPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="24,20,24,10">
+                        <TextBlock Style="{StaticResource H1}" Text="Behavior"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0" Text="What ScreenDeck does on its own."/>
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                        <StackPanel>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Start with Windows"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="The tray icon and the shortcuts come back after a reboot."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="StartupBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Notifications"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Show a notification after switching."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="NotifyBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Remember window positions"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Bring windows back where they were, separately for every display set."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="WindowsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Restore the last mode"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Come back to the mode you chose last, not to whatever Windows picked."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
+                                            <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
+                                                       Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <!-- Four settings nobody changes twice: a watchdog that should just
+                                 work, and three answers to "what should happen when Windows
+                                 rearranges the desk behind my back" - a question with a right
+                                 default. They used to be folded away to keep the window short
+                                 enough for a screen; a page of its own has the room. -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="When Windows rearranges the desk"/>
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="Three answers with a right default, and a watchdog that should just work."/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Best refresh rate"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Put every display back to its maximum refresh rate when Windows silently drops it."/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild after waking from sleep"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="ResumeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild when a display is unplugged"/>
+                                        </StackPanel>
+                                        <CheckBox x:Name="UnplugBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="When a display is plugged in, switch to"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Only when the display that appeared belongs to that mode."/>
+                                        </StackPanel>
+                                        <ComboBox x:Name="PlugModeBox" Grid.Column="1" Style="{StaticResource Select}"
+                                                  Width="196" Height="30" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- About -->
+                <Grid x:Name="AboutPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="24,20,24,10">
+                        <TextBlock Style="{StaticResource H1}" Text="About"/>
+                        <TextBlock x:Name="VersionText" Style="{StaticResource Hint}" Margin="0"/>
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                        <StackPanel>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Project page"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="Source, releases and the changelog on GitHub."/>
+                                        </StackPanel>
+                                        <Button x:Name="RepoBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="Open"
+                                                VerticalAlignment="Center" Width="132"/>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Something went wrong?"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="The log has every switch with its timing. Attach it to an issue."/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button x:Name="LogBtn" Style="{StaticResource Btn}" Content="Open the log"/>
+                                            <Button x:Name="IssueBtn" Style="{StaticResource Btn}" Content="Report a problem" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Where everything lives"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="settings.json, the diary and the log sit next to the program."/>
+                                        </StackPanel>
+                                        <Button x:Name="FolderBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="Open the folder"
+                                                VerticalAlignment="Center" Width="132"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="Support ScreenDeck"/>
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="Free and open, and it stays that way. If it saved you an evening, you can buy the author a coffee."/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Donate"/>
+                                            <TextBlock x:Name="DonateHint" Style="{StaticResource RowSub}" Text="Opens the donation page in your browser."/>
+                                        </StackPanel>
+                                        <Button x:Name="DonateBtn" Grid.Column="1" Style="{StaticResource BtnAccent}" Content="Donate"
+                                                VerticalAlignment="Center" Width="132"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+            </Grid>
+
+            <Border Grid.Row="1" Background="{StaticResource FooterBrush}"
+                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="24,12">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="96" IsDefault="True"/>
+                    <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="96" Margin="8,0,0,0" IsCancel="True"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
 </Window>
 '@
 
@@ -1299,6 +1556,156 @@ function Get-ModeSubtitle {
     return ''
 }
 
+# --- the pages, and where the window stood ----------------------------------
+# The window is an application now rather than one long column: a pane on the left, a page on
+# the right, Save and Cancel underneath. Which page was open and how big the window was are
+# remembered in ui-state.json — the machine's state, next to window-state.json and last-mode.json
+# and ignored by git the same way.
+
+# The pages, in the order the pane lists them. The first one is what a person who has never
+# opened this window gets.
+$script:UiPages = @('desk', 'modes', 'rules', 'behavior', 'about')
+
+# Is a saved rectangle still on somebody's screen? A pure function over rectangles — the real
+# screens are asked for by the caller — because this is where the mistake would be silent:
+# monitors come and go, and a window put back onto a monitor that is no longer there cannot be
+# reached, moved or closed.
+function Test-WindowRectVisible {
+    param([double]$Left, [double]$Top, [double]$Width, [double]$Height, $Screens)
+
+    if ($Width -le 0 -or $Height -le 0) { return $false }
+    foreach ($s in @($Screens)) {
+        if (-not $s) { continue }
+        # Not $left/$top: PowerShell variables have no case, so those two ARE the $Left and $Top
+        # that arrived in the parameters. Written that way once, this function said a window at
+        # -9000 was on the screen — because the first line had already moved it to the edge.
+        #
+        # An overlapping corner is not enough either. What has to land on a screen is the title
+        # bar — 120 points of it across and any part of its height — because that is what a
+        # window is dragged and closed by.
+        $ol = [math]::Max($Left, [double]$s.Left)
+        $or = [math]::Min($Left + $Width, [double]$s.Right)
+        $ot = [math]::Max($Top, [double]$s.Top)
+        $ob = [math]::Min($Top + 40, [double]$s.Bottom)
+        if (($or - $ol) -ge 120 -and ($ob - $ot) -gt 0) { return $true }
+    }
+    return $false
+}
+
+# The screens as rectangles in WPF units. Windows hands them out in pixels, and the whole desk
+# is scaled by one number here — the virtual screen in units against the virtual screen in
+# pixels. On a desk of mixed DPI that is an approximation, and it is the right one: it is used
+# to answer "is this window reachable at all", not to place anything.
+function Get-ScreenRects {
+    $scale = 1.0
+    try {
+        $pixels = [System.Windows.Forms.SystemInformation]::VirtualScreen.Width
+        if ($pixels -gt 0) { $scale = [System.Windows.SystemParameters]::VirtualScreenWidth / $pixels }
+    }
+    catch { }   # no desk to ask — one to one, and the check below simply passes
+
+    $rects = @()
+    try {
+        foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
+            $b = $screen.WorkingArea
+            $rects += [pscustomobject]@{
+                Left = $b.Left * $scale; Top = $b.Top * $scale
+                Right = $b.Right * $scale; Bottom = $b.Bottom * $scale
+            }
+        }
+    }
+    catch { }   # no screens: the caller treats that as "the saved rectangle is no good"
+    return $rects
+}
+
+function Get-UiState {
+    if (-not (Test-Path $script:UiStateFile)) { return $null }
+    try {
+        $raw = Get-Content $script:UiStateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $raw) { return $null }
+        $page = [string]$raw.page
+        if ($script:UiPages -notcontains $page) { $page = '' }   # a page that no longer exists
+        return [pscustomobject]@{
+            Left = [double]$raw.left; Top = [double]$raw.top
+            Width = [double]$raw.width; Height = [double]$raw.height
+            Page = $page
+        }
+    }
+    catch {
+        # A damaged file costs a centred window and nothing else, so it is not worth a word to
+        # the person — only one in the log.
+        Write-DisplayLog "settings dialog: ui-state.json is damaged, opening on the defaults - $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Save-UiState {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.Window) { return }
+    try {
+        # RestoreBounds and not Left/Top: a window that was maximised has to come back the size
+        # it was before, and for a window that was never shown this is Rect.Empty — which is the
+        # guard the tests and render-preview.ps1 rely on, and why neither of them writes a file.
+        $rect = $Ui.Window.RestoreBounds
+        if ($rect.Width -le 0 -or $rect.Height -le 0) { return }
+        if (-not (Test-WindowRectVisible -Left $rect.Left -Top $rect.Top `
+                                         -Width $rect.Width -Height $rect.Height -Screens (Get-ScreenRects))) {
+            return
+        }
+        $state = [ordered]@{
+            left = [int]$rect.Left; top = [int]$rect.Top
+            width = [int]$rect.Width; height = [int]$rect.Height
+            page = [string]$Ui.Page
+        }
+        # -ErrorAction Stop: a refusal from Set-Content is a non-terminating error, and without
+        # it a read-only folder would be reported as a successful save.
+        $state | ConvertTo-Json -Compress |
+            Set-Content -Path $script:UiStateFile -Encoding UTF8 -ErrorAction Stop
+    }
+    catch { Write-DisplayLog "settings dialog: could not write ui-state.json - $($_.Exception.Message)" }
+}
+
+# Show one page and mark it in the pane. The two lists are told apart by which one holds the
+# page: only one of them may look chosen, and while that is being sorted out both handlers keep
+# quiet — setting a selection in code would otherwise count as a person's click.
+function Set-UiPage {
+    param($Ui, [string]$Page)
+
+    if (-not $Ui) { return }
+    if ($script:UiPages -notcontains $Page) { $Page = $script:UiPages[0] }
+    $Ui.Page = $Page
+
+    foreach ($name in @($Ui.Pages.Keys)) {
+        $panel = $Ui.Pages[$name]
+        if ($panel) { $panel.Visibility = $(if ($name -eq $Page) { 'Visible' } else { 'Collapsed' }) }
+    }
+
+    $Ui.NavBusy = $true
+    try {
+        foreach ($list in @($Ui.NavList, $Ui.NavAbout)) {
+            if (-not $list) { continue }
+            $hit = $null
+            foreach ($item in @($list.Items)) {
+                if ([string]$item.Tag -eq $Page) { $hit = $item; break }
+            }
+            $list.SelectedItem = $hit   # $null clears the other list's highlight
+        }
+    }
+    finally { $Ui.NavBusy = $false }
+}
+
+# A page, a folder or a file, opened by whatever Windows uses for it. Every button on the About
+# page goes through here: a browser that will not start is a shrug, not a window that dies on
+# somebody looking at the version number.
+function Open-UiTarget {
+    param([string]$Target)
+
+    if (-not $Target) { return }
+    try { Start-Process $Target }
+    catch { Write-DisplayLog "settings dialog: could not open $Target - $($_.Exception.Message)" }
+}
+
 # --- assembling the window --------------------------------------------------
 
 function New-SettingsWindow {
@@ -1307,7 +1714,10 @@ function New-SettingsWindow {
         $Settings,
         # The connected monitors: the desk cards and the combo members. Empty — and the
         # corresponding sections simply stand empty (tests).
-        $State
+        $State,
+        # Which page to open on. Empty — the one the window was left on last time. The tray's
+        # About item is what passes a page.
+        [string]$Page = ''
     )
 
     Initialize-WpfRuntime
@@ -1316,12 +1726,6 @@ function New-SettingsWindow {
     $palette = Get-UiPalette -Dark $dark
     $win = Convert-UiXaml -Xaml $script:SettingsWindowXaml -Palette $palette
     Register-WindowTheme -Window $win -Dark $dark
-
-    # The window does not grow past the work area — beyond that it scrolls. Room for the taskbar.
-    # There is no owner to measure by: this window opens on the primary monitor (CenterScreen).
-    try { $win.MaxHeight = (Get-WorkAreaHeight) - 40 } catch { }   # no work area — no limit then
-    # And it grows: a mode added to the list makes it taller, and growth is downwards.
-    $win.add_SizeChanged({ Move-WindowIntoWorkArea -Window $this })
 
     $ui = [pscustomobject]@{
         Window            = $win
@@ -1349,8 +1753,24 @@ function New-SettingsWindow {
         ResumeBox         = $win.FindName('ResumeBox')
         UnplugBox         = $win.FindName('UnplugBox')
         PlugModeBox       = $win.FindName('PlugModeBox')
-        MoreBtn           = $win.FindName('MoreBtn')
-        MorePanel         = $win.FindName('MorePanel')
+        DisplaysTable     = $win.FindName('DisplaysTable')
+        NavList           = $win.FindName('NavList')
+        NavAbout          = $win.FindName('NavAbout')
+        # Page name -> the panel that is that page. One map, so Set-UiPage does not have to know
+        # the five names in two places.
+        Pages             = [ordered]@{
+            desk     = $win.FindName('DeskPage')
+            modes    = $win.FindName('ModesPage')
+            rules    = $win.FindName('RulesPage')
+            behavior = $win.FindName('BehaviorPage')
+            about    = $win.FindName('AboutPage')
+        }
+        Page              = ''
+        # While a page is being marked in the pane, the pane's own handlers keep quiet.
+        NavBusy           = $false
+        VersionText       = $win.FindName('VersionText')
+        DonateBtn         = $win.FindName('DonateBtn')
+        DonateHint        = $win.FindName('DonateHint')
         # "A display was plugged in — switch to" names a mode by the same key everything else
         # does, so it is kept HERE and not read off the dropdown at Save time: a combo renamed
         # while the window is open has to take this along, and a dropdown built when the window
@@ -1405,6 +1825,7 @@ function New-SettingsWindow {
     if ($Settings -and $Settings.reapply) { $ui.OnPlugKey = [string]$Settings.reapply.onPlug }
     Import-RuleSettings -Ui $ui -Settings $Settings
     Update-DeskPanel  -Ui $ui
+    Update-DisplaysTable -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
@@ -1423,15 +1844,44 @@ function New-SettingsWindow {
     $ui.UnplugBox.IsChecked = ($null -eq $Settings.reapply -or $null -eq $Settings.reapply.onUnplug -or
                                [bool]$Settings.reapply.onUnplug)
 
+    $ui.VersionText.Text = (Get-VersionLine) +
+        '   -   the folder is the program: delete it, and nothing is left behind.'
+    # No address yet: the button says so and does nothing. A button that opens a 404 would be
+    # worse than one that is honestly not ready.
+    if (-not $script:DonateUrl) {
+        $ui.DonateBtn.IsEnabled = $false
+        $ui.DonateHint.Text = 'There is no address yet - the button lights up when there is one.'
+    }
+
     # The window is built — from this point on the handlers find it here.
     $script:ActiveUi = $ui
 
-    Set-MoreVisible -Ui $ui -Open $false
+    # Where it stood last time, and on which page. A rectangle that is no longer on any screen is
+    # dropped whole: the window opens centred, at the size the markup gives it.
+    $saved = Get-UiState
+    if ($saved -and (Test-WindowRectVisible -Left $saved.Left -Top $saved.Top `
+                                            -Width $saved.Width -Height $saved.Height -Screens (Get-ScreenRects))) {
+        $win.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+        $win.Left = $saved.Left; $win.Top = $saved.Top
+        $win.Width = $saved.Width; $win.Height = $saved.Height
+    }
+    $wanted = $Page
+    if (-not $wanted -and $saved) { $wanted = [string]$saved.Page }
+    Set-UiPage -Ui $ui -Page $wanted
 
-    $ui.MoreBtn.add_Click({
+    # The geometry is written when the window closes rather than while it is being dragged: this
+    # is a note about where to open next time, not a setting Save is responsible for.
+    $win.add_Closing({ Save-UiState -Ui $script:ActiveUi })
+
+    $ui.NavList.add_SelectionChanged({
         $ui = $script:ActiveUi
-        if (-not $ui) { return }
-        Set-MoreVisible -Ui $ui -Open ([string]$ui.MorePanel.Visibility -ne 'Visible')
+        if (-not $ui -or $ui.NavBusy -or -not $this.SelectedItem) { return }
+        Set-UiPage -Ui $ui -Page ([string]$this.SelectedItem.Tag)
+    })
+    $ui.NavAbout.add_SelectionChanged({
+        $ui = $script:ActiveUi
+        if (-not $ui -or $ui.NavBusy -or -not $this.SelectedItem) { return }
+        Set-UiPage -Ui $ui -Page ([string]$this.SelectedItem.Tag)
     })
 
     $ui.PlugModeBox.add_SelectionChanged({
@@ -1453,6 +1903,19 @@ function New-SettingsWindow {
         Invoke-RuleEditor -Ui $ui -Rule $null
     })
 
+    # The About page's four doors. Each one is a line, and each one goes through Open-UiTarget:
+    # a browser or Explorer refusing to start must not take the window down with it.
+    $win.FindName('RepoBtn').add_Click({ Open-UiTarget -Target $script:RepoUrl })
+    $win.FindName('IssueBtn').add_Click({ Open-UiTarget -Target $script:IssuesUrl })
+    $win.FindName('FolderBtn').add_Click({ Open-UiTarget -Target $script:ToolRoot })
+    $win.FindName('LogBtn').add_Click({
+        if (Test-Path $script:LogFile) { Open-UiTarget -Target $script:LogFile }
+        else { [void][System.Windows.MessageBox]::Show($script:ActiveUi.Window,
+                   'There is no log yet. It appears after the first switch.', 'ScreenDeck',
+                   [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) }
+    })
+    $ui.DonateBtn.add_Click({ Open-UiTarget -Target $script:DonateUrl })
+
     # Save validates the input BEFORE closing: the old window used to close on a duplicate key
     # combination and throw every edit away; now it stays open.
     $ui.SaveBtn.add_Click({
@@ -1471,15 +1934,15 @@ function New-SettingsWindow {
     return $ui
 }
 
-# A fold: one caption that opens and shuts the panel under it. Both windows have one — the
-# Settings window for the settings with a right default, the mode editor for what a mode does to
-# the hardware — so it is one function rather than two that drift apart.
+# A fold: one caption that opens and shuts the panel under it. The mode editor has one, for what
+# a mode does to the hardware; the Settings window used to have one too, for the settings with a
+# right default, and gave it up when those got a page with room on it.
 #
 # The arrow lives in the caption rather than in a glyph of its own: one string is one thing to
 # keep in step, and the button reads left to right anyway.
 #
-# Collapsed and not merely hidden: a hidden panel still takes its height, and the height of these
-# windows is the whole reason anything is folded away.
+# Collapsed and not merely hidden: a hidden panel still takes its height, and the height of the
+# editor is the whole reason anything is folded away.
 function Set-DisclosureOpen {
     param($Button, $Panel, [string]$Label, [bool]$Open)
 
@@ -1489,13 +1952,6 @@ function Set-DisclosureOpen {
     # back to a caret and a lowercase v, which read as punctuation. U+25B4/U+25BE are.
     $Button.Content = $(if ($Open) { [string][char]0x25B4 } else { [string][char]0x25BE }) +
                       '  ' + $Label
-}
-
-function Set-MoreVisible {
-    param($Ui, [bool]$Open)
-
-    Set-DisclosureOpen -Button $Ui.MoreBtn -Panel $Ui.MorePanel `
-                       -Label 'Additional settings' -Open $Open
 }
 
 function Set-EditorMoreVisible {
@@ -1745,6 +2201,93 @@ function Add-DeskCard {
     $radio.add_Checked({ Update-DeskShapes -Ui $this.Tag })
 
     [void]$panel.Children.Add($outer)
+}
+
+# The table under the cards: what each display reports about itself. The cards are for arranging
+# the desk and are drawn; this is for reading — and it is where the Monitor ID lives, which is
+# the name settings.json and the log call a display by, and the one a person needs when they open
+# either by hand.
+function Update-DisplaysTable {
+    param($Ui)
+
+    $grid = $Ui.DisplaysTable
+    if (-not $grid) { return }
+    $grid.Children.Clear()
+    $grid.RowDefinitions.Clear()
+    $grid.ColumnDefinitions.Clear()
+
+    $win = $Ui.Window
+    $rows = @()
+    foreach ($m in @($Ui.State | Where-Object { $_ })) {
+        $now = 'off'
+        if ($m.Disconnected) { $now = 'not connected' }
+        elseif ($m.Active)   {
+            $now = '{0} x {1} @ {2} Hz' -f $m.Width, $m.Height, $m.Hz
+            if ($m.Primary) { $now += '   -   taskbar' }
+        }
+        $inches = Get-DisplayInches -Display $m
+        $native = '-'
+        if ($m.Native) { $native = '{0} x {1}' -f $m.Native.Width, $m.Native.Height }
+        $rows += ,@(
+            [string]$m.Label
+            [string]$m.ShortId
+            $(if ($inches -gt 0) { '{0}"' -f [int][math]::Round($inches) } else { '-' })
+            $native
+            $now
+        )
+    }
+    if ($rows.Count -eq 0) { return }   # no desk to describe (this is what the tests see)
+
+    # The name takes what is left; the four facts take what they need. A monitor called
+    # "LG ULTRAFINE (DisplayPort)" must not push the resolution off the card.
+    foreach ($i in 0..4) {
+        $col = New-Object System.Windows.Controls.ColumnDefinition
+        $col.Width = $(if ($i -eq 0) { [System.Windows.GridLength]::new(1, 'Star') }
+                       else { [System.Windows.GridLength]::Auto })
+        $grid.ColumnDefinitions.Add($col)
+    }
+
+    $titles = @('Display', 'Monitor ID', 'Size', 'Native', 'Now')
+    $line = 0
+    foreach ($cell in 0..4) {
+        $head = New-Object System.Windows.Controls.TextBlock
+        $head.Text = $titles[$cell]
+        $head.FontSize = 12
+        $head.Foreground = $win.FindResource('DimBrush')
+        $head.Margin = New-Object System.Windows.Thickness $(if ($cell -eq 0) { 0 } else { 16 }), 0, 0, 6
+        [System.Windows.Controls.Grid]::SetColumn($head, $cell)
+        [void]$grid.Children.Add($head)
+    }
+    $grid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
+
+    foreach ($row in $rows) {
+        $line++
+        $grid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
+
+        # The rule is one element spanning the whole width, drawn in the row it belongs to: five
+        # borders under five cells would come apart the moment a column changed width.
+        $rule = New-Object System.Windows.Controls.Border
+        $rule.BorderBrush = $win.FindResource('CardBorderBrush')
+        $rule.BorderThickness = New-Object System.Windows.Thickness 0, 1, 0, 0
+        $rule.VerticalAlignment = 'Top'
+        [System.Windows.Controls.Grid]::SetRow($rule, $line)
+        [System.Windows.Controls.Grid]::SetColumnSpan($rule, 5)
+        [void]$grid.Children.Add($rule)
+
+        foreach ($cell in 0..4) {
+            $text = New-Object System.Windows.Controls.TextBlock
+            $text.Text = [string]$row[$cell]
+            $text.FontSize = 13
+            $text.TextTrimming = 'CharacterEllipsis'
+            $text.Margin = New-Object System.Windows.Thickness $(if ($cell -eq 0) { 0 } else { 16 }), 7, 0, 7
+            # The Monitor ID is what gets typed into settings.json, so it is set in the font that
+            # tells an O from a 0.
+            if ($cell -eq 1) { $text.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas' }
+            [System.Windows.Controls.Grid]::SetRow($text, $line)
+            [System.Windows.Controls.Grid]::SetColumn($text, $cell)
+            [void]$grid.Children.Add($text)
+        }
+    }
 }
 
 function Move-DeskCard {
@@ -3932,7 +4475,13 @@ function Get-DialogModes {
 # Returns the changed settings, or $null if it was cancelled. The window takes its icon off
 # the disk itself (Register-WindowTheme): WPF wants an ImageSource, not a GDI icon.
 function Show-SettingsDialog {
-    param($State, $Settings)
+    param(
+        $State,
+        $Settings,
+        # Which page to open on. Empty - the one the window was left on. The tray's About item
+        # is what names a page.
+        [string]$Page = ''
+    )
 
     # Insurance: if the settings did not make it, we read them off the disk rather than
     # dying on a reference to $null.
@@ -3943,7 +4492,7 @@ function Show-SettingsDialog {
 
     $modes = @(Get-DialogModes -State $State -Settings $Settings)
 
-    $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State
+    $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Page $Page
 
     # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
     # from the settings: the shortcut could have been deleted by hand.

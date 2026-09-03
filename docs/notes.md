@@ -2290,3 +2290,44 @@ Three decisions worth keeping:
 The size is shown in words only on the card's hover text, next to the resolution — the caption under a
 card is already the longest line on it and the first thing to be trimmed. When the Displays table arrives
 it gets a column of its own.
+
+## The window became an application (2026-09-03)
+
+Four cards in one column 640 points wide, and the column had grown to 1311 points tall — a hair under
+the 1352 a 1440p work area gives. Two folds existed for no reason other than that number, and the next
+section to be added would have had nowhere to go. So the shape changed: a pane 220 points wide on the
+left, a page on the right, Save and Cancel under the page. Five pages: Your desk, Modes, Rules, Behavior,
+and About at the bottom of the pane where Windows keeps its own Settings item.
+
+What the change was really about is that a window with pages does not have a height problem. The fold
+over "Additional settings" and its three tests are gone; the mode editor keeps its own, because that is
+still a separate window that grows.
+
+Decisions worth writing down:
+
+- **The pane is two ListBoxes, not one.** About sits at the bottom, and a single list cannot have a gap
+  in the middle of it. The price is that both lists can look chosen at once, which `Set-UiPage` prevents
+  by setting the other one's `SelectedItem` to `$null` — under a `NavBusy` flag, because a selection set
+  in code raises `SelectionChanged` exactly like a click.
+- **The chosen item is filled with the CARD colour, not the hover one.** On the pane those two are four
+  values apart in the light theme (`#EBEBEB` against `#F0F0F0`), and the accent bar was carrying the
+  whole answer to "where am I". Against the card colour the chosen item reads as the page it opens.
+- **Geometry lives in `ui-state.json`, and a rectangle is checked before it is used.** Monitors come and
+  go; a window restored onto one that has gone cannot be reached, moved or closed. `Test-WindowRectVisible`
+  is pure and wants 120 points of the title bar on some screen — an overlapping corner is not something
+  a person can grab. It also guards the WRITE: `RestoreBounds` of a window that was never shown is
+  `Rect.Empty`, which is exactly the state every test and `render-preview.ps1` is in, so neither writes a
+  file and neither needed a flag of its own.
+- **`SizeToContent` had to go.** The window is 980 x 660 with a minimum of 820 x 560 and it resizes.
+  Nothing sizes itself to its content any more, which is also why the Settings window no longer needs the
+  `SizeChanged` handler from this morning: it cannot grow by itself, and yanking a window back while
+  somebody is dragging its bottom edge would be worse than the bug that handler fixes.
+- **Every `x:Name` from the old markup is still there.** About thirty tests and all of `Read-SettingsFromUi`
+  find their controls by name; the markup moved them into pages and renamed nothing. The three that went
+  (`MoreBtn`, `MorePanel`) took their three tests with them, and a new test asserts they are gone rather
+  than leaving the question open.
+
+`render-preview.ps1` photographs the window five times now, once per page, which is why showing a window
+and drawing it are two functions rather than one: showing it twice would be a second window. The mode
+editor's image is `-editor` and not `-mode`, because the Modes page is `-modes` and two file names a
+letter apart are two files nobody can tell apart in a folder.

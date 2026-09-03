@@ -2,22 +2,32 @@
 
 <#
 .SYNOPSIS
-    Renders the Settings window, a mode editor and the timer popup to PNG.
+    Renders every window of ScreenDeck to PNG, without showing one on the desk.
 
 .DESCRIPTION
     A development tool: it builds the windows with the same New-SettingsWindow,
-    New-ModeEditorWindow and New-TimerWindow the tray uses, lays them out in memory
-    and draws them to files. So the interface can be looked at without starting the
-    app, opening Settings by hand and having a real desk in front of you - and with
-    -Fake, for a desk that is not here at all.
+    New-ModeEditorWindow, New-TimerWindow, New-StatsWindow and New-RuleEditorWindow
+    the tray uses, lays them out in memory and draws them to files. So the interface
+    can be looked at without starting the app, opening Settings by hand and having a
+    real desk in front of you - and with -Fake, for a desk that is not here at all.
 
     Theme and accent colour come from the system, exactly as in the real window.
-    Three files are written: the Settings window, "<name>-mode.png" for the editor
-    and "<name>-timer.png" for the timer popup.
+
+    Eight files are written beside <name>.png, which is the Settings window on its
+    first page:
+
+        -modes, -rules, -behavior, -about   the other pages of that window
+        -editor                             the mode editor
+        -rule                               the rule editor
+        -timer                              the shutdown timer popup
+        -stats                              the diary
+
+    README shows four of them, and those four are what lives in docs/images/. The
+    rest are for looking at while working on a window, and are not committed.
 
 .PARAMETER Out
-    Where to write the Settings window. The other two go next to it with "-mode"
-    and "-timer" suffixes. Defaults to preview-settings.png beside the scripts.
+    Where to write the Settings window on its first page. The other eight go next to
+    it with the suffixes above. Defaults to preview-settings.png beside the scripts.
 
 .PARAMETER Fake
     Invent a three-display desk with combinations, shortcuts and brightness set,
@@ -31,12 +41,12 @@
 
 .EXAMPLE
     .\render-preview.ps1 -Fake
-    All three windows for an invented desk, written beside the scripts.
+    Every window for an invented desk, written beside the scripts.
 
 .EXAMPLE
     .\render-preview.ps1 -Fake -EditorMode all -Out C:\tmp\ui.png
-    Writes C:\tmp\ui.png and C:\tmp\ui-mode.png, the latter showing the editor of
-    "All displays" - the short form, without a name or members to argue about.
+    Writes C:\tmp\ui.png and its eight neighbours; C:\tmp\ui-editor.png shows the
+    editor of "All displays" - the short form, without a name to argue about.
 #>
 [CmdletBinding()]
 param(
@@ -171,25 +181,47 @@ else {
     $state = @(Get-DisplayState)
 }
 
-function Save-WindowSnapshot {
-    param($Window, [string]$Path)
+# The name of another image beside the first one: "<out>-about.png".
+#
+# ChangeExtension($Out, $null) is no good here: PowerShell hands back an empty string instead of
+# $null, and the dot from the extension stays in the name. The folder gets a '.' fallback because
+# for a bare file name (-Out ui.png) Split-Path -Parent hands back an empty string, and Join-Path
+# will not take it - which is how the second image used to die once the first was written.
+function Get-OutPath {
+    param([string]$Suffix)
 
-    # A live window is never taller than the work area — past that it scrolls. For an
-    # image scrolling only gets in the way: it exists to show the WHOLE window at once.
+    $dir = Split-Path -Parent $Out
+    if (-not $dir) { $dir = '.' }
+    return Join-Path $dir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + $Suffix + '.png')
+}
+
+# The window has to be SHOWN: the system is what measures the element tree, and for a window that
+# was never shown those measurements stay zero. It goes up off the edge of the desk and without
+# being activated - the image comes out, and nothing flashes on the screen.
+function Show-WindowOffscreen {
+    param($Window)
+
+    # A window that sizes itself to its content is never taller than the work area - past that it
+    # scrolls. For an image scrolling only gets in the way: it exists to show the WHOLE window at
+    # once. The Settings window is not one of those any more and takes the size its markup gives.
     $Window.MaxHeight = [double]::PositiveInfinity
-    # The editor's scrolling comes off too. We look it up by the name from the markup,
-    # not through the element tree: before Show() there is no tree yet.
+    # The editor's scrolling comes off too. We look it up by the name from the markup, not through
+    # the element tree: before Show() there is no tree yet.
     $viewer = $Window.FindName('Scroll')
     if ($viewer) { $viewer.VerticalScrollBarVisibility = 'Disabled' }
-    # The window has to be SHOWN: the system is what measures the element tree, and for
-    # a window that was never shown those measurements stay zero. We show it off the edge
-    # of the screen and without activating it — the image comes out, and nothing flashes on the desk.
     $Window.WindowStartupLocation = 'Manual'
     $Window.ShowActivated = $false
     $Window.ShowInTaskbar = $false
     $Window.Left = -10000
     $Window.Top = -10000
     $Window.Show()
+}
+
+# One image of a window that is already up. Separate from showing it, because the Settings window
+# is photographed five times over - once per page - and showing it again would be a second window.
+function Save-WindowImage {
+    param($Window, [string]$Path)
+
     # Layout is computed on the message queue, so the queue has to be pumped: without
     # this a half-assembled window gets drawn.
     $frame = New-Object System.Windows.Threading.DispatcherFrame
@@ -216,11 +248,25 @@ function Save-WindowSnapshot {
     Write-Host ("written: {0}  ({1} x {2})" -f $Path, $target.PixelWidth, $target.PixelHeight) -ForegroundColor Green
 }
 
+function Save-WindowSnapshot {
+    param($Window, [string]$Path)
+
+    Show-WindowOffscreen -Window $Window
+    Save-WindowImage -Window $Window -Path $Path
+}
+
 $modes = @(Get-DialogModes -State $state -Settings $settings)
 $ui = New-SettingsWindow -Modes $modes -Settings $settings -State $state
 
 try {
-    Save-WindowSnapshot -Window $ui.Window -Path $Out
+    # The Settings window is five images, one per page: the pane is the window's shape now, and a
+    # single picture of it would show one fifth of what there is.
+    Show-WindowOffscreen -Window $ui.Window
+    foreach ($page in $script:UiPages) {
+        Set-UiPage -Ui $ui -Page $page
+        Save-WindowImage -Window $ui.Window -Path $(if ($page -eq 'desk') { $Out } else { Get-OutPath ('-' + $page) })
+    }
+    Set-UiPage -Ui $ui -Page 'desk'
 
     # The second window is the mode editor: everything about a mode is set up in there,
     # so it has to be seen too. By default we take a combination — it is the longest one
@@ -237,34 +283,23 @@ try {
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
                                    -Audio $ui.Audio -Hooks $ui.Hooks -Dark (Test-DarkTheme)
         try {
-            # Next to the first image, with a suffix. ChangeExtension($Out, $null) is no
-            # good here: PowerShell hands back an empty string instead of $null, and the
-            # dot from the extension stays in the name.
-            #
-            # The folder is taken with a '.' fallback: for a bare file name (-Out ui.png)
-            # Split-Path -Parent hands back an empty string, and Join-Path will not take it
-            # — so the second image used to die once the first was already written.
-            $editorDir = Split-Path -Parent $Out
-            if (-not $editorDir) { $editorDir = '.' }
-            $editorOut = Join-Path $editorDir `
-                                   ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-mode.png')
-            Save-WindowSnapshot -Window $ed.Window -Path $editorOut
+            # "-editor" and not "-mode": the Modes PAGE is "-modes", and two names a letter
+            # apart are two files nobody can tell apart in a folder.
+            Save-WindowSnapshot -Window $ed.Window -Path (Get-OutPath '-editor')
         }
         finally { $ed.Window.Close() }
     }
 
     # The third window is the timer. Small, but its own: the slider, the pills and the
     # time on the clock can only be seen in an image, not in the markup.
-    $timerDir = Split-Path -Parent $Out
-    if (-not $timerDir) { $timerDir = '.' }
-    $timerOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-timer.png')
+    $timerOut = Get-OutPath '-timer'
     $timer = New-TimerWindow -Action 'sleep' -Minutes 90
     try { Save-WindowSnapshot -Window $timer.Window -Path $timerOut }
     finally { $timer.Window.Close(); $script:ActiveTimerUi = $null }
 
     # The fourth window is the diary. With -Fake it gets an invented pot: on a machine where the
     # diary has never been turned on the real one is empty, and an empty window shows nothing.
-    $statsOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-stats.png')
+    $statsOut = Get-OutPath '-stats'
     $stats = New-StatsWindow -Store $(if ($Fake) { New-FakeDiary } else { Get-ActivityStore }) -Days 7
     try { Save-WindowSnapshot -Window $stats.Window -Path $statsOut }
     finally { $stats.Window.Close(); $script:ActiveStatsUi = $null }
@@ -272,7 +307,7 @@ try {
     # The fifth is the rule editor. An invented rule rather than the first real one: it has to
     # show a condition, a target and a way back all filled in, and a desk with no rules on it
     # would render three empty dropdowns.
-    $ruleOut = Join-Path $timerDir ([System.IO.Path]::GetFileNameWithoutExtension($Out) + '-rule.png')
+    $ruleOut = Get-OutPath '-rule'
     $rule = [ordered]@{ when = 'process'; process = 'cs2'; minutes = 20
                         mode = [string]@($modes)[0].Key; back = ''; enabled = $true }
     $ruleEd = New-RuleEditorWindow -Rule $rule -Modes (Get-RuleTargetModes -Ui $ui) -Dark (Test-DarkTheme)
