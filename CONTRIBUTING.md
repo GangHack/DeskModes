@@ -90,8 +90,14 @@ off-screen at 192 dpi against an invented three-display desk, so what lands in t
 README does not depend on which monitors happen to be plugged in that day:
 
 ```powershell
-.\render-preview.ps1 -Fake -Out docs\images\settings.png
+.\render-preview.ps1 -Fake -Out docs\images\settings.png -EditorMode "combo:Movie night"
 ```
+
+`-EditorMode` names the mode whose editor is photographed, and "Movie night" is the
+combination with ONE display on the invented desk. That is not a preference: with two
+displays the editor unfolded is 1460 points tall, taller than a 1440p work area, and a
+window taller than the screen comes out of the renderer with its last two boxes cut off.
+On a real desk that window scrolls.
 
 That writes eight files in one go: the Settings window on each of its six pages
 (`settings.png` for the first, then `-modes`, `-rules`, `-behavior`, `-diary`, `-about`)
