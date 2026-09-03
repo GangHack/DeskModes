@@ -6,27 +6,27 @@
 
 .DESCRIPTION
     A development tool: it builds the windows with the same New-SettingsWindow,
-    New-ModeEditorWindow, New-TimerWindow, New-StatsWindow and New-RuleEditorWindow
-    the tray uses, lays them out in memory and draws them to files. So the interface
+    New-ModeEditorWindow, New-TimerWindow and New-RuleEditorWindow the tray uses, lays them out in memory and draws them to files. So the interface
     can be looked at without starting the app, opening Settings by hand and having a
     real desk in front of you - and with -Fake, for a desk that is not here at all.
 
     Theme and accent colour come from the system, exactly as in the real window.
 
-    Eight files are written beside <name>.png, which is the Settings window on its
+    Seven files are written beside <name>.png, which is the Settings window on its
     first page:
 
-        -modes, -rules, -behavior, -about   the other pages of that window
+        -modes, -rules, -behavior,
+        -diary, -about                      the other pages of that window
         -editor                             the mode editor
         -rule                               the rule editor
         -timer                              the shutdown timer popup
-        -stats                              the diary
 
-    README shows four of them, and those four are what lives in docs/images/. The
-    rest are for looking at while working on a window, and are not committed.
+    README shows five of them, and six live in docs/images/ (those five and the Modes
+    page). The rest are for looking at while working on a window, and are not
+    committed.
 
 .PARAMETER Out
-    Where to write the Settings window on its first page. The other eight go next to
+    Where to write the Settings window on its first page. The other seven go next to
     it with the suffixes above. Defaults to preview-settings.png beside the scripts.
 
 .PARAMETER Fake
@@ -45,7 +45,7 @@
 
 .EXAMPLE
     .\render-preview.ps1 -Fake -EditorMode all -Out C:\tmp\ui.png
-    Writes C:\tmp\ui.png and its eight neighbours; C:\tmp\ui-editor.png shows the
+    Writes C:\tmp\ui.png and its seven neighbours; C:\tmp\ui-editor.png shows the
     editor of "All displays" - the short form, without a name to argue about.
 #>
 [CmdletBinding()]
@@ -139,6 +139,10 @@ $settings = Get-DisplaySettings
 if ($Fake) {
     $state = @(New-FakeState)
     Set-FakeSizes
+    # The diary page is built by the Settings window out of the real pot. On a machine where the
+    # diary has never been turned on that pot is empty, and an empty page shows nothing about the
+    # drawing - so the invented one is put where Get-ActivityStore will find it.
+    $script:ActivityStore = New-FakeDiary
     # Settings to match the invented desk: otherwise the cards line up by someone else's layout.
     $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
     $settings.primary = 'LG ULTRAGEAR'
@@ -296,13 +300,6 @@ try {
     $timer = New-TimerWindow -Action 'sleep' -Minutes 90
     try { Save-WindowSnapshot -Window $timer.Window -Path $timerOut }
     finally { $timer.Window.Close(); $script:ActiveTimerUi = $null }
-
-    # The fourth window is the diary. With -Fake it gets an invented pot: on a machine where the
-    # diary has never been turned on the real one is empty, and an empty window shows nothing.
-    $statsOut = Get-OutPath '-stats'
-    $stats = New-StatsWindow -Store $(if ($Fake) { New-FakeDiary } else { Get-ActivityStore }) -Days 7
-    try { Save-WindowSnapshot -Window $stats.Window -Path $statsOut }
-    finally { $stats.Window.Close(); $script:ActiveStatsUi = $null }
 
     # The fifth is the rule editor. An invented rule rather than the first real one: it has to
     # show a condition, a target and a way back all filled in, and a desk with no rules on it

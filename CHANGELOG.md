@@ -30,6 +30,18 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **A Support card** with a **Donate** button. There is no address behind it yet, and until there
   is, the button says so instead of opening a page that would not be there.
 
+### The diary is a page of the same window
+
+- **Statistics...** in the tray opens the Settings window on its **Diary** page instead of a
+  window of its own. The same six figures, the same histogram and the same four lists - and
+  **Open as a page** still writes `stats.html` for whatever period is on screen.
+- **A row is two floors now**: the name and the time on top, the bar and the share underneath.
+  In the old 880-point window all four shared one line, and the name was the one that gave way -
+  "chrome on LG ULTRA..." was already cut off there. Nothing is trimmed any more.
+- The six figures are **three by two** rather than six across, so "09:40-23:15" has room to be
+  itself; and what the diary does not record is said once, on the **Behavior** page, instead of
+  twice.
+
 ### A mode's editor holds all of a mode
 
 - **Contrast has a card**, right under Brightness and working exactly like it: leave it alone,

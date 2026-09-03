@@ -546,7 +546,7 @@ Test-Case 'dialog: the pane opens on the desk, and every page it names exists' {
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
         Assert-Equal 'desk' ([string]$ui.Page) 'the first page is the desk'
-        Assert-Equal 5 $ui.Pages.Count 'five pages'
+        Assert-Equal 6 $ui.Pages.Count 'six pages'
         foreach ($name in @($ui.Pages.Keys)) {
             Assert-True ($null -ne $ui.Pages[$name]) "the page '$name' is in the markup"
         }

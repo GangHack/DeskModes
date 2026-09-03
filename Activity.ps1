@@ -436,7 +436,7 @@ function Format-ActivityReport {
 
 # --- the report as a page ---------------------------------------------------
 # The same report as a file: bars, the theme's colours, and nothing else. Since 2026-09-01
-# the everyday way to read the diary is the window (New-StatsWindow in SettingsDialog.ps1)
+# the everyday way to read the diary is the Diary page (New-StatsUi in SettingsDialog.ps1)
 # — a browser tab is a detour when the question is "where did today go". The page stayed
 # for the other half of the job: it is a FILE, so it can be kept, sent, or opened on a
 # machine that has never heard of this tool. The button at the bottom of the window writes

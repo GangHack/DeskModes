@@ -93,13 +93,13 @@ README does not depend on which monitors happen to be plugged in that day:
 .\render-preview.ps1 -Fake -Out docs\images\settings.png
 ```
 
-That writes nine files in one go: the Settings window on each of its five pages
-(`settings.png` for the first, then `-modes`, `-rules`, `-behavior`, `-about`), the two
-editors (`-editor`, `-rule`), the timer (`-timer`) and the diary (`-stats`).
+That writes eight files in one go: the Settings window on each of its six pages
+(`settings.png` for the first, then `-modes`, `-rules`, `-behavior`, `-diary`, `-about`)
+and the two editors (`-editor`, `-rule`), plus the timer popup (`-timer`).
 
-**Only five of them are committed** — the four README shows plus the Modes page:
-`settings.png`, `settings-modes.png`, `settings-editor.png`, `settings-about.png` and
-`settings-timer.png`. The rest are for looking at while a window is being worked on;
+**Only six of them are committed** — the five README shows plus the Modes page:
+`settings.png`, `settings-modes.png`, `settings-diary.png`, `settings-editor.png`,
+`settings-about.png` and `settings-timer.png`. The rest are for looking at while a window is being worked on;
 delete them before committing. The rendered files go under `docs/images/`, never the
 ignored `preview-*.png` names.
 

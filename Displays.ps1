@@ -1264,7 +1264,7 @@ $menu.add_Opening({
                 # The pot is written to disk before the window: the last few minutes live in
                 # memory, and without this the report would lag two minutes behind life.
                 Save-ActivityStore -Force
-                Show-ActivityStats
+                Open-SettingsWindow -Page 'diary'
             }
             catch {
                 Write-DisplayLog "stats: the diary window failed - $($_.Exception.Message)"

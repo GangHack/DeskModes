@@ -91,6 +91,11 @@ And the shutdown timer, from the tray menu, when a ready length is not the one y
 
 ![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-timer.png)
 
+**Diary** is the same window's page too: where the time went, by display, by mode and by
+application, for today, a week, a month or everything the diary holds.
+
+![The Diary page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-diary.png)
+
 **About** sits at the bottom of the pane, where Windows keeps its own: the version to paste
 into a bug report, the log, the folder everything lives in, and the project page.
 

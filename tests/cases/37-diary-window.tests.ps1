@@ -1,13 +1,17 @@
-﻿# --- the diary window -------------------------------------------------------
-# Built without being shown, like the other windows here. What is checked is what a person would
+﻿# --- the diary page ---------------------------------------------------------
+# Built without being shown, like everything else here. What is checked is what a person would
 # read off the screen: the line under the title, the six cards, the four lists and the height of
 # the hour bars — all of it comes out of one report, and the period is what chooses that report.
+#
+# The diary is a page of the Settings window now, so a test builds that window and asks for the
+# page over it. Nothing is shown, which means every height is nought - and that is the case the
+# fallbacks exist for.
 #
 # The store is this file's own rather than the diary group's: -File 37 has to run on its own, and
 # a fake borrowed from a neighbour would make that a broken run instead of a green one.
 
 Write-Host ''
-Write-Host 'the diary window' -ForegroundColor White
+Write-Host 'the diary page' -ForegroundColor White
 
 $script:StatsToday = [datetime]'2026-09-01'
 
@@ -32,16 +36,21 @@ function New-WindowDiary {
     return $store
 }
 
+# The page and the window that carries it. The window is handed back too, because it is what has
+# to be closed at the end of a test.
 function New-DiaryUi {
     param([int]$Days = 7, $Store)
     if ($null -eq $Store) { $Store = New-WindowDiary }
-    return New-StatsWindow -Store $Store -Days $Days -Today $script:StatsToday
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    $stats = New-StatsUi -Window $ui.Window -Store $Store -Days $Days -Today $script:StatsToday
+    Add-Member -InputObject $stats -NotePropertyName Dialog -NotePropertyValue $ui -Force
+    return $stats
 }
 
-# What a person reads off a row: the first cell of its grid.
+# What a person reads off a row: the name on its first floor.
 function Get-DiaryRowName {
     param($Panel, [int]$Index = 0)
-    return [string]$Panel.Children[$Index].Children[0].Text
+    return [string]$Panel.Children[$Index].Children[0].Children[0].Text
 }
 
 # What a card says, big: the first line inside its border.
@@ -50,7 +59,7 @@ function Get-DiaryCardValue {
     return [string]$Ui.CardsPanel.Children[$Index].Child.Children[0].Text
 }
 
-Test-Case 'diary window: opens on the period it was given and says which days it covers' {
+Test-Case 'diary page: opens on the period it was given and says which days it covers' {
     $ui = New-DiaryUi -Days 1
     try {
         Assert-Equal '2026-09-01' $ui.RangeText.Text 'one day needs no range'
@@ -58,10 +67,10 @@ Test-Case 'diary window: opens on the period it was given and says which days it
         Assert-Equal 1 $ui.DisplayRows.Children.Count 'one display was used'
         Assert-Equal 'LG ULTRAGEAR' (Get-DiaryRowName $ui.DisplayRows) 'and it is named'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: a pill rebuilds the whole window for its period' {
+Test-Case 'diary page: a pill rebuilds the whole window for its period' {
     $ui = New-DiaryUi -Days 1
     try {
         # Through the pill itself, not through Set-StatsPeriod: what is being checked is the wiring
@@ -75,30 +84,30 @@ Test-Case 'diary window: a pill rebuilds the whole window for its period' {
         Assert-Equal 2 $ui.DisplayRows.Children.Count 'two displays over the week'
         Assert-True ($ui.RangeText.Text -like '*..*2 days*') 'and the range says so'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: the chosen pill is the filled one, and only it' {
+Test-Case 'diary page: the chosen pill is the filled one, and only it' {
     $ui = New-DiaryUi -Days 30
     try {
         $on = @($ui.Chips | Where-Object { $_.Style -eq $ui.Window.FindResource('ChipOn') })
         Assert-Equal 1 $on.Count 'exactly one is chosen'
         Assert-Equal 30 ([int]$on[0].Tag) 'and it is the period the window is showing'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: "All" reaches a day no other period does' {
+Test-Case 'diary page: "All" reaches a day no other period does' {
     $ui = New-DiaryUi -Days 30
     try {
         Assert-Equal 3 $ui.Report.DaysRecorded 'a month holds three of the four days'
         Set-StatsPeriod -Ui $ui -Days 0
         Assert-Equal 4 $ui.Report.DaysRecorded 'and "All" holds the day from last year too'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: modes are named the way they are named everywhere else' {
+Test-Case 'diary page: modes are named the way they are named everywhere else' {
     $ui = New-DiaryUi -Days 1
     try {
         # The diary keeps keys ("combo:Work"); a window shows titles. Nobody has a mode called
@@ -106,10 +115,10 @@ Test-Case 'diary window: modes are named the way they are named everywhere else'
         Assert-Equal 'Work' (Get-DiaryRowName $ui.ModeRows) 'the combination by its name'
         Assert-Equal 'chrome on LG ULTRAGEAR' (Get-DiaryRowName $ui.PairRows) 'and a pair reads as a sentence'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: an empty period says so instead of drawing zeroes' {
+Test-Case 'diary page: an empty period says so instead of drawing zeroes' {
     $ui = New-DiaryUi -Days 1 -Store ([ordered]@{ days = [ordered]@{} })
     try {
         Assert-Equal 'Nothing counted for this period yet.' $ui.RangeText.Text 'the line under the title'
@@ -117,10 +126,10 @@ Test-Case 'diary window: an empty period says so instead of drawing zeroes' {
         Assert-Equal 'nothing yet' ([string]$ui.AppRows.Children[0].Text) 'which says as much'
         Assert-Equal 24 $ui.HoursPanel.Children.Count 'the day is still a whole day'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: the hour bars fit the panel, and the busiest one is the full height' {
+Test-Case 'diary page: the hour bars fit the panel, and the busiest one is the full height' {
     $ui = New-DiaryUi -Days 1
     try {
         $room = [double]$ui.HoursPanel.Height
@@ -132,20 +141,57 @@ Test-Case 'diary window: the hour bars fit the panel, and the busiest one is the
         Assert-Equal 2.0 ([double]$bars[0].Height) 'an empty hour keeps a tick of a bar'
         Assert-True ([double]$bars[0].Opacity -lt 1.0) 'faded, so the peak is the one that is read'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }
 
-Test-Case 'diary window: a share above a hundred does not draw past its track' {
+Test-Case 'diary page: a share above a hundred does not draw past its track' {
     # One application on two monitors: the pairs add up to more than the time at the computer, and
-    # a share is worked out against that time (see ConvertTo-ActivityRows). The bar has to stop at
-    # the end of its track rather than run over the percentage next to it.
+    # a share is worked out against that time (see ConvertTo-ActivityRows). The bar is two star
+    # columns - what is filled in and what is left - so it cannot run over the percentage beside
+    # it whatever the number says.
     $ui = New-DiaryUi -Days 1
     try {
-        $row = New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
-            Name = 'chrome'; Seconds = 3600; Share = 140.0 }) -BarWidth 100
-        $track = $row.Children[2]
-        Assert-Equal 100.0 ([double]$track.Width) 'the track is the width it was given'
-        Assert-Equal 100.0 ([double]$track.Child.Width) 'and what is filled in stops there'
+        $split = (New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
+            Name = 'chrome'; Seconds = 3600; Share = 140.0 })).Children[1].Children[0].Child
+        Assert-Equal 100.0 ([double]$split.ColumnDefinitions[0].Width.Value) 'filled to the end'
+        Assert-Equal 0.0 ([double]$split.ColumnDefinitions[1].Width.Value) 'and nothing is left over'
+
+        $half = (New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
+            Name = 'chrome'; Seconds = 3600; Share = 25.0 })).Children[1].Children[0].Child
+        Assert-Equal 25.0 ([double]$half.ColumnDefinitions[0].Width.Value) 'a quarter is a quarter'
+        Assert-Equal 75.0 ([double]$half.ColumnDefinitions[1].Width.Value) 'at any width of window'
     }
-    finally { $ui.Window.Close(); $script:ActiveStatsUi = $null }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
+}
+
+Test-Case 'diary page: a long name is not trimmed, and keeps its tooltip' {
+    # "chrome on LG ULTRA..." is what the 880-point window did to a forty-character pair. The row
+    # is two floors now, and the name has the whole width of the section to itself.
+    $ui = New-DiaryUi -Days 1
+    try {
+        $long = 'chromium-browser|LG ULTRAFINE 4K 27 inch'
+        $name = (New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
+            Name = $long; Seconds = 3600; Share = 50.0 })).Children[0].Children[0]
+        Assert-Equal 'chromium-browser on LG ULTRAFINE 4K 27 inch' ([string]$name.Text) 'read as a pair'
+        Assert-Equal 'None' ([string]$name.TextTrimming) 'nothing is cut off'
+        Assert-Equal ([string]$name.Text) ([string]$name.ToolTip) 'and the whole of it is on hover'
+    }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
+}
+
+Test-Case 'diary page: a section stops at five rows, and says so out of one place' {
+    # Four sections share a page: the sixth row is height nobody has, and the tail of a top list
+    # is noise. "As many as fit" was tried and taken out - see the comment on StatsTopRows.
+    $store = [ordered]@{ days = [ordered]@{} }
+    $day = Get-ActivityDay -Store $store -Date (Format-DisplayStamp $script:StatsToday 'yyyy-MM-dd')
+    foreach ($app in @('a', 'b', 'c', 'd', 'e', 'f', 'g')) {
+        Add-ActivitySpan -Day $day -Process $app -Display 'LG ULTRAFINE' -Mode 'all' `
+                         -Seconds 600 -Time '10:00' -Hour 10
+    }
+    $ui = New-DiaryUi -Days 1 -Store $store
+    try {
+        Assert-Equal 7 @($ui.Report.Apps).Count 'seven applications were counted'
+        Assert-Equal $script:StatsTopRows $ui.AppRows.Children.Count 'and the section shows five of them'
+    }
+    finally { $ui.Dialog.Window.Close(); $script:ActiveStatsUi = $null }
 }

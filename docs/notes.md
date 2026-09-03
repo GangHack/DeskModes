@@ -2331,3 +2331,37 @@ Decisions worth writing down:
 and drawing it are two functions rather than one: showing it twice would be a second window. The mode
 editor's image is `-editor` and not `-mode`, because the Modes page is `-modes` and two file names a
 letter apart are two files nobody can tell apart in a folder.
+
+## The diary moved into the window, and one idea did not survive it (2026-09-03)
+
+The diary was a window of its own: 880 wide, `SizeToContent="Height"`, no resizing, five rows to a
+section because five was what fitted in 780 points. It is a page of the Settings window now, and the page
+is wider — which paid for the thing the move was really about.
+
+**A row is two floors.** Name and time on top, the bar and the share underneath. One line had to hold all
+four, and the name was what gave way: `CharacterEllipsis` on a 13-point TextBlock beside a 72-point time,
+a 96-point bar and a 40-point percentage. "chrome on LG ULTRA…" was the everyday result at 880 points.
+Nothing is trimmed now, and the bar is sized by two star columns — share and the rest — so it is right at
+any width without anybody measuring a window.
+
+**"As many rows as fit" was written, measured and taken out.** The idea was to stretch the sections to the
+window and ask each panel how many rows it had room for. What it cost, measured on this desk:
+
+- Four sections of five rows want about 865 points of window. The window opens at 660. The arithmetic
+  never had an answer, and what came out of the difference was a `StackPanel` reporting `ActualHeight` 142
+  inside a grid cell of 43 — five rows in the tree, one of them drawn.
+- The redraw hung off `SizeChanged`, which is raised DURING the arrange pass. Controls added from there
+  have no size until the next pass, and `RenderTargetBitmap` — which is how every screenshot in this
+  repository is taken — drew them as nothing. The images said one row per section while the tree held
+  three; three extra dispatcher round trips did not change that.
+
+So the page scrolls, the sections are as tall as what is in them, and `StatsTopRows` is five as it was.
+A page that scrolls says "there is more" honestly; a page that arranges five rows into the room for one
+says nothing at all. The comment on the constant carries the measurement, so nobody spends the evening
+again.
+
+**What else went with the move:** the footer promise ("no window titles are ever recorded") is not
+repeated on the page — it stands on the Behavior page under **Keep a diary**, in the same window, three
+clicks away at most. The window's Close button is gone: the page has the Save and Cancel the window
+already has. And the tray's **Statistics…** now writes the pot out and opens Settings on the Diary page,
+so the diary is read where everything else about the app is.
