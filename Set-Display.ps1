@@ -21,7 +21,8 @@
     These names report instead of switching:
       status      what the system shows right now (read-only, the default)
       modes       every mode key with its shortcut
-      brightness  which displays answer over DDC/CI, and at what level
+      brightness  which displays answer over DDC/CI, at what level, and on which
+                  picture preset
       audio       playback device names, for the "audio" setting
       stats       the diary: what, where and for how long
 
@@ -150,13 +151,23 @@ if ($Mode -eq 'brightness') {
     # everything, and picking the right one out of such a list is impossible.
     $byOutput = @{}
     foreach ($m in $state) { if ($m.Output) { $byOutput[[string]$m.Output] = [string]$m.Label } }
+    # And the picture preset each monitor is holding, in the form settings.json takes it: this is
+    # the number to start from when writing that setting by hand, and the Settings window's
+    # Remember button is the other way of learning it.
+    $presets = @{}
+    foreach ($one in @(Get-MonitorPictures)) {
+        if ($one.Answered) { $presets[[string]$one.Device] = Format-PictureSetting -Code ([int]$one.Code) -Value ([int]$one.Value) }
+    }
     $levels |
         Select-Object @{n = 'Display';    e = { if ($byOutput.Contains([string]$_.Device)) { $byOutput[[string]$_.Device] } else { $_.Device } } },
                       @{n = 'Brightness'; e = { if ($_.CanBrightness) { '{0} ({1}..{2})' -f $_.Brightness, $_.BrightnessMin, $_.BrightnessMax } else { 'not supported' } } },
-                      @{n = 'Contrast';   e = { if ($_.CanContrast) { [string]$_.Contrast } else { 'not supported' } } } |
+                      @{n = 'Contrast';   e = { if ($_.CanContrast) { [string]$_.Contrast } else { 'not supported' } } },
+                      @{n = 'Preset';     e = { if ($presets.Contains([string]$_.Device)) { $presets[[string]$_.Device] } else { 'no answer' } } } |
         Format-Table -AutoSize
     Write-Host 'Put the levels you want into settings.json, for example:' -ForegroundColor DarkGray
     Write-Host '    "brightness": { "combo:Work": 80, "combo:Movie night": { "ULTRAFINE": 25 } }' -ForegroundColor DarkGray
+    Write-Host 'The Preset column is a register and a number, and it goes in the same shape:' -ForegroundColor DarkGray
+    Write-Host '    "picture": { "combo:Work": { "ULTRAFINE": "0x15:45" } }' -ForegroundColor DarkGray
     return
 }
 

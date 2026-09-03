@@ -30,6 +30,25 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **A Support card** with a **Donate** button. There is no address behind it yet, and until there
   is, the button says so instead of opening a page that would not be there.
 
+### The monitor's picture preset follows the mode
+
+- **Remember the monitor's current preset.** A mode already carried brightness and contrast; now it
+  can carry the thing the buttons on the monitor's bezel change - Reader, FPS, sRGB, whatever that
+  monitor calls them. Set the monitor the way you want it for this mode, press **Remember** in the
+  mode's editor, and the switch puts it back there every time.
+- **No names and no lists**, deliberately. The numbers behind those names are the manufacturer's,
+  and on this desk one monitor shows two different numbers as "Gamer 1" - they look nothing alike.
+  So ScreenDeck remembers the number the monitor is holding when you press the button, along with
+  the register it answered on, and writes exactly that back.
+- The setting is one line per display in `settings.json` - `"picture": { "combo:Work": {
+  "ULTRAGEAR": "0x15:45" } }` - and `.\Set-Display.ps1 brightness` now prints the register and
+  number each monitor is holding, so it can be written by hand as well.
+- The preset goes out **before** brightness and contrast: on some presets a monitor locks those two
+  in its own menu, and a level written first would land in a monitor about to forget it. The log
+  says which of the three was taken, refused or never answered, separately.
+- A monitor that is asleep or has DDC/CI switched off in its menu says so instead of having a
+  preset guessed for it.
+
 ### Windows' display timeout, where the desk is
 
 - **Displays go to sleep after** is a row on the **Your desk** page: the same setting Windows keeps

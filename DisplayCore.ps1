@@ -195,6 +195,14 @@ function Get-DefaultSettings {
         #   "brightness": { "combo:Work": 80, "all": { "ULTRAFINE": 25 } }
         brightness      = [ordered]@{}
         contrast        = [ordered]@{}
+        # The monitor's picture preset as part of a mode - what its own menu calls Reader, FPS,
+        # sRGB, Cinema. Mode key -> { a piece of a name -> "register:number" }, and the register
+        # is part of it because monitors disagree about which one holds the preset: the standard
+        # 0xDC, LG's 0x15. Both the register and the number are learnt from the monitor itself by
+        # "Remember the monitor's current preset" - there are no names and no table of models
+        # here, because the numbers are the vendor's and two of them can wear the same name.
+        #   "picture": { "combo:Work": { "ULTRAGEAR": "0x15:45", "XG27": "0xDC:6" } }
+        picture         = [ordered]@{}
         # The diary: which application, on which monitor and in which mode, for how
         # long. Kept next to the scripts in activity.json, goes nowhere, and window
         # titles are NOT recorded — only the process name. Off by default: this is data
@@ -362,6 +370,14 @@ function Get-DisplaySettings {
                 if (-not $p.Name) { continue }
                 $level = ConvertTo-LevelSetting $p.Value
                 if ($null -ne $level) { $s.$field[$p.Name] = $level }
+            }
+        }
+
+        if ($raw.picture) {
+            foreach ($p in $raw.picture.PSObject.Properties) {
+                if (-not $p.Name) { continue }
+                $one = ConvertTo-PictureSetting $p.Value
+                if ($one) { $s.picture[$p.Name] = $one }
             }
         }
 
@@ -1122,6 +1138,16 @@ public class NativeDdc {
     [DllImport("dxva2.dll", SetLastError = true)]
     private static extern bool SetMonitorContrast(IntPtr h, uint value);
 
+    // The picture preset - what the monitor's own menu calls Reader, FPS, sRGB, Cinema. Brightness has
+    // one standard code and one meaning everywhere; this has neither, so it goes through the raw VCP
+    // pair instead of a named helper. Which register answers is decided per monitor at the moment a
+    // preset is remembered, and the number behind a name is the vendor's to choose.
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr h, byte code, out int type, out uint current, out uint maximum);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    private static extern bool SetVCPFeature(IntPtr h, byte code, uint value);
+
     [DllImport("dxva2.dll")]
     private static extern bool DestroyPhysicalMonitor(IntPtr h);
 
@@ -1178,6 +1204,50 @@ public class NativeDdc {
         return false;
     }
 
+    // What a monitor answers on one register right now. One try and not three: this is asked of
+    // registers a monitor may not have at all (0xDC on an LG is a refusal, not a hiccup), and paying
+    // three times 60 ms for every "no" would make asking the desk a second-long affair.
+    private static bool ReadVcp(IntPtr handle, byte code, out uint current) {
+        int type = 0; uint cur = 0, max = 0;
+        bool ok = GetVCPFeatureAndVCPFeatureReply(handle, code, out type, out cur, out max);
+        if (!ok) { LastError = Marshal.GetLastWin32Error(); }
+        current = cur;
+        return ok;
+    }
+
+    // What preset a monitor is holding right now, and on which register. The codes are tried in the
+    // order given: the standard 0xDC first, the vendor ones after it. Answered == false means nobody
+    // answered anything, which is a different thing from "the preset is 0".
+    public class Picture {
+        public string Device;
+        public string Description;
+        public bool Answered;
+        public int Code = -1;
+        public int Value = -1;
+    }
+
+    public static List<Picture> ReadPicture(int[] codes) {
+        var result = new List<Picture>();
+        foreach (var pair in Open()) {
+            var one = new Picture();
+            one.Device = pair.Key;
+            one.Description = pair.Value.description;
+            IntPtr handle = pair.Value.handle;
+            foreach (int code in codes) {
+                uint current = 0;
+                if (ReadVcp(handle, (byte)code, out current)) {
+                    one.Answered = true;
+                    one.Code = code;
+                    one.Value = (int)current;
+                    break;
+                }
+            }
+            DestroyPhysicalMonitor(handle);
+            result.Add(one);
+        }
+        return result;
+    }
+
     public static List<MonitorLevels> Read() {
         var result = new List<MonitorLevels>();
         foreach (var pair in Open()) {
@@ -1215,6 +1285,8 @@ public class NativeDdc {
         // Advising "check the menu" in the first case is a lie.
         public bool BrightnessRead, ContrastRead;
         public int BrightnessActual = -1, ContrastActual = -1;
+        public bool PictureAsked, PictureConfirmed, PictureRead;
+        public int PictureActual = -1;
     }
 
     // DDC/CI writes REQUIRE NO ANSWER: SetMonitorBrightness returned true for a monitor that answers a
@@ -1231,7 +1303,12 @@ public class NativeDdc {
     //
     // The brightness and contrast arrays go by the indices of devices; -1 means "this one was not asked
     // for".
-    public static List<Applied> Set(string[] devices, int[] brightness, int[] contrast) {
+    // pictureCode/pictureValue go by the indices of devices, like the levels; -1 in the code means
+    // "this one has no preset to set". The preset goes out BEFORE brightness and contrast: on some LG
+    // presets those two are locked in the monitor's own menu, and a level written before the preset
+    // would land in a monitor that is about to forget it.
+    public static List<Applied> Set(string[] devices, int[] brightness, int[] contrast,
+                                    int[] pictureCode, int[] pictureValue) {
         var result = new List<Applied>();
         for (int i = 0; i < devices.Length; i++) {
             var a = new Applied();
@@ -1264,13 +1341,20 @@ public class NativeDdc {
                 IntPtr handle = open[j].Value.handle;
                 int wantB = brightness[slot[j]];
                 int wantC = contrast[slot[j]];
+                int wantCode = pictureCode[slot[j]];
+                int wantPicture = pictureValue[slot[j]];
+                if (wantCode >= 0) {
+                    byte code = (byte)wantCode;
+                    uint value = (uint)wantPicture;
+                    a.PictureAsked = WithRetry(delegate { return SetVCPFeature(handle, code, value); });
+                }
                 if (wantB >= 0) {
                     a.BrightnessAsked = WithRetry(delegate { return SetMonitorBrightness(handle, (uint)wantB); });
                 }
                 if (wantC >= 0) {
                     a.ContrastAsked = WithRetry(delegate { return SetMonitorContrast(handle, (uint)wantC); });
                 }
-                if (a.BrightnessAsked || a.ContrastAsked) { asked = true; }
+                if (a.BrightnessAsked || a.ContrastAsked || a.PictureAsked) { asked = true; }
             }
 
             // The monitor needs time to apply it and start answering with the new value: right after the
@@ -1291,6 +1375,15 @@ public class NativeDdc {
                     Applied a = result[slot[j]];
                     IntPtr handle = open[j].Value.handle;
 
+                    if (a.PictureAsked && !a.PictureConfirmed) {
+                        uint current = 0;
+                        if (ReadVcp(handle, (byte)pictureCode[slot[j]], out current)) {
+                            a.PictureRead = true;
+                            a.PictureActual = (int)current;
+                            a.PictureConfirmed = ((int)current == pictureValue[slot[j]]);
+                        }
+                        if (!a.PictureConfirmed) { waiting = true; }
+                    }
                     if (a.BrightnessAsked && !a.BrightnessConfirmed) {
                         uint min = 0, cur = 0, max = 0;
                         // One question, without WithRetry: the retry here IS the outer loop, and its pause
@@ -3616,7 +3709,7 @@ function Update-HotkeyKeys {
         # Everything tied to the same mode moves along with the shortcut: audio, commands, brightness,
         # contrast. Otherwise after a cable was moved the shortcut would work while the brightness no
         # longer applied to it — and two halves of one setting would have drifted apart.
-        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast') {
+        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast', 'picture') {
             $dict = $Settings[$field]
             if (-not $dict -or -not $dict.Contains($old)) { continue }
             if ($dict.Contains($hit.Key)) { continue }
@@ -4093,11 +4186,13 @@ function Invoke-SwitchTail {
     # Only for the monitors that are on: a sleeping one does not answer over DDC. The dictionaries are
     # empty (by default) — and not one request leaves over the slow bus.
     $hasLevels = (($Settings.brightness -and $Settings.brightness.Contains($ModeKey)) -or
-                  ($Settings.contrast -and $Settings.contrast.Contains($ModeKey)))
+                  ($Settings.contrast -and $Settings.contrast.Contains($ModeKey)) -or
+                  ($Settings.picture -and $Settings.picture.Contains($ModeKey)))
     if ($hasLevels -and @($LevelTargets).Count -gt 0) {
         $b = $(if ($Settings.brightness -and $Settings.brightness.Contains($ModeKey)) { $Settings.brightness[$ModeKey] } else { $null })
         $c = $(if ($Settings.contrast   -and $Settings.contrast.Contains($ModeKey))   { $Settings.contrast[$ModeKey] }   else { $null })
-        try { [void](Set-MonitorLevels -Targets $LevelTargets -BrightnessSetting $b -ContrastSetting $c) }
+        $p = $(if ($Settings.picture    -and $Settings.picture.Contains($ModeKey))    { $Settings.picture[$ModeKey] }    else { $null })
+        try { [void](Set-MonitorLevels -Targets $LevelTargets -BrightnessSetting $b -ContrastSetting $c -PictureSetting $p) }
         catch { Write-DisplayLog "warn: levels - failed: $($_.Exception.Message)" }
     }
     & $note 'levels'
@@ -4740,35 +4835,147 @@ function Get-LevelPlan {
     return $plan
 }
 
+# --- the monitor's picture preset following the mode ------------------------
+# A mode already carries brightness and contrast; the preset is the third thing the monitor holds
+# in its own firmware, and the one a person changes with the bezel buttons: Reader for reading,
+# FPS for a game, sRGB for a photograph.
+#
+# What this deliberately does NOT do is name them. Probed on this desk on 2026-09-03: on the LG
+# UltraGear register 0x15 answers 1 for Reader and 6 for Gamer 1 - and 45, which the menu ALSO
+# calls Gamer 1 and which looks different from 6. The name is not the setting; the number is. So
+# there is no table of models here and no learning of names: ScreenDeck remembers the number the
+# monitor is holding right now, and writes that number back.
+#
+# Which register holds it is the monitor's business too: MCCS names 0xDC, both LGs here are silent
+# on it and answer on 0x15 instead, and the ASUS is the other way round. So the register is learnt
+# at the same moment as the number and stored beside it.
+
+# The order they are tried in: the standard one first.
+$script:PictureCodes = @(0xDC, 0x15)
+
+# What every monitor that is on is holding right now. A monitor that is asleep answers nothing and
+# is simply not in the list.
+function Get-MonitorPictures {
+    try { return @([NativeDdc]::ReadPicture([int[]]$script:PictureCodes)) }
+    catch {
+        Write-DisplayLog "picture: could not ask the monitors - $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# "0x15:45" - a register and a number, the way it is written in settings.json. Hex for the
+# register because that is how every monitor's documentation writes it, and plain for the number
+# because that is what a person sees change when they press a button on the bezel.
+function Format-PictureSetting {
+    param([int]$Code, [int]$Value)
+
+    return ('0x{0:X2}:{1}' -f $Code, $Value)
+}
+
+# The other way round, and forgiving: "0x15:45" and "21:45" are the same thing, spaces do not
+# matter, and anything else is $null rather than an error - settings.json is edited by hand, and a
+# typo there must cost a line in the log, not a switch.
+function ConvertTo-PictureSetting {
+    param($Value)
+
+    if ($Value -is [System.Collections.IDictionary] -or
+        ($Value -and $Value.PSObject -and $Value.PSObject.Properties['Keys'] -eq $null -and
+         $Value -isnot [string] -and $Value -isnot [int] -and $Value.PSObject.Properties.Count -gt 0)) {
+        # A mode's entry: a map of "a piece of a name" -> "register:number".
+        $one = [ordered]@{}
+        $properties = $(if ($Value -is [System.Collections.IDictionary]) {
+                            @($Value.Keys | ForEach-Object { [pscustomobject]@{ Name = $_; Value = $Value[$_] } })
+                        } else { @($Value.PSObject.Properties) })
+        foreach ($p in $properties) {
+            if (-not $p.Name) { continue }
+            $text = [string]$p.Value
+            if (ConvertFrom-PictureSetting $text) { $one[[string]$p.Name] = $text.Trim() }
+            else { Write-DisplayLog ("picture: '{0}' for {1} is not a register and a number - ignored" -f $text, $p.Name) }
+        }
+        if ($one.Count -eq 0) { return $null }
+        return $one
+    }
+    return $null
+}
+
+# One "register:number" -> the pair, or $null. A pure function: this is where a hand-written
+# settings.json is either understood or refused, and it is the one place worth pinning down.
+function ConvertFrom-PictureSetting {
+    param([string]$Text)
+
+    if (-not $Text) { return $null }
+    $parts = ([string]$Text).Split(':')
+    if ($parts.Count -ne 2) { return $null }
+
+    $code = 0; $value = 0
+    foreach ($pair in @(@{ Text = $parts[0].Trim(); Into = 'code' }, @{ Text = $parts[1].Trim(); Into = 'value' })) {
+        $text = [string]$pair.Text
+        $number = 0
+        if ($text -match '^0[xX][0-9a-fA-F]+$') { $number = [Convert]::ToInt32($text.Substring(2), 16) }
+        elseif ([int]::TryParse($text, [ref]$number)) { }
+        else { return $null }
+        if ($number -lt 0 -or $number -gt 255) { return $null }
+        if ($pair.Into -eq 'code') { $code = $number } else { $value = $number }
+    }
+    return [pscustomobject]@{ Code = $code; Value = $value }
+}
+
+# A pure function, the twin of Get-LevelPlan: one mode's picture setting + that mode's monitors ->
+# who gets which register and number. Only a map here, never a single value: a preset number means
+# nothing on a monitor of another make, so "the same for everybody" would be a promise this cannot
+# keep.
+function Get-PicturePlan {
+    param($Setting, $Wanted)
+
+    $plan = [ordered]@{}
+    if ($null -eq $Setting -or -not ($Setting -is [System.Collections.IDictionary])) { return $plan }
+
+    foreach ($m in @($Wanted)) {
+        foreach ($key in @($Setting.Keys)) {
+            if (-not (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId)) { continue }
+            $one = ConvertFrom-PictureSetting ([string]$Setting[$key])
+            if ($one) { $plan[[string]$m.Label] = $one }
+            else { Write-DisplayLog ("picture: '{0}' for {1} is not a register and a number - ignored" -f $Setting[$key], $key) }
+            break
+        }
+    }
+    return $plan
+}
+
 # $Targets is an array of objects with the fields Device (\\.\DISPLAY1), Label and ShortId.
 # Device comes from the output enumeration that has already been done: there is deliberately no
 # CCD walk of our own here, a switch is not free enough as it is.
 function Set-MonitorLevels {
-    param($Targets, $BrightnessSetting, $ContrastSetting)
+    param($Targets, $BrightnessSetting, $ContrastSetting, $PictureSetting)
 
     $bright = Get-LevelPlan -Setting $BrightnessSetting -Wanted $Targets
     $contra = Get-LevelPlan -Setting $ContrastSetting -Wanted $Targets
-    if ($bright.Count -eq 0 -and $contra.Count -eq 0) { return @() }
+    $picture = Get-PicturePlan -Setting $PictureSetting -Wanted $Targets
+    if ($bright.Count -eq 0 -and $contra.Count -eq 0 -and $picture.Count -eq 0) { return @() }
 
     # First the whole request is assembled and only then do we go to the bus: one walk for every
     # monitor instead of a walk per monitor (see NativeDdc.Set).
-    $devices = @(); $wantB = @(); $wantC = @(); $labels = @()
+    $devices = @(); $wantB = @(); $wantC = @(); $wantCode = @(); $wantPicture = @(); $labels = @()
     foreach ($t in @($Targets)) {
         $label = [string]$t.Label
         $b = $(if ($bright.Contains($label)) { [int]$bright[$label] } else { -1 })
         $c = $(if ($contra.Contains($label)) { [int]$contra[$label] } else { -1 })
-        if ($b -lt 0 -and $c -lt 0) { continue }
+        $p = $(if ($picture.Contains($label)) { $picture[$label] } else { $null })
+        if ($b -lt 0 -and $c -lt 0 -and $null -eq $p) { continue }
         if (-not $t.Device) { continue }
 
         $devices += [string]$t.Device
         $wantB += $b
         $wantC += $c
+        $wantCode += $(if ($p) { [int]$p.Code } else { -1 })
+        $wantPicture += $(if ($p) { [int]$p.Value } else { -1 })
         $labels += $label
     }
     if ($devices.Count -eq 0) { return @() }
 
     $applied = @()
-    try { $applied = @([NativeDdc]::Set([string[]]$devices, [int[]]$wantB, [int[]]$wantC)) }
+    try { $applied = @([NativeDdc]::Set([string[]]$devices, [int[]]$wantB, [int[]]$wantC,
+                                        [int[]]$wantCode, [int[]]$wantPicture)) }
     catch { Write-DisplayLog "levels: could not set - $($_.Exception.Message)"; return @() }
 
     $done = @()
@@ -4794,6 +5001,15 @@ function Set-MonitorLevels {
         $good = @()
         $refused = @()
         $silent = @()
+        # The preset first, in the log as on the bus: on some LG presets brightness and contrast are
+        # locked in the monitor's own menu, and reading "brightness 80, picture 45" would suggest an
+        # order that never happened.
+        if ([int]$wantCode[$i] -ge 0) {
+            $want = [int]$wantPicture[$i]
+            if ($one.PictureConfirmed) { $good += "picture $want" }
+            elseif ($one.PictureRead)  { $refused += "picture $want (it reports $($one.PictureActual))" }
+            else                       { $silent += "picture $want" }
+        }
         if ($b -ge 0) {
             if ($one.BrightnessConfirmed) { $good += "brightness $b" }
             elseif ($one.BrightnessRead)  { $refused += "brightness $b (it reports $($one.BrightnessActual))" }

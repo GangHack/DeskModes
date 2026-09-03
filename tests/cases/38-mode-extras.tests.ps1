@@ -505,3 +505,104 @@ Test-Case "dialog: a display's row is one line until it has something set on it"
     }
     finally { $ui.Window.Close() }
 }
+
+# --- the monitor's picture preset --------------------------------------------
+# A row per display with one button. What is remembered is a register and a number read off the
+# monitor at that moment; nothing here knows a preset's NAME, and nothing asks the bus while a
+# window is merely being built - these tests build editors by the dozen and no monitor is on.
+
+Test-Case 'picture: building an editor asks no monitor anything' {
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState -Dark $false
+    try {
+        Assert-Equal 0 $ed.Picture.Count 'nothing is remembered for a mode that has nothing'
+        Assert-Equal '' ([string]$ed.PictureNote.Text) 'and nothing was said about the bus'
+    }
+    finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+}
+
+Test-Case 'picture: a row is drawn for every display of the mode, and says what it knows' {
+    # "All displays" is the mode with both of the fake desk's monitors in it.
+    $picture = [ordered]@{ 'all' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Picture $picture -Dark $false
+    try {
+        Assert-Equal 2 $ed.PicturePanel.Children.Count 'a row for each display of the mode'
+        $row = @($ed.PicturePanel.Children | Where-Object { [string]$_.Children[0].Children[0].Text -eq 'LG ULTRAFINE' })[0]
+        Assert-Equal 'Remembered' ([string]$row.Children[0].Children[1].Text) 'it knows a preset'
+        # The number is on hover and in settings.json, never in the row itself.
+        Assert-Equal '0x15:45' ([string]$row.Children[0].Children[1].ToolTip) 'with the number behind it'
+        Assert-Equal 'Update' ([string]$row.Children[1].Children[0].Content) 'the button offers to replace it'
+        Assert-Equal 2 $row.Children[1].Children.Count 'and there is a way to forget it'
+
+        $other = @($ed.PicturePanel.Children | Where-Object { [string]$_.Children[0].Children[0].Text -eq 'LG ULTRAGEAR' })[0]
+        Assert-Equal 'Not remembered' ([string]$other.Children[0].Children[1].Text) 'the other display knows none'
+        Assert-Equal 'Remember' ([string]$other.Children[1].Children[0].Content) 'and is only offered the one button'
+    }
+    finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+}
+
+Test-Case 'picture: what is remembered lands in the settings, and only for displays the mode has' {
+    $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'combo:Work' } | Select-Object -First 1)[0]
+        $combo = Get-UiCombo -Ui $ui -Key 'combo:Work'
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false
+        try {
+            # Remembered by hand, the way the button would have written it - the bus is not asked
+            # in a test, and what is under test is what happens to the answer afterwards.
+            $ed.Picture['LG ULTRAFINE'] = '0x15:45'
+            $ed.Picture['LG ULTRAGEAR'] = '0xDC:6'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'the edit is accepted'
+            Assert-Equal 1 $got.Mode.Picture.Count 'only the display the combination actually has'
+            Assert-Equal '0x15:45' ([string]$got.Mode.Picture['LG ULTRAFINE']) 'with its own number'
+
+            Set-UiMode -Ui $ui -Mode $mode -Combo $combo -Edited $got.Mode
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal '0x15:45' ([string]$updated.picture['combo:Work']['LG ULTRAFINE']) 'and it reaches settings.json'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture: a rename carries the presets, and a deletion takes them away' {
+    $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
+    $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-True $ui.Picture.Contains('combo:Work') 'the window read it in'
+        Move-UiModeKey -Ui $ui -From 'combo:Work' -To 'combo:Evening'
+        Assert-True $ui.Picture.Contains('combo:Evening') 'a rename carries it'
+        Assert-Equal $false $ui.Picture.Contains('combo:Work') 'and leaves nothing behind'
+
+        Remove-UiModeKey -Ui $ui -Key 'combo:Evening'
+        Assert-Equal $false $ui.Picture.Contains('combo:Evening') 'a deletion takes it with it'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture: an unreadable entry in the file is dropped rather than written back out' {
+    # settings.json is edited by hand. A line the window cannot read must not be carried through a
+    # Save as though somebody had meant it - and must not reach a monitor either.
+    $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
+    $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = 'reader'; 'LG ULTRAGEAR' = '0x15:6' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 1 $ui.Picture['combo:Work'].Count 'only the one that parses came in'
+        Assert-Equal '0x15:6' ([string]$ui.Picture['combo:Work']['LG ULTRAGEAR']) 'and it is the right one'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture: a mode row says a preset is set on it' {
+    $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
+    $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-True ((Get-ModeRowSubtitle -Ui $ui -Mode ([pscustomobject]@{ Key = 'combo:Work'; Kind = 'combo' })) -like '*picture preset*') `
+                    'a setting behind an Edit button is not invisible'
+    }
+    finally { $ui.Window.Close() }
+}

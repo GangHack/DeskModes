@@ -1325,6 +1325,15 @@ $script:ModeEditorXaml = @'
                     <Button x:Name="LevelTestBtn" Style="{StaticResource Btn}" Content="Ask the monitors"
                             HorizontalAlignment="Left" Margin="0,12,0,0"/>
                     <TextBlock x:Name="LevelNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    <!-- The monitor's own picture preset. No list and no names: which number is
+                         which preset is the vendor's business, and on this desk one monitor calls
+                         two different numbers "Gamer 1". What is remembered is the number the
+                         monitor is holding at the moment the button is pressed. -->
+                    <TextBlock Style="{StaticResource H2}" Text="Picture preset" Margin="0,16,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Set the monitor the way you want it for this mode with its own buttons, then press Remember."/>
+                    <StackPanel x:Name="PicturePanel"/>
+                    <TextBlock x:Name="PictureNote" Style="{StaticResource RowSub}" Margin="0,8,0,0" TextWrapping="Wrap"/>
                     <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,16,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
                                Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
@@ -1955,6 +1964,9 @@ function New-SettingsWindow {
         # also be carried blindly from the file (see the loop in Read-SettingsFromUi).
         Levels            = [ordered]@{}
         Contrast          = [ordered]@{}
+        # Mode key -> { display name -> "register:number" }: the monitor's own picture preset,
+        # learnt from the monitor and written back to it on a switch.
+        Picture           = [ordered]@{}
         Audio             = [ordered]@{}
         Hooks             = [ordered]@{}
         Modes             = @($Modes)
@@ -2150,6 +2162,9 @@ function Test-EditorExtrasSet {
 
     if ($null -ne (ConvertFrom-LevelModel $Editor.Brightness.Model)) { return $true }
     if ($null -ne (ConvertFrom-LevelModel $Editor.Contrast.Model))   { return $true }
+    # Not @(...).Count: wrapping a dictionary in an array gives ONE element whatever is in it, and
+    # the fold would spring open for every mode that has nothing set at all.
+    if ((Get-PictureForSave -Editor $Editor).Count -gt 0)            { return $true }
     if (([string]$Editor.AudioBox.Text).Trim())                      { return $true }
     if (Get-HookFingerprint -Before $Editor.HookBeforeBox.Text -After $Editor.HookAfterBox.Text) { return $true }
     return $false
@@ -2698,6 +2713,43 @@ function Import-LevelSettings {
 
     $Ui.Levels   = ConvertTo-LevelModels -Section $(if ($Settings) { $Settings.brightness } else { $null })
     $Ui.Contrast = ConvertTo-LevelModels -Section $(if ($Settings) { $Settings.contrast }   else { $null })
+
+    # The presets come across as they are written: "register:number" per display. Only what parses
+    # is taken in - the window owns this setting now, and a line it could not read would be written
+    # back out on the next Save as though somebody had meant it.
+    $Ui.Picture = [ordered]@{}
+    if ($Settings -and $Settings.picture) {
+        foreach ($key in @($Settings.picture.Keys)) {
+            $one = $Settings.picture[$key]
+            if (-not ($one -is [System.Collections.IDictionary])) { continue }
+            $kept = [ordered]@{}
+            foreach ($name in @($one.Keys)) {
+                $text = ([string]$one[$name]).Trim()
+                if (ConvertFrom-PictureSetting $text) { $kept[[string]$name] = $text }
+            }
+            if ($kept.Count -gt 0) { $Ui.Picture[[string]$key] = $kept }
+        }
+    }
+}
+
+# The window's map -> what goes into settings.json. Empty entries do not travel: a mode whose
+# presets were all forgotten leaves no key behind.
+function ConvertTo-PictureSettings {
+    param($Picture)
+
+    $out = [ordered]@{}
+    if (-not $Picture) { return $out }
+    foreach ($key in @($Picture.Keys)) {
+        $one = $Picture[$key]
+        if (-not ($one -is [System.Collections.IDictionary])) { continue }
+        $kept = [ordered]@{}
+        foreach ($name in @($one.Keys)) {
+            $text = ([string]$one[$name]).Trim()
+            if ($text -and (ConvertFrom-PictureSetting $text)) { $kept[[string]$name] = $text }
+        }
+        if ($kept.Count -gt 0) { $out[[string]$key] = $kept }
+    }
+    return $out
 }
 
 # The audio device and the commands out of the settings into the window's working maps. Both
@@ -3090,7 +3142,7 @@ function Remove-UiModeKey {
     # Every map the window keys by mode. A new one added above and forgotten here is exactly the
     # ghost setting this function exists to prevent, which is why they are listed in one loop
     # rather than in five lines somebody can add a sixth beside.
-    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Audio, $Ui.Hooks)) {
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Audio, $Ui.Hooks)) {
         if ($map -and $map.Contains($Key)) { $map.Remove($Key) }
     }
     # Not a map, but keyed by mode all the same: a rule pointing at a mode that no longer exists
@@ -3124,7 +3176,7 @@ function Move-UiModeKey {
     param($Ui, [string]$From, [string]$To)
 
     if (-not $From -or -not $To -or $From -eq $To) { return }
-    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Audio, $Ui.Hooks)) {
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Audio, $Ui.Hooks)) {
         if (-not $map -or -not $map.Contains($From)) { continue }
         $value = $map[$From]
         $map.Remove($From)
@@ -3196,6 +3248,10 @@ function Set-UiMode {
         if ($null -ne $Edited.PSObject.Properties['Contrast']) {
             if ($null -ne (ConvertFrom-LevelModel $Edited.Contrast)) { $Ui.Contrast[$newKey] = $Edited.Contrast }
             elseif ($Ui.Contrast.Contains($newKey)) { $Ui.Contrast.Remove($newKey) }
+        }
+        if ($null -ne $Edited.PSObject.Properties['Picture']) {
+            if ($Edited.Picture -and @($Edited.Picture.Keys).Count -gt 0) { $Ui.Picture[$newKey] = $Edited.Picture }
+            elseif ($Ui.Picture.Contains($newKey)) { $Ui.Picture.Remove($newKey) }
         }
         # An empty device is not a setting either: the switch would look for a device called
         # nothing and write a warning into the log every time.
@@ -3427,6 +3483,131 @@ function Sync-EditorInheritance {
     Update-EditorDisclosure -Editor $Editor
 }
 
+# --- the monitor's picture preset -------------------------------------------
+# One row per display of the mode: what is remembered for it, and the buttons to remember, update
+# or forget. There is no list of presets and no name of one anywhere here, and that is the whole
+# design: the numbers are the vendor's, and on this desk one monitor calls two different numbers
+# "Gamer 1" while they look nothing alike (probed 2026-09-03). So the question a person answers is
+# not "which preset" but "the way it looks right now".
+
+# What the row says, given what is remembered for that display.
+function Get-PictureRowText {
+    param([string]$Setting)
+
+    $one = ConvertFrom-PictureSetting $Setting
+    if (-not $one) { return 'Not remembered' }
+    return 'Remembered'
+}
+
+# Rebuilt whenever the model changes: the rows are three states of one thing, and rebuilding is
+# shorter than keeping three of them in step.
+function Update-PicturePanel {
+    param($Editor)
+
+    $panel = $Editor.PicturePanel
+    if (-not $panel) { return }
+    $panel.Children.Clear()
+    $win = $Editor.Window
+
+    $names = @(Get-EditorDisplayNames -Editor $Editor)
+    if ($names.Count -eq 0) {
+        [void]$panel.Children.Add((New-UiTextBlock -Text 'Tick a display first.' -Style 'RowSub' -Window $win))
+        return
+    }
+
+    foreach ($name in $names) {
+        $setting = [string]$(if ($Editor.Picture.Contains($name)) { $Editor.Picture[$name] } else { '' })
+
+        $row = New-Object System.Windows.Controls.Grid
+        $row.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+        foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                             [System.Windows.GridLength]::Auto)) {
+            $column = New-Object System.Windows.Controls.ColumnDefinition
+            $column.Width = $width
+            [void]$row.ColumnDefinitions.Add($column)
+        }
+
+        $text = New-Object System.Windows.Controls.StackPanel
+        $text.VerticalAlignment = 'Center'
+        $text.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
+        [void]$text.Children.Add((New-UiTextBlock -Text $name -Style 'RowTitle' -Window $win))
+        $state = New-UiTextBlock -Text (Get-PictureRowText -Setting $setting) -Style 'RowSub' -Window $win
+        # The number itself is on hover and in settings.json, never in the row: a person who has
+        # never opened a monitor's menu has no use for "0x15:45", and one who edits the file by
+        # hand needs to see exactly that.
+        if ($setting) { $state.ToolTip = $setting }
+        [void]$text.Children.Add($state)
+        [void]$row.Children.Add($text)
+
+        $buttons = New-Object System.Windows.Controls.StackPanel
+        $buttons.Orientation = 'Horizontal'
+        $buttons.VerticalAlignment = 'Center'
+        [System.Windows.Controls.Grid]::SetColumn($buttons, 1)
+
+        $remember = New-Object System.Windows.Controls.Button
+        $remember.Style = $win.FindResource('BtnSmall')
+        $remember.Content = $(if ($setting) { 'Update' } else { 'Remember' })
+        # Which display a button answers for is on the button itself: this window's handlers hold
+        # no closures (see the note about .GetNewClosure() above).
+        $remember.Tag = $name
+        $remember.add_Click({
+            $ed = $script:ActiveEditor
+            if ($ed) { Read-PictureForDisplay -Editor $ed -Display ([string]$this.Tag) }
+        })
+        [void]$buttons.Children.Add($remember)
+
+        if ($setting) {
+            $forget = New-Object System.Windows.Controls.Button
+            $forget.Style = $win.FindResource('BtnSmall')
+            $forget.Content = 'Forget'
+            $forget.Margin = New-Object System.Windows.Thickness 8, 0, 0, 0
+            $forget.Tag = $name
+            $forget.add_Click({
+                $ed = $script:ActiveEditor
+                if (-not $ed) { return }
+                $name = [string]$this.Tag
+                if ($ed.Picture.Contains($name)) { $ed.Picture.Remove($name) }
+                $ed.PictureNote.Text = ''
+                Update-PicturePanel -Editor $ed
+            })
+            [void]$buttons.Children.Add($forget)
+        }
+
+        [void]$row.Children.Add($buttons)
+        [void]$panel.Children.Add($row)
+    }
+}
+
+# The button's whole job: ask that monitor what it is holding right now and write it down. A
+# monitor that is asleep or has DDC/CI switched off in its menu answers nothing, and then nothing
+# is written down - guessing a preset would be worse than saying so.
+function Read-PictureForDisplay {
+    param($Editor, [string]$Display)
+
+    $device = ''
+    foreach ($m in @($Editor.State)) {
+        if (-not $m -or $m.Disconnected -or -not $m.Active) { continue }
+        if ([string]$m.Label -eq $Display) { $device = [string]$m.Output; break }
+    }
+    if (-not $device) {
+        $Editor.PictureNote.Text = "$Display is not on the desk right now."
+        return
+    }
+
+    $found = $null
+    foreach ($one in @(Get-MonitorPictures)) {
+        if ([string]$one.Device -eq $device -and $one.Answered) { $found = $one; break }
+    }
+    if (-not $found) {
+        $Editor.PictureNote.Text = "$Display did not answer. Is it on, and is DDC/CI on in its menu?"
+        return
+    }
+
+    $Editor.Picture[$Display] = Format-PictureSetting -Code ([int]$found.Code) -Value ([int]$found.Value)
+    $Editor.PictureNote.Text = "$Display remembered as it looks now."
+    Update-PicturePanel -Editor $Editor
+}
+
 function New-ModeEditorWindow {
     param(
         # The mode being edited. $null — we are creating a new combo.
@@ -3443,6 +3624,7 @@ function New-ModeEditorWindow {
         $Hotkeys,
         $Levels,
         $Contrast,
+        $Picture,
         $Audio,
         $Hooks,
         [string[]]$TakenNames = @(),
@@ -3481,6 +3663,7 @@ function New-ModeEditorWindow {
     if (-not $Hotkeys)  { $Hotkeys  = [ordered]@{} }
     if (-not $Levels)   { $Levels   = [ordered]@{} }
     if (-not $Contrast) { $Contrast = [ordered]@{} }
+    if (-not $Picture)  { $Picture  = [ordered]@{} }
     if (-not $Audio)    { $Audio    = [ordered]@{} }
     if (-not $Hooks)    { $Hooks    = [ordered]@{} }
     $hotkeyText = $(if ($key -and $Hotkeys.Contains($key)) { [string]$Hotkeys[$key] } else { '' })
@@ -3529,6 +3712,11 @@ function New-ModeEditorWindow {
         # editor is only an object once this literal is closed.
         Brightness     = $null
         Contrast       = $null
+        # A COPY of what this mode has remembered, display -> "register:number". Cancel has to
+        # leave the window with what was there.
+        Picture        = [ordered]@{}
+        PicturePanel   = $win.FindName('PicturePanel')
+        PictureNote    = $win.FindName('PictureNote')
         # Whether the device list has already been fetched. It is fetched on the first opening
         # of the dropdown and never on building the window: enumerating the endpoints goes to
         # COM, and the tests build editors headless.
@@ -3556,6 +3744,12 @@ function New-ModeEditorWindow {
                                     -Source $Contrast -Model $contrastLevel
     Initialize-LevelGroup -Group $ed.Brightness
     Initialize-LevelGroup -Group $ed.Contrast
+
+    # A copy, not the map itself: Cancel has to leave the window with what was there.
+    if ($key -and $Picture.Contains($key)) {
+        foreach ($name in @($Picture[$key].Keys)) { $ed.Picture[[string]$name] = [string]$Picture[$key][$name] }
+    }
+    Update-PicturePanel -Editor $ed
 
     $ed.AudioBox.Text = [string]$(if ($key -and $Audio.Contains($key)) { $Audio[$key] } else { '' })
     $ed.HookBeforeBox.Text = [string]$(if ($hook) { $hook.before } else { '' })
@@ -3604,6 +3798,10 @@ function New-ModeEditorWindow {
                 if ($group.Busy) { continue }
                 if ([string]$group.Model.Kind -eq 'each') { Update-LevelGroup -Group $group }
             }
+            # The preset rows are one per display too. What was remembered for a display that has
+            # just been unticked is KEPT in the model until Save: ticking it back must not have
+            # cost the person the preset they learnt.
+            Update-PicturePanel -Editor $ed
         })
     }
 
@@ -3668,7 +3866,8 @@ function Read-ModeFromUi {
             Ok = $true
             Mode = [pscustomobject]@{
                 Hotkey = $hk; Level = $Editor.Brightness.Model
-                Contrast = $Editor.Contrast.Model; Audio = $device; Hook = $hook
+                Contrast = $Editor.Contrast.Model; Picture = (Get-PictureForSave -Editor $Editor)
+                Audio = $device; Hook = $hook
             }
             Problem = ''
         }
@@ -3695,10 +3894,24 @@ function Read-ModeFromUi {
         Mode = [pscustomobject]@{
             Name = $name; Patterns = $chosen; Primary = $prim
             Hotkey = $hk; Level = $Editor.Brightness.Model
-            Contrast = $Editor.Contrast.Model; Audio = $device; Hook = $hook
+            Contrast = $Editor.Contrast.Model; Picture = (Get-PictureForSave -Editor $Editor)
+            Audio = $device; Hook = $hook
         }
         Problem = ''
     }
+}
+
+# What leaves the editor: only the displays the mode still has. A preset remembered for a display
+# and then unticked stays in the window while it is open (ticking it back is free) and goes no
+# further than that - settings.json must not collect presets for displays no mode uses.
+function Get-PictureForSave {
+    param($Editor)
+
+    $out = [ordered]@{}
+    foreach ($name in @(Get-EditorDisplayNames -Editor $Editor)) {
+        if ($Editor.Picture.Contains($name)) { $out[[string]$name] = [string]$Editor.Picture[$name] }
+    }
+    return $out
 }
 
 # Showing the editor. Returns the mode's edit, or $null on cancel.
@@ -3710,6 +3923,7 @@ function Show-ModeEditor {
         $Hotkeys,
         $Levels,
         $Contrast,
+        $Picture,
         $Audio,
         $Hooks,
         [string[]]$TakenNames = @(),
@@ -3719,7 +3933,7 @@ function Show-ModeEditor {
 
     $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State `
                                -Hotkeys $Hotkeys -Levels $Levels -Contrast $Contrast `
-                               -Audio $Audio -Hooks $Hooks -TakenNames $TakenNames `
+                               -Picture $Picture -Audio $Audio -Hooks $Hooks -TakenNames $TakenNames `
                                -Owner $Owner -Dark $Dark
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
@@ -3743,7 +3957,7 @@ function Invoke-ModeEditor {
 
     $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State `
                             -Hotkeys $Ui.Hotkeys -Levels $Ui.Levels -Contrast $Ui.Contrast `
-                            -Audio $Ui.Audio -Hooks $Ui.Hooks -TakenNames $taken `
+                            -Picture $Ui.Picture -Audio $Ui.Audio -Hooks $Ui.Hooks -TakenNames $taken `
                             -Owner $Ui.Window -Dark $Ui.Dark
     if ($made) { Set-UiMode -Ui $Ui -Mode $Mode -Combo $Combo -Edited $made }
 }
@@ -3779,6 +3993,10 @@ function Get-ModeRowSubtitle {
     $parts = @(Get-ModeSubtitle -Mode $Mode)
     if ($Ui.Levels.Contains($key))   { $parts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun 'brightness' }
     if ($Ui.Contrast.Contains($key)) { $parts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun 'contrast' }
+    if ($Ui.Picture.Contains($key)) {
+        $count = @($Ui.Picture[$key].Keys).Count
+        $parts += $(if ($count -eq 1) { 'picture preset' } else { "picture preset on $count displays" })
+    }
     # The device's name is not printed: it is long enough to push the row into a second line,
     # and the row's job is to say that the setting is there at all.
     if ($Ui.Audio.Contains($key))    { $parts += 'audio' }
@@ -3830,7 +4048,7 @@ function Resolve-PanelModes {
     $known = @($modes | ForEach-Object { [string]$_.Key })
     $strays = @()
     foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys) + @($Ui.Contrast.Keys) +
-                       @($Ui.Audio.Keys) + @($Ui.Hooks.Keys))) {
+                       @($Ui.Picture.Keys) + @($Ui.Audio.Keys) + @($Ui.Hooks.Keys))) {
         $key = [string]$key
         if (-not $key -or $known -contains $key -or $strays -contains $key) { continue }
         $strays += $key
@@ -3850,6 +4068,7 @@ function Resolve-PanelModes {
     $Ui.Hotkeys  = Get-MapInModeOrder -Map $Ui.Hotkeys  -Modes $modes
     $Ui.Levels   = Get-MapInModeOrder -Map $Ui.Levels   -Modes $modes
     $Ui.Contrast = Get-MapInModeOrder -Map $Ui.Contrast -Modes $modes
+    $Ui.Picture  = Get-MapInModeOrder -Map $Ui.Picture  -Modes $modes
     $Ui.Audio    = Get-MapInModeOrder -Map $Ui.Audio    -Modes $modes
     $Ui.Hooks    = Get-MapInModeOrder -Map $Ui.Hooks    -Modes $modes
 
@@ -4556,7 +4775,7 @@ function Read-SettingsFromUi {
     # without an element of its own does not bring this bug back.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
                   'restoreLastMode', 'stats', 'layout', 'primary', 'combos',
-                  'audio', 'hooks', 'brightness', 'contrast', 'reapply', 'rules')
+                  'audio', 'hooks', 'brightness', 'contrast', 'picture', 'reapply', 'rules')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
@@ -4601,6 +4820,7 @@ function Read-SettingsFromUi {
         hooks      = (ConvertTo-HookSettings   -Hooks  $Ui.Hooks)
         brightness = (ConvertFrom-LevelModels  -Models $Ui.Levels)
         contrast   = (ConvertFrom-LevelModels  -Models $Ui.Contrast)
+        picture    = (ConvertTo-PictureSettings -Picture $Ui.Picture)
     }
     foreach ($field in @($sources.Keys)) {
         $updated[$field] = Move-ModeKeyedEntries -Source $sources[$field] -Renames ([ordered]@{}) `

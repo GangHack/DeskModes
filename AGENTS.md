@@ -80,6 +80,7 @@ new file of the program ships by itself, a new file for us has to be named there
 | `render-preview.ps1` | 269 | dev tool: renders all five windows to PNG without showing them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
 | `tools/check.ps1` | 234 | the four gates, and the only answer to "am I done" |
+| `tools/probe-picture.ps1` | 269 | dev tool: reads and writes ONE monitor register per run, so that an eye at the desk can say what changed. The only way to learn a picture preset's number; the program itself never asks for capabilities |
 | `tools/trace-displays.ps1` | 132 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
 | `tools/pack.ps1` | 211 | the release archive: what the user downloads, built from `git ls-files` |
 | `tests/` | — | the runner (107), the framework (79), the fakes (131), 39 files of cases (6393) and `live.ps1` (252) |
@@ -129,6 +130,15 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   `SetDisplayConfig`. The legacy `ChangeDisplaySettingsEx` returns `-4` (bad flags) on
   this hardware for that job. Do not "fix" anything by falling back to it. For a *mode
   change* the legacy call works fine, and that is where it is still used.
+- **A monitor's picture preset has no standard.** Brightness is one code with one meaning
+  everywhere; the preset is not. MCCS names `0xDC`, both LGs on this desk answer only on LG's own
+  `0x15`, and the ASUS only on `0xDC`. Worse, the NAMES lie: measured 2026-09-03, the UltraGear
+  shows both 6 and 45 as "Gamer 1" and they look different. So there is no table of models and no
+  learning of names anywhere here — `Remember` reads the number the monitor is holding at that
+  moment, stores it with the register that answered (`"0x15:45"`), and writes it back on a switch.
+  `tools/probe-picture.ps1` is how a number is found by hand; **never ask for the capabilities
+  string** from the program — on 2026-08-21 that left the UltraGear deaf to DDC until its cable
+  was cycled.
 - **A refresh rate is the driver's exact fraction.** 144 Hz is `143999/1000`, 60 Hz is
   `59997/1000`. Asking for `144/1` makes the system reject the whole request. That is
   what `display-modes.json` caches, and why that file exists.

@@ -49,6 +49,10 @@ Every one of these exists because the naive version broke on a real desk:
 - **Carries brightness with the mode.** Over DDC/CI — the same channel inside the cable
   that the buttons on the monitor's own bezel use. The evening mode dims the 4K panel to
   25%, the work mode puts it back to 80%, and you stop reaching for the bezel.
+- **Carries the monitor's picture preset too.** The Reader/FPS/sRGB the bezel buttons switch
+  between: set the monitor the way you want it, press **Remember** in the mode's editor, and the
+  switch puts it back there. No list of names to pick from, because the numbers behind those names
+  are the manufacturer's - one monitor here shows two different ones as "Gamer 1".
 - **Runs your own command around a switch.** One line per mode: close an app, change the
   power plan, turn off the lights in the room. What it does is your business.
 - **Switches by itself on a rule.** A process started, or nobody has touched the computer

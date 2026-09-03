@@ -136,8 +136,11 @@ $script:SwFakes = {
 
     function Set-DefaultAudioDevice { param([string]$Match) $script:SwCalls += "audio:$Match"; return $true }
     function Set-MonitorLevels {
-        param($Targets, $BrightnessSetting, $ContrastSetting)
+        param($Targets, $BrightnessSetting, $ContrastSetting, $PictureSetting)
         $script:SwCalls += ('levels:' + ((@($Targets) | ForEach-Object { $_.Label }) -join '+'))
+        $script:SwLevelArgs = [pscustomobject]@{
+            Brightness = $BrightnessSetting; Contrast = $ContrastSetting; Picture = $PictureSetting
+        }
         return $true
     }
 }
@@ -559,4 +562,32 @@ Test-Case 'result: an outcome nobody defined is refused rather than guessed at' 
     $threw = $false
     try { [void](New-SwitchResult -ModeKey 'all' -Outcome 'probably') } catch { $threw = $true }
     Assert-True $threw 'the vocabulary is closed'
+}
+
+Test-Case 'switch: a mode carrying a picture preset takes it to the bus with the levels' {
+    # One walk over the monitors for all three, and the preset is part of it: a second walk would
+    # cost another open and destroy of every handle on a bus where one request is tens of
+    # milliseconds.
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.picture = [ordered]@{ 'all' = [ordered]@{ 'ULTRAFINE' = '0x15:45' } }
+    $script:SwLevelArgs = $null
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet
+
+    Assert-True $r.Ok 'the switch is a success'
+    Assert-True (($script:SwCalls -join ',') -match 'levels:') 'the levels step ran'
+    Assert-True ($null -ne $script:SwLevelArgs) 'and it was told what to set'
+    Assert-Equal '0x15:45' ([string]$script:SwLevelArgs.Picture['ULTRAFINE']) 'the preset came through as written'
+}
+
+Test-Case 'switch: a mode with nothing to set on the bus does not go near it' {
+    # The dictionaries are empty by default, and then not one request leaves over the slow bus.
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
+    Assert-True (-not (($script:SwCalls -join ',') -match 'levels:')) 'nothing was asked of the monitors'
 }

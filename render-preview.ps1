@@ -166,11 +166,19 @@ if ($Fake) {
     # The same for everything else a mode can carry. Set on the combo specifically, because that
     # is whose editor gets rendered by default — and because a mode with something set is what
     # opens the editor's fold, so the image shows what is behind it instead of a shut caption.
-    $settings.contrast = [ordered]@{ 'combo:Work' = 70 }
-    $settings.audio = [ordered]@{ 'combo:Work' = 'ULTRAFINE' }
+    $settings.contrast = [ordered]@{ 'combo:Work' = 70; 'combo:Movie night' = 65 }
+    $settings.audio = [ordered]@{ 'combo:Work' = 'ULTRAFINE'; 'combo:Movie night' = 'ULTRAFINE' }
     $settings.hooks = [ordered]@{
         'combo:Work' = [ordered]@{ before = ''; after = 'C:\tools\work-lights.cmd' }
+        'combo:Movie night' = [ordered]@{ before = ''; after = 'C:\tools\lights-out.cmd' }
     }
+    # A remembered picture preset, so the card shows both of its states. Invented, like the desk:
+    # no monitor here is real enough to be asked.
+    $settings.picture = [ordered]@{ 'combo:Movie night' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    # "Movie night" is the combination whose editor gets photographed, and it has ONE display: with
+    # two, the editor unfolded is 1460 points tall - taller than a 1440p work area - and a window
+    # taller than the screen comes out of the renderer with its last two boxes cut off.
+    $settings.brightness['combo:Movie night'] = [ordered]@{ 'LG ULTRAFINE' = 40 }
     # And two rules, so the Rules card is a list rather than its empty line: one of each kind,
     # and one of them switched off — a rule that is off has to look off.
     $settings.rules = @(
@@ -209,10 +217,13 @@ function Show-WindowOffscreen {
     # scrolls. For an image scrolling only gets in the way: it exists to show the WHOLE window at
     # once. The Settings window is not one of those any more and takes the size its markup gives.
     $Window.MaxHeight = [double]::PositiveInfinity
-    # The editor's scrolling comes off too. We look it up by the name from the markup, not through
-    # the element tree: before Show() there is no tree yet.
+    # The editor's scrollbar comes off too - Hidden and not Disabled. Disabled makes the viewer
+    # measure its content against the room it HAS, which is the one thing wanted here: the content
+    # then reports the size it was squeezed into, SizeToContent believes it, and the image comes out
+    # with the last two boxes of the editor cut off. Hidden leaves the measurement honest and only
+    # takes the bar away.
     $viewer = $Window.FindName('Scroll')
-    if ($viewer) { $viewer.VerticalScrollBarVisibility = 'Disabled' }
+    if ($viewer) { $viewer.VerticalScrollBarVisibility = 'Hidden' }
     $Window.WindowStartupLocation = 'Manual'
     $Window.ShowActivated = $false
     $Window.ShowInTaskbar = $false

@@ -2394,3 +2394,39 @@ a laptop with different answers for the two cases will have set them in Windows,
 
 Written on Save and only when it changed, like **Start with Windows**. Rewriting the system's setting with
 the same number on every Save would put this program's name on a change nobody made.
+
+## The picture preset, and why it has no names (2026-09-03)
+
+A mode carried brightness and contrast; what was missing was the thing the buttons on the bezel change —
+Reader for reading, FPS for a game, sRGB for a photograph. "A reading mode" and "a monitor set up for a
+game" come out of one new field: the rule switches the mode, the mode sets the preset.
+
+**The probe came first** (`tools/probe-picture.ps1`, one register per run, an eye at the desk saying what
+changed), and it is what decided the design. Measured 2026-09-03 on all three monitors, both ways round:
+
+- **LG UltraGear**, register `0x15`: 1 Reader, 6 Gamer 1, and **45 — the everyday setting here, which the
+  menu ALSO calls Gamer 1 and which looks nothing like 6.**
+- **LG UltraFine**, `0x15`: 1 Reader, 6 Color Weakness, 11 Custom; a write of 17 came back as 11.
+- **ASUS XG27AQDMGR**, `0xDC`: 1 Cinema, 2 Scenery, 6 FPS; it also takes 4, 5, 7, 8, 9; 0 comes back as 7,
+  and 3 and 10 are refused. On `0x15` the ASUS is silent; on `0xDC` both LGs are — `0xC0262584`.
+
+**The conclusion that shaped the feature: the names are not the setting.** Two numbers wearing one name and
+looking different means a table of "6 = Reader" would be wrong on the next monitor and sometimes on this
+one. So ScreenDeck learns nothing about names. `Remember` reads the number the monitor is holding at that
+moment, keeps it with the register that answered — `"0x15:45"` — and writes exactly that back. Writing 45
+gave Yegor back exactly his picture; nothing in the code knows what to call it.
+
+Three more things the probe settled:
+
+- **The register is per monitor and is learnt at the same moment**, standard `0xDC` first, LG's `0x15`
+  after it. Storing the register beside the number is what makes a desk of two makes work at all.
+- **The preset goes out BEFORE brightness and contrast.** On some LG presets those two are locked in the
+  monitor's own menu, and a level written first lands in a monitor about to forget it.
+- **The capabilities string is never asked for by the program.** It is a long conversation on the I2C bus,
+  and on 2026-08-21 it left the UltraGear deaf to every DDC request until the cable was cycled. `Remember`
+  and a switch each cost one read or one write of one register.
+
+Verified through the production path (`Set-MonitorLevels`, which is what a switch calls) rather than through
+the probe: `0xDC:4` → wrote `0xDC:6` → read back 6 → restored to 4, with `levels: XG27AQDMGR - picture 6`
+in the log. A monitor that does not confirm is reported as refusing or as silent, exactly as brightness is,
+because "we said so" is not "it obeyed" on this bus.
