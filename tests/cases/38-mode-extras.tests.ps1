@@ -445,7 +445,7 @@ Test-Case 'mode editor: inheriting a setting from a typed name opens the fold to
 Test-Case 'mode editor: shutting the fold by hand outranks opening it by itself' {
     # Without this, shutting it while a brightness is set would spring it open again on the very
     # next keystroke in the name box.
-    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = '' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false `
                                -Levels ([ordered]@{ 'combo:Work' = (ConvertTo-LevelModel 80) })
@@ -567,6 +567,36 @@ Test-Case 'picture: what is remembered lands in the settings, and only for displ
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'picture: a preset written as a piece of a name is shown and kept' {
+    # settings.json keys a preset by A PIECE of a display's name - that is what the switch matches
+    # by, and what the CLI tells a person to write. Looked up by the whole label it was found by
+    # nobody: the row said "Not remembered" and Save handed back a map without it, so opening the
+    # editor and pressing Save was enough to lose it.
+    $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
+    $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'ULTRAFINE' = '0x15:45' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'combo:Work' } | Select-Object -First 1)[0]
+        $combo = Get-UiCombo -Ui $ui -Key 'combo:Work'
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState `
+                                   -Picture $ui.Picture -Dark $false
+        try {
+            Assert-Equal 'ULTRAFINE' (Get-PictureKeyFor -Editor $ed -Name 'LG ULTRAFINE') 'the row finds it'
+            Assert-Equal 'Remembered' (Get-PictureRowText -Setting $ed.Picture['ULTRAFINE']) 'and says so'
+
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'the edit is accepted'
+            Assert-Equal '0x15:45' ([string]$got.Mode.Picture['ULTRAFINE']) 'it survives, under the key it was written with'
+
+            Set-UiMode -Ui $ui -Mode $mode -Combo $combo -Edited $got.Mode
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal '0x15:45' ([string]$updated.picture['combo:Work']['ULTRAFINE']) 'and it is still in the file'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'picture: a rename carries the presets, and a deletion takes them away' {
     $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
     $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
@@ -581,6 +611,68 @@ Test-Case 'picture: a rename carries the presets, and a deletion takes them away
         Assert-Equal $false $ui.Picture.Contains('combo:Evening') 'a deletion takes it with it'
     }
     finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture: a display that is off keeps the preset remembered for it' {
+    # The mode you open while the monitor is asleep is exactly the mode that turns it on. Its
+    # display is Disconnected, Get-ModeMembers drops those, and the card is handed back WHOLE on
+    # Save - so without Get-EditorPictureNames an untouched Save erased the preset it was opened
+    # to look at. Brightness never had this: Get-LevelRowNames keeps a name its map holds.
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUSAA1D' 'path-asus' $false $true)
+    )
+    $settings = New-TestSettings
+    $settings.picture = [ordered]@{ 'solo:XG27AQDMGR' = [ordered]@{ 'XG27AQDMGR' = '0xDC:6' } }
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'solo:XG27AQDMGR' })[0]
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $state -Picture $ui.Picture -Dark $false
+        try {
+            Assert-Equal 1 $ed.PicturePanel.Children.Count 'the display that is away still gets its row'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-Equal '0xDC:6' ([string]$got.Mode.Picture['XG27AQDMGR']) 'and an untouched Save hands it back'
+
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
+            Assert-Equal '0xDC:6' ([string]$ui.Picture['solo:XG27AQDMGR']['XG27AQDMGR']) 'so the window keeps it'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture: a typed name inherits the presets standing under its key' {
+    # The same rule the shortcut, the levels, the device and the commands live by: a card the
+    # person never saw must not erase what the name it names already owns.
+    $settings = New-TestSettings
+    $settings.picture = [ordered]@{ 'combo:Games' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $script:DlgState `
+                                   -Picture $ui.Picture -Dark $false
+        try {
+            Assert-Equal 0 $ed.Picture.Count 'a new combination starts with nothing remembered'
+            $ed.NameBox.Text = 'Games'
+            Sync-EditorInheritance -Editor $ed
+            Assert-Equal '0x15:45' ([string]$ed.Picture['LG ULTRAFINE']) 'the name brings the preset with it'
+
+            foreach ($cb in $ed.Checks) { if ([string]$cb.Tag -eq 'LG ULTRAFINE') { $cb.IsChecked = $true } }
+            $got = Read-ModeFromUi -Editor $ed
+            Set-UiMode -Ui $ui -Mode $null -Combo $null -Edited $got.Mode
+            Assert-Equal '0x15:45' ([string]$ui.Picture['combo:Games']['LG ULTRAFINE']) 'and Save does not erase it'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'picture fingerprint: nothing remembered reads as empty, and the order does not matter' {
+    Assert-Equal '' (Get-PictureFingerprint -Map ([ordered]@{})) 'nothing set'
+    $one = Get-PictureFingerprint -Map ([ordered]@{ 'A' = '0x15:1'; 'B' = '0xDC:6' })
+    $two = Get-PictureFingerprint -Map ([ordered]@{ 'B' = '0xDC:6'; 'A' = '0x15:1' })
+    Assert-Equal $one $two 'the order the rows were pressed in is not part of the answer'
+    Assert-True ($one -ne (Get-PictureFingerprint -Map ([ordered]@{ 'A' = '0x15:2'; 'B' = '0xDC:6' }))) `
+                'a different number is a different card'
 }
 
 Test-Case 'picture: an unreadable entry in the file is dropped rather than written back out' {
@@ -601,7 +693,9 @@ Test-Case 'picture: a mode row says a preset is set on it' {
     $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-True ((Get-ModeRowSubtitle -Ui $ui -Mode ([pscustomobject]@{ Key = 'combo:Work'; Kind = 'combo' })) -like '*picture preset*') `
+        # "picture" and not "picture preset": this caption is the one thing on a mode's row that
+        # gets trimmed, and "preset" is eight characters naming the section it came from.
+        Assert-True ((Get-ModeRowSubtitle -Ui $ui -Mode ([pscustomobject]@{ Key = 'combo:Work'; Kind = 'combo' })) -like '*picture*') `
                     'a setting behind an Edit button is not invisible'
     }
     finally { $ui.Window.Close() }

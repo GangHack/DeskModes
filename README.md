@@ -79,6 +79,13 @@ themselves — read out of each monitor's EDID, not guessed from its resolution 
 the layout rather than a picture of it, and the table under it says what each display reports
 about itself.
 
+A display you have switched off at its own button is still there, marked `not connected`. Some
+monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them
+altogether — which used to mean the one display you wanted to set a rule or a combination up
+for was the one missing from every list. Every monitor seen in the last three months keeps its
+card, its row in the table, its tick in a combination and its own mode to point a rule at. Its
+mode is greyed where you switch from, because it cannot be switched to until it is back.
+
 The same page carries **Displays go to sleep after** - Windows' own timeout, read when the
 window opens and written back on Save, so setting up a desk does not mean a detour through the
 Control Panel.
@@ -154,9 +161,11 @@ for you on first run.
 Click the icon with either button. The menu follows the system theme, dark or light, with
 your accent color:
 
-- **CONNECTED DISPLAYS** — what is plugged in, at what mode, and who is primary. Names read
+- **DISPLAYS** — every display this desk has, at what mode, and who is primary. Names read
   at full strength, the mode and remarks a step quieter. The dot is green at the maximum
-  refresh rate, amber `(below N Hz)` when Windows dropped it, grey when the display is off.
+  refresh rate, amber `(below N Hz)` when Windows dropped it, grey when the display is off,
+  hollow when it is not connected — a display switched off at its own button is still listed,
+  because that is when you want to set something up for it.
 - **SWITCH TO** — your modes: one per display, your combinations, all. The one
   matching the current desk is ticked; modes whose displays are unplugged are greyed with
   `(not connected)`.
@@ -628,7 +637,7 @@ break the "nothing is installed on your system" promise.
 | `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
 | `settings.example.json` | a `settings.json` with every key filled in, to copy from |
 | `last-run.log` | the log; rotates past 1 MB |
-| `settings.json`, `window-state.json`, `last-mode.json`, `display-modes.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
+| `settings.json`, `window-state.json`, `last-mode.json`, `display-modes.json`, `known-displays.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
 
 The release ZIP holds the program only — the scripts, the launchers, this README. The
 tests, the gates, the screenshots and the engineering notes live in the repository,

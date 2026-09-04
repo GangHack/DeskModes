@@ -142,6 +142,12 @@ $script:StateCache = $null
 # as the nameless "a display".
 $script:KnownLabels = @{}
 
+# The desk as the INTERFACE shows it: the state plus the monitors the roster remembers (see
+# Get-DeskDisplays). Cached beside the state and rebuilt with it, because building it reads
+# known-displays.json off the disk — and the menu's Opening handler is the one place here that
+# must not go to disk at all, which is what the state cache exists for.
+$script:DeskCache = $null
+
 function Update-StateCache {
     try {
         $script:StateCache = @(Get-DisplayState)
@@ -156,6 +162,17 @@ function Update-StateCache {
         foreach ($m in $script:StateCache) {
             if ($m.Id) { $script:KnownLabels[[string]$m.Id] = [string]$m.Label }
         }
+
+        # And the same thing written down, so the NEXT run knows a monitor that is off the bus
+        # before it has ever seen it (Get-KnownDisplays). Here rather than in Get-DisplayState:
+        # that one is on the switch path, where every millisecond is measured and printed. The
+        # file is only rewritten when it would actually change, which is about once a day.
+        [void](Update-KnownDisplays -State $script:StateCache)
+
+        # The roster has just been read and brought up to date, so this is the moment to build
+        # the desk out of it: everybody who asks later (the menu, the Settings window, the
+        # startup migration) gets it without going near the disk again.
+        $script:DeskCache = @(Get-DeskDisplays -State $script:StateCache)
     }
     catch {
         Write-DisplayLog "cache: could not refresh display state - $($_.Exception.Message)"
@@ -184,6 +201,15 @@ function Get-CurrentModeKey {
 function Get-CachedState {
     if ($null -eq $script:StateCache) { Update-StateCache }
     return $script:StateCache
+}
+
+# The same, with the remembered monitors in it — what every window and menu shows. An empty
+# array and not $null when the refresh failed: the callers hand this straight to Get-DisplayModes
+# and to the Settings window, and @($null) is an array holding one nothing.
+function Get-CachedDesk {
+    if ($null -eq $script:DeskCache) { Update-StateCache }
+    if ($null -eq $script:DeskCache) { return @() }
+    return $script:DeskCache
 }
 
 # Putting the refresh rate back after the system dropped it. A function of its own rather
@@ -1048,7 +1074,10 @@ function Open-SettingsWindow {
     # An error while building a WinForms window is shown as a nameless system window with no
     # detail. We catch it ourselves and write it to the log — there is no debugging it otherwise.
     try {
-        $updated = Show-SettingsDialog -State (Get-CachedState) -Settings (Get-ActiveSettings) -Page $Page
+        # The remembered monitors travel into the window: a rule, a combo or a place in the row
+        # is most often written for the display you are NOT looking at right now.
+        $updated = Show-SettingsDialog -State (Get-CachedDesk) `
+                       -Settings (Get-ActiveSettings) -Page $Page
         if ($updated) {
             Set-ActiveSettings $updated
             Register-Hotkeys
@@ -1108,10 +1137,13 @@ $menu.add_Opening({
         $menu.RenderMode = [System.Windows.Forms.ToolStripRenderMode]::System
     }
 
-    $state = Get-CachedState
+    # The desk with the remembered monitors in it, not the bare state: a display that is off at
+    # its own button and gone from the bus still gets its line here and its own greyed mode
+    # below, instead of vanishing out of the menu altogether (see Get-DeskDisplays).
+    $state = @(Get-CachedDesk)
 
     if ($state) {
-        Add-MenuHeader -Text 'CONNECTED DISPLAYS' -Scale $scale
+        Add-MenuHeader -Text 'DISPLAYS' -Scale $scale
         foreach ($m in $state) {
             $dot = 'unplugged'
             if ($m.Disconnected)  { $what = 'not connected' }
@@ -1415,7 +1447,10 @@ catch { Write-DisplayLog "windows: could not clean stale snapshots - $($_.Except
 
 # A monitor could have moved to another input while the application was not running — then
 # the binding moves to the new key by itself. We do this before registering the shortcuts.
-if (Update-HotkeyKeys -Settings $script:Settings -State (Get-CachedState)) {
+# The remembered monitors are handed in as well, and that is the point: without them a solo key
+# for a display that is merely switched off matches no mode, and the name-guessing rung inside
+# would go looking for another monitor to carry the binding to.
+if (Update-HotkeyKeys -Settings $script:Settings -State (Get-CachedDesk)) {
     # [void]: Save-DisplaySettings answers whether the file was written, and here there is nothing to be
     # done about a "no" — the migration lives on in memory for this run, the log says why, and the tray
     # starts either way. Which is the point: this line runs before the message loop, and a refusal used

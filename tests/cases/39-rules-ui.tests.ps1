@@ -40,12 +40,14 @@ Test-Case 'rules: an empty list says so instead of standing blank' {
 }
 
 Test-Case 'rules: a row is named in words, and modes by their titles' {
+    # A real arrow and not "->": the desk cards two pages away move by that very character, and
+    # two spellings of one arrow in one window read as two different things.
     $rule = [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0; mode = 'combo:Work'; back = 'all'; enabled = $true }
-    Assert-Equal 'cs2 is running   ->   Work' (Get-RuleRowTitle -Rule $rule) 'the condition and where it goes'
+    Assert-Equal "cs2 is running$($script:UiArrow)Work" (Get-RuleRowTitle -Rule $rule) 'the condition and where it goes'
     Assert-Equal 'back to All displays' (Get-RuleRowSubtitle -Rule $rule) 'and where it comes back to'
 
     $idle = [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = ''; enabled = $true }
-    Assert-Equal 'idle for 20 min   ->   All displays' (Get-RuleRowTitle -Rule $idle) 'the other condition'
+    Assert-Equal "idle for 20 min$($script:UiArrow)All displays" (Get-RuleRowTitle -Rule $idle) 'the other condition'
     Assert-Equal '' (Get-RuleRowSubtitle -Rule $idle) 'and "wherever it was" needs no line'
 }
 

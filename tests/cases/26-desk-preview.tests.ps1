@@ -151,3 +151,105 @@ Test-Case 'desk: there is no second picture left to disagree with the cards' {
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case 'desk: the row of cards is one slot per display, filling the card it sits in' {
+    # It was a WrapPanel of 140-point cards, which was two bugs in one number: on a desk of three
+    # the right half of the card stood empty at any window size, and on a desk of five the row
+    # dropped to a second line - so "arrange them left to right" put the fifth display visually
+    # left of the fourth. One column per display, and there is only ever one row.
+    foreach ($count in 1, 2, 3, 5) {
+        $state = @(1..$count | ForEach-Object { New-FakeMonitor "SCREEN $_" "S$_" "slot-$_" })
+        $settings = Get-DefaultSettings
+        $settings.layout = @($state | ForEach-Object { $_.Label })
+        $ui = New-DialogUi -Settings $settings -State $state
+        try {
+            Assert-Equal 1 ([int]$ui.DeskPanel.Rows) "$count displays: one row"
+            Assert-Equal $count ([int]$ui.DeskPanel.Columns) "$count displays: a column each"
+            Assert-Equal $count $ui.DeskPanel.Children.Count "$count displays: a card each"
+            # And a ceiling, because the screens inside have one: past the width where they stop
+            # growing, a wider window would only push the cards apart. Stretch with a MaxWidth
+            # centres the leftover, so the row stays a row.
+            Assert-Equal ($count * $script:DeskSlotMax) ([double]$ui.DeskPanel.MaxWidth) `
+                         "$count displays: the row has a ceiling"
+            # No width of its own: whatever the slot turns out to be is the card. A number here
+            # is the width of a window nobody has dragged yet.
+            foreach ($card in @($ui.DeskPanel.Children)) {
+                Assert-True ([double]::IsNaN([double]$card.Width)) 'the card takes the slot it is given'
+            }
+        }
+        finally { $ui.Window.Close() }
+    }
+}
+
+Test-Case 'desk: with no width measured yet a desk is still drawn' {
+    # A window built and never shown - the tests, and the first pass of Update-DeskPanel on a real
+    # one - has no layout, so every ActualWidth is 0. The drawing must not come out as nothing:
+    # the assumed width stands in, and the SizeChanged pass corrects it a frame later.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        foreach ($card in @($ui.DeskPanel.Children)) {
+            $info = $card.Tag
+            Assert-Equal $script:DeskCardAssumed ([double]$info.Inner) 'nothing measured, so the assumption'
+            Assert-True ([double]$info.Mini.Width -gt 0) 'and a screen is drawn anyway'
+            Assert-True ([double]$info.Mini.Width -le [double]$info.Inner) 'inside what it was told it has'
+        }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the band is the tallest drawing in the row, one height for all of them' {
+    # It used to be 76 points fixed, and the whole row shrank to fit it - so a wide window drew no
+    # bigger a desk than a narrow one, and one 4:3 panel made every screen beside it small. One
+    # height for the row either way: a card taller than its neighbours would read as a monitor
+    # standing higher on the desk, which is not what any of this means.
+    $state = @(
+        (New-FakeMonitor 'SQUARE' 'S1' 'band-sq')
+        (New-FakeMonitor 'WIDE' 'S2' 'band-wide')
+    )
+    $state[0].Width = 1600; $state[0].Height = 1200
+    $state[1].Width = 3440; $state[1].Height = 1440
+    Set-TestInches -Id 'band-sq' -Inches 24.0
+    Set-TestInches -Id 'band-wide' -Inches 34.0
+    $settings = Get-DefaultSettings
+    $settings.layout = @('SQUARE', 'WIDE')
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $one = $ui.DeskPanel.Children[0].Tag
+        $two = $ui.DeskPanel.Children[1].Tag
+        Assert-Equal ([double]$one.Band.Height) ([double]$two.Band.Height) 'both bands are the same height'
+        Assert-True ([double]$one.Band.Height -le $script:DeskBandMax) 'and no taller than the cap'
+        # To within a point: the band is rounded up and the drawings are floored, so the two can
+        # be one apart and the band is never the shorter of them.
+        $tallest = [math]::Max([double]$one.Mini.Height, [double]$two.Mini.Height)
+        Assert-True (([double]$one.Band.Height - $tallest) -ge 0 -and ([double]$one.Band.Height - $tallest) -le 1) `
+                    "the band is the tallest drawing (band $($one.Band.Height), drawing $tallest)"
+        foreach ($info in $one, $two) {
+            Assert-True ([double]$info.Mini.Height -le [double]$info.Band.Height) 'nothing sticks out of the band'
+            Assert-True ([double]$info.Mini.Width -le [double]$info.Inner) 'nor out of the card'
+        }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a display that is not here cannot be handed the taskbar, but can still be moved' {
+    # Windows will not put the taskbar on a display that is not there. The two arrows are the one
+    # thing on such a card that still works, and the whole reason the card is kept: its place in
+    # the row IS the layout entry, and moving it is how that entry is reordered.
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAFINE', 'GONE FISHING')
+    $ui = New-DialogUi -Settings $settings -State @((New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'here-1'))
+    try {
+        Assert-Equal 2 $ui.DeskPanel.Children.Count 'the absent one keeps its card'
+        $away = @($ui.DeskPanel.Children | Where-Object { -not $_.Tag.Connected })[0]
+        Assert-Equal 'GONE FISHING' ([string]$away.Tag.Label) 'and it is the one from the settings'
+        Assert-Equal $false ([bool]$away.Tag.Radio.IsEnabled) 'the taskbar star is off'
+        Assert-Equal 1.0 ([double]$away.Opacity) 'the card is not dimmed as a whole'
+        Assert-True ([double]$away.Tag.Mini.Opacity -lt 1.0) 'only the drawing is'
+        # The arrows are the last child of the card's stack, and both of them still work.
+        $arrows = @($away.Child.Children)[-1]
+        foreach ($button in @($arrows.Children)) {
+            Assert-True ([bool]$button.IsEnabled) 'the arrow still moves it'
+        }
+    }
+    finally { $ui.Window.Close() }
+}

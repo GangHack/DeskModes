@@ -80,14 +80,16 @@ the module installed, it turns the warning into a red gate and nothing else.
 - **Do not add a dependency.** Not a module, not a NuGet package, not Pester.
   "Nothing is installed on your system, the folder can just be deleted" is a
   promise to the user, and it is why there is no build step.
-- Commit subjects in this repository are Russian and say what changed in meaning.
-  A pull request description in English is fine and welcome.
+- **Commit subjects say what changed in meaning**, not which files were touched — and
+  in English, like everything else here. A pull request description in English too.
 
 ## Screenshots for the README
 
 The windows are rendered, not photographed. `render-preview.ps1 -Fake` builds them
 off-screen at 192 dpi against an invented three-display desk, so what lands in the
-README does not depend on which monitors happen to be plugged in that day:
+README does not depend on which monitors happen to be plugged in that day. It also
+ignores `ui-state.json`, so the Settings window comes out at the size its markup gives
+it rather than the size you last left it:
 
 ```powershell
 .\render-preview.ps1 -Fake -Out docs\images\settings.png -EditorMode "combo:Movie night"
@@ -95,11 +97,11 @@ README does not depend on which monitors happen to be plugged in that day:
 
 `-EditorMode` names the mode whose editor is photographed, and "Movie night" is the
 combination with ONE display on the invented desk. That is not a preference: with two
-displays the editor unfolded is 1460 points tall, taller than a 1440p work area, and a
+displays the editor unfolded is 1383 points tall, taller than a 1440p work area, and a
 window taller than the screen comes out of the renderer with its last two boxes cut off.
 On a real desk that window scrolls.
 
-That writes eight files in one go: the Settings window on each of its six pages
+That writes nine files in one go: the Settings window on each of its six pages
 (`settings.png` for the first, then `-modes`, `-rules`, `-behavior`, `-diary`, `-about`)
 and the two editors (`-editor`, `-rule`), plus the timer popup (`-timer`).
 

@@ -70,7 +70,7 @@ Test-Case 'level rows: "all displays" lists what is connected' {
 Test-Case 'level rows: a combination lists its displays by their real names' {
     # The file holds a pattern while the row has to hold the monitor's full name: both entries match,
     # but the more precise one is what a person sees.
-    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('ULTRAFINE'); Primary = '' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -Dark $false
     try {
@@ -294,7 +294,7 @@ Test-Case 'mode editor: a display with no level gets an unticked, disabled row' 
 
 Test-Case 'mode editor: unticking a display drops its brightness row with it' {
     # Otherwise a combo would be left with a slider for a monitor it no longer has.
-    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = ''; OriginalName = 'Work' }
+    $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAGEAR', 'LG ULTRAFINE'); Primary = '' }
     $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
     $level = ConvertTo-LevelModel ([ordered]@{ 'LG ULTRAGEAR' = 60; 'LG ULTRAFINE' = 25 })
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState `

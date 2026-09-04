@@ -9,6 +9,70 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
 
+### A display that is switched off is still a display you can set up
+
+- **Every monitor seen in the last three months stays in the lists**, marked `not connected`
+  where it appears. Some monitors leave the DisplayPort bus when they go dark - the ASUS on this
+  desk does, the two LGs do not - and Windows then stops naming them at all. So the one display
+  you wanted to write a rule for, put into a combination or give a place in the row was reliably
+  the one missing from every list, because setting it up is what you do while it is off. It now
+  has its card on **Your desk**, its row in the table under it, its tick in the members of a
+  combination, its line in the tray menu and its own mode to point a rule at.
+- **A rule can be pointed at a mode that is not available this second**, and the dropdown says
+  `(not connected)` beside it rather than withholding it. A rule fires later by definition.
+- **The tray menu section is called DISPLAYS**, not CONNECTED DISPLAYS, and the dot beside a
+  display that is not on the bus is hollow. The mode for it is greyed the way it always was:
+  it can be set up, and it cannot be switched to until it is back.
+- `.\Set-Display.ps1 status` and `modes` show it too, and asking for it by name answers "That
+  display is not connected right now" instead of "Unknown mode".
+- The list lives in `known-displays.json` beside the other files the machine writes for itself,
+  it is keyed by the display's name - the same string `layout`, `primary` and a combination's
+  members use - and a monitor drops out of it three months after it was last seen.
+
+### The window is the size of the window, not the size of a screen
+
+- **880 x 620 instead of 980 x 700.** On a 2560 x 1440 screen at 150 % the old figures are
+  1470 x 1050 pixels - more than half the screen for a page that was a third full. The type sizes
+  are untouched: what was big was the air. Cards are padded 12 instead of 16, a row of Behavior is
+  6 points from the one above instead of 10, the pane is 200 wide instead of 220, an item in it is
+  32 tall instead of 36, and **Save** and **Cancel** are 84 wide instead of 96. Around 15 % of the
+  height of every page, and the footer is no longer the largest thing on the screen.
+- **The row of display cards fills the card it sits in**, at any window size and on any desk: one
+  slot per display, and the screen drawn inside each is measured against the slot it actually got.
+  It was 140 points fixed, so three cards filled the left half of the row and left the right half
+  empty - and from four displays on a second rule divided a width the window had stopped having.
+  Five displays no longer drop to a second row, which used to make "arrange them left to right" a
+  lie: the fifth stood visually left of the fourth.
+- **The drawings grow with the window** rather than being squeezed into a fixed strip. A 4K 24-inch
+  next to a 27-inch 1440p is plainly the smaller one at any width, and dragging the window wider
+  makes both bigger - until the point where they stop, after which the row stays a row instead of
+  drifting apart across the page.
+- **A display that is not on the desk cannot be handed the taskbar**, and its card no longer fades
+  as a whole. Only the drawing and the name go quiet; the two arrows stay at full strength, which
+  is the point of keeping the card - its place in the row is its place in `layout`.
+- **Edit stands in the same place on every row** of Modes and Rules. It was in the third column
+  with **Remove** in the fourth, so on a row with nothing to remove it sat 72 points further
+  right - and the eye had to find it again on every line. Remove comes first now, and every row is
+  one height whether it carries one line of text or two.
+- **Facts on one line are separated by a middle dot** and a rule points with a real arrow. A hyphen
+  is already a minus, a range and a word-joiner, so `144 Hz - taskbar` and `contrast 70 - audio`
+  each took a moment to read as two things; `cs2 is running -> Work` was the one place in the
+  window spelling an arrow with two characters. And where a caption says which display keeps the
+  taskbar, it says it with the same star the desk cards draw.
+- **The Monitor ID sits on the same line as the rest of its row.** Its column is set in a
+  monospaced face, which has a line height of its own, so it rode visibly higher than the four
+  cells beside it.
+- **The Diary and the About page have one button, and it says Close.** Neither page holds a
+  setting: **Save** would rewrite the file unchanged and **Cancel** would offer to throw away
+  nothing. Edit anything on another page and both come back at once - the footer belongs to the
+  window, not to the page.
+- The diary's date range no longer wraps into the period pills beside it, the mode editor's two
+  notes about what the monitors answered no longer leave a double gap when nobody has pressed the
+  button, **Ask the monitors** stands beside the **Brightness** heading it belongs to rather than
+  in the gap after Contrast, the cross that clears a shortcut is a square the height of the field
+  it clears, both cards on **Behavior** carry a heading, all four buttons on **About** are one
+  width, and the timer popup offers **Sleep** before **Cancel** like every other window here.
+
 ### The Settings window is an application
 
 - **A pane on the left, a page on the right.** Your desk, Modes, Rules and Behavior are pages
@@ -23,12 +87,15 @@ in the tray menu — that line is the right thing to paste into a bug report.
   need when you open either by hand.
 - **The commands stand in the page's heading** - *Add a combination*, *Add a rule* - rather than
   under the list. With a dozen modes, adding one meant scrolling to the bottom first.
-- **An About page**, at the bottom of the pane where Windows keeps its own: the version line to
-  paste into a bug report, the log, the folder everything lives in, the project page and a
-  **Report a problem** button. **About ScreenDeck** in the tray menu opens the window there
-  instead of showing a notification you cannot copy from.
-- **A Support card** with a **Donate** button. There is no address behind it yet, and until there
-  is, the button says so instead of opening a page that would not be there.
+- **An About page**, at the bottom of the pane where Windows keeps its own: the version, the
+  Windows and PowerShell builds under it and a **Copy** button that puts the whole line on the
+  clipboard - it is the first thing a bug report needs and the one thing nobody can type from
+  memory. Then the log, the folder everything lives in, the project page and **Report a
+  problem**. **About ScreenDeck** in the tray menu opens the window there instead of showing a
+  notification you cannot copy from.
+- A **Support** section is written and waiting, and while there is no address behind it the
+  section is not shown at all. A donate button that cannot be pressed is a large coloured plate
+  reading as the one thing on the page that came out broken.
 
 ### The monitor's picture preset follows the mode
 
@@ -64,9 +131,9 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **Statistics...** in the tray opens the Settings window on its **Diary** page instead of a
   window of its own. The same six figures, the same histogram and the same four lists - and
   **Open as a page** still writes `stats.html` for whatever period is on screen.
-- **A row is two floors now**: the name and the time on top, the bar and the share underneath.
-  In the old 880-point window all four shared one line, and the name was the one that gave way -
-  "chrome on LG ULTRA..." was already cut off there. Nothing is trimmed any more.
+- **A row is two floors now**: the name, the time and the share on top, the bar across the
+  bottom. In the old 880-point window all four shared one line, and the name was the one that
+  gave way - "chrome on LG ULTRA..." was already cut off there. Nothing is trimmed any more.
 - The six figures are **three by two** rather than six across, so "09:40-23:15" has room to be
   itself; and what the diary does not record is said once, on the **Behavior** page, instead of
   twice.
@@ -82,7 +149,7 @@ in the tray menu — that line is the right thing to paste into a bug report.
   The list is fetched when you first open it, never when the window is built.
 - **Commands got their two boxes** — *Before switching* and *After switching*, with the promise
   written above them: the command is started and not waited for.
-- **A mode's row says what is set on it.** `brightness 80  -  contrast 65  -  audio  -  command`,
+- **A mode's row says what is set on it.** `brightness 80   ·   contrast 65   ·   audio   ·   command`,
   so a setting hidden behind an Edit button is no longer invisible until you have opened every
   mode in turn.
 - All four are now **edited** rather than merely carried: emptying a box clears the setting.
@@ -99,14 +166,16 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **A mode's row says nothing about what kind of mode it is.** "Only LG ULTRAFINE" had a second
   line under it reading "Display"; a combination's said "Combination" before listing anything.
   Both repeated what the row already showed — the title in one case, the **Remove** button in the
-  other. A display's row is one line high now unless the mode actually has something set on it,
-  and a combination's caption keeps the 87 points the word was taking:
-  `LG ULTRAFINE + LG ULTRAGEAR  -  brightness per display` where it read
+  other. A display's row carries one line of text unless the mode actually has something set on
+  it, and a combination's caption keeps the 87 points the word was taking:
+  `LG ULTRAFINE + LG ULTRAGEAR   ·   brightness per display` where it read
   `Combination  -  LG ULTRAFINE + LG ULTRAGEAR  -  bri…`.
 - **The mode editor folds too.** What a mode *is* stays in sight — its name, its displays, the
   taskbar and the shortcut. What it does to the hardware — brightness, contrast, the playback
   device and the commands — sits behind **Brightness, sound and commands**, which halves the
-  editor: 615 points instead of 1199. It **opens by itself** for a mode that has any of them set,
+  editor: 582 points instead of 1383. The fold reads as one now - a full-width heading with a
+  rule above it - rather than as a dimmed caption somebody forgot to underline. It **opens by
+  itself** for a mode that has any of them set,
   including one inherited from a name just typed, because a setting nobody can see is a setting
   an empty field then erases.
 

@@ -34,6 +34,8 @@ $script:LogFile      = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FIL
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
+# Every monitor this desk has ever had, by the name the settings call it (see Get-KnownDisplays).
+$script:KnownDisplaysFile = Join-Path $PSScriptRoot 'known-displays.json'
 # Where the Settings window stood and which page it was on. The machine's state and not a
 # setting: it is not in settings.json, it is in .gitignore, and deleting it costs a person
 # nothing but a centred window.
@@ -49,9 +51,19 @@ $script:UiStateFile = Join-Path $PSScriptRoot 'ui-state.json'
 # takes a separate email.
 $script:Version = '1.0.0'
 
+function Get-VersionName {
+    return 'ScreenDeck {0}' -f $script:Version
+}
+
+function Get-VersionHost {
+    return 'Windows {0}, PowerShell {1}' -f [System.Environment]::OSVersion.Version, $PSVersionTable.PSVersion
+}
+
+# The two of them on one line, which is what `Set-Display.ps1 status` prints. The About page
+# shows the same two facts on two lines and so asks for them separately - it is one string in a
+# console and a row of a card in a window, and neither should be the other's leftovers.
 function Get-VersionLine {
-    return 'ScreenDeck {0} - Windows {1}, PowerShell {2}' -f $script:Version,
-           [System.Environment]::OSVersion.Version, $PSVersionTable.PSVersion
+    return (Get-VersionName) + ' - ' + (Get-VersionHost)
 }
 
 # The addresses the About page opens. Here rather than in the window's markup for the reason the
@@ -2022,7 +2034,7 @@ public static class NativeTheme {
 // the tray.
 //
 // The rows' semantic roles are passed through Tag: "header" is a section heading, "info" is an
-// information line (CONNECTED DISPLAYS). Both are disabled so as not to catch clicks, but a heading
+// information line (the DISPLAYS section). Both are disabled so as not to catch clicks, but a heading
 // has to be dimmed while information has to read as ordinary text: with the system renderer all of
 // this was equally grey.
 public class ModernMenuRenderer : ToolStripRenderer {
@@ -2104,7 +2116,7 @@ public class ModernMenuRenderer : ToolStripRenderer {
     // `textColor = item.Enabled ? textColor : SystemColors.GrayText` — that is, for any disabled row it
     // throws our colour away and takes the system's dark grey. And the monitor rows are disabled
     // deliberately (they cannot be clicked), and on a dark background the system grey was hard to read:
-    // the CONNECTED DISPLAYS section looked like a faded placeholder, even though it is the most useful
+    // the DISPLAYS section looked like a faded placeholder, even though it is the most useful
     // thing in the menu.
     //
     // At the same time a monitor's row is drawn in two tones: the name at full brightness, the mode and
@@ -3548,6 +3560,189 @@ function Get-DisplayState {
             BestMode     = $best
         }
     }
+}
+
+# --- the monitors this desk has ever had ------------------------------------
+# A monitor switched off at its own button does not always stay on the bus, and the two kinds
+# look nothing alike from here. Both LGs on this desk keep their target: CCD hands it back with
+# targetAvailable = 0, so the state still holds a record and the interface can say "LG ULTRAFINE
+# - not connected". The ASUS leaves the DisplayPort bus altogether (that is the Kernel-PnP 1010
+# tools/trace-displays.ps1 pairs our log with), QueryDisplayConfig stops mentioning it at all,
+# and everything downstream loses it: no card on the desk, no row in the table, no tick in a
+# combo and no solo mode — so no way to write a rule about the display you are about to switch
+# to. Which is exactly the moment a person writes one.
+#
+# So the desk the INTERFACE shows is the state plus this roster: what has been seen before and
+# is not in the enumeration now. $script:KnownLabels in Displays.ps1 is the same idea for the
+# length of one run — it names a monitor at the instant it drops off the bus, when asking the
+# system is already too late; this is that index written down, so it survives a restart.
+#
+# Keyed by the monitor's NAME, and that key is the whole reason this is a file of ours rather
+# than a read of HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY, where Windows already keeps the
+# EDID of everything ever plugged in. That branch is a graveyard: this machine still has
+# GSM5BB4 and GSM5CBB in it — the short IDs the two LGs carried before the cables were moved —
+# plus a GSM5CBC from the iGPU. Offering that would mean two "LG ULTRAGEAR" to choose between,
+# one of which cannot be switched on. A name survives a cable being moved, and it is what
+# settings.json calls a display by: layout, primary, a combo's members and a solo mode's key are
+# all this one string. Two monitors of one model share a name and so share a record — the state
+# tells them apart by short ID and by an ordinal, and a roster cannot: it is being asked about
+# one that is not there to be counted.
+#
+# Only the interface reads it. Switch-DisplayMode goes to Get-DisplayState and sees the desk as
+# Windows has it, so a remembered monitor's mode comes out Available = $false and asking for it
+# fails in the same words it did before ("That display is not connected right now").
+
+# How long a monitor is remembered after it was last seen. One that has been sold, or left
+# behind at an old desk, has to stop being offered by itself: this is the machine's state rather
+# than a setting, and there is deliberately no interface to it for clearing a row by hand. Three
+# months is longer than a holiday and shorter than a job.
+$script:KnownDisplayDays = 90
+
+# The roster off the disk: name -> {Label; ShortId; Id; Native; Seen}. An empty map when the file
+# is absent or damaged — a roster is a convenience, and there is nothing in it worth failing a
+# window over.
+function Get-KnownDisplays {
+    $out = [ordered]@{}
+    if (-not (Test-Path $script:KnownDisplaysFile)) { return $out }
+    try {
+        $raw = Get-Content $script:KnownDisplaysFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($p in $raw.PSObject.Properties) {
+            if (-not $p.Name -or $null -eq $p.Value) { continue }
+            $v = $p.Value
+            $w = [int]$v.w; $h = [int]$v.h
+            # ConvertFrom-Json turns "2026-09-04" into a [datetime], and a bare [string] cast on
+            # that takes the current culture along with its calendar — a Buddhist year here, and
+            # not merely on the screen: the value is written straight back to the file. The same
+            # trap Get-LastMode carries a comment about.
+            $seen = $v.seen
+            if ($seen -is [datetime]) { $seen = Format-DisplayStamp -When $seen -Pattern 'yyyy-MM-dd' }
+            $out[[string]$p.Name] = [pscustomobject]@{
+                Label   = [string]$p.Name
+                ShortId = [string]$v.short
+                Id      = [string]$v.id
+                Native  = $(if ($w -gt 0 -and $h -gt 0) { [pscustomobject]@{ Width = $w; Height = $h } } else { $null })
+                Seen    = [string]$seen
+            }
+        }
+    }
+    catch {
+        Write-DisplayLog "warn: the list of known displays is unreadable - $($_.Exception.Message)"
+        return [ordered]@{}
+    }
+    return $out
+}
+
+# The file's exact text for a roster. One function, because the write and the "would this change
+# anything at all" check below have to agree to the byte — comparing the two maps field by field
+# is that same comparison written a second time, and the second copy is the one that goes stale.
+function Format-KnownDisplays {
+    param($Known)
+
+    $flat = [ordered]@{}
+    foreach ($name in @($Known.Keys | Sort-Object)) {
+        $k = $Known[$name]
+        $flat[[string]$name] = [ordered]@{
+            short = [string]$k.ShortId
+            id    = [string]$k.Id
+            w     = $(if ($k.Native) { [int]$k.Native.Width } else { 0 })
+            h     = $(if ($k.Native) { [int]$k.Native.Height } else { 0 })
+            seen  = [string]$k.Seen
+        }
+    }
+    # An empty map has to come out as a JSON object rather than as PowerShell's "null": the next
+    # read would log the file as unreadable, once per window, for ever.
+    if ($flat.Count -eq 0) { return '{}' }
+    return ($flat | ConvertTo-Json -Depth 4 -Compress)
+}
+
+# Write today's desk into the roster and drop whatever has aged out. Answers whether the file was
+# touched.
+#
+# The write is skipped whenever the text would come out unchanged, which on an ordinary day is
+# every single time: this runs on every refresh of the tray's state cache — a right-click on the
+# icon does one — and a monitor's name, size and short ID do not change while the machine is on.
+# The stamp is a DAY for the same reason: at any finer resolution every menu open would rewrite
+# the file.
+function Update-KnownDisplays {
+    param($State)
+
+    $known = Get-KnownDisplays
+    $was = Format-KnownDisplays $known
+    $today = Format-DisplayStamp -Pattern 'yyyy-MM-dd'
+
+    $live = @()
+    foreach ($m in @($State)) {
+        if (-not $m -or -not $m.Label) { continue }
+        $live += [string]$m.Label
+        $known[[string]$m.Label] = [pscustomobject]@{
+            Label   = [string]$m.Label
+            ShortId = [string]$m.ShortId
+            Id      = [string]$m.Id
+            Native  = $m.Native
+            Seen    = $today
+        }
+    }
+
+    # Never a monitor the enumeration has just named, whatever its stamp says: a clock set wrong,
+    # or a folder copied from another machine, must not throw away a display that is on the desk.
+    $cut = (Get-Date).Date.AddDays(-$script:KnownDisplayDays)
+    foreach ($name in @($known.Keys)) {
+        if ($live -contains [string]$name) { continue }
+        $seen = [datetime]::MinValue
+        # An unreadable stamp — a record from a version that wrote none — is dropped rather than
+        # kept for ever: one appearance of the monitor puts it straight back.
+        $ok = [datetime]::TryParseExact([string]$known[$name].Seen, 'yyyy-MM-dd',
+                  [cultureinfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$seen)
+        if (-not $ok -or $seen -lt $cut) { $known.Remove([string]$name) }
+    }
+
+    $text = Format-KnownDisplays $known
+    if ($text -eq $was) { return $false }
+    try {
+        Set-Content -Path $script:KnownDisplaysFile -Value $text -Encoding UTF8 -ErrorAction Stop
+        return $true
+    }
+    catch {
+        # Nothing was written down, and nothing else is affected: the interface simply offers the
+        # monitors Windows can see right now, which is what it did before this file existed.
+        Write-DisplayLog "warn: could not remember the displays - $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# The desk as the interface should show it: everything Windows says about it, then the remembered
+# monitors it says nothing about at all, in the roster's order.
+#
+# A remembered one is built with the fields of a state record and not one field more. That is the
+# point: the desk cards, the table, the combo ticks, Get-DisplayModes and Get-ModeMembers all
+# already know what to do with a display that is not connected — which is what this is — and not
+# one of them has to learn a new field to tell the two apart.
+function Get-DeskDisplays {
+    param($State)
+
+    $out = @(@($State) | Where-Object { $_ })
+    $live = @($out | ForEach-Object { [string]$_.Label })
+    $known = Get-KnownDisplays
+    foreach ($name in @($known.Keys)) {
+        if ($live -contains [string]$name) { continue }
+        $k = $known[$name]
+        $out += [pscustomobject]@{
+            Output       = ''
+            Label        = [string]$k.Label
+            Model        = [string]$k.Label
+            ShortId      = [string]$k.ShortId
+            Native       = $k.Native
+            Id           = [string]$k.Id
+            Active       = $false
+            Primary      = $false
+            Disconnected = $true
+            Width        = 0
+            Height       = 0
+            Hz           = 0
+            BestMode     = $null
+        }
+    }
+    return @($out)
 }
 
 # --- modes ------------------------------------------------------------------

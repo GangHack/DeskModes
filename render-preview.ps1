@@ -75,6 +75,13 @@ if (-not $env:SCREENDECK_LOG_FILE) {
 # the desk while it is photographed - and being pulled back is exactly what would flash.
 $script:KeepWindowsInWorkArea = $false
 
+# And the Settings window is photographed at the size its MARKUP gives it, not at the size this
+# particular desk happened to leave it: ui-state.json is a note about one machine, and the
+# pictures in README must not be a picture of the author's window. Pointed at a file in TEMP
+# rather than switched off, so Save-UiState on close still has somewhere harmless to write.
+$script:UiStateFile = Join-Path $env:TEMP 'screendeck-render-preview-ui-state.json'
+if (Test-Path $script:UiStateFile) { Remove-Item $script:UiStateFile -Force }
+
 function New-FakeState {
     # The desk all of this was written for: 4K in the middle, two 1440p on the sides.
     return @(
@@ -190,7 +197,10 @@ if ($Fake) {
     $settings.reapply.onPlug = 'all'
 }
 else {
-    $state = @(Get-DisplayState)
+    # The same desk the tray hands the window, roster and all: a monitor switched off at its own
+    # button has a card here too, and a picture of the window without it is a picture of a
+    # different window (see Get-DeskDisplays).
+    $state = @(Get-DeskDisplays -State @(Get-DisplayState))
 }
 
 # The name of another image beside the first one: "<out>-about.png".
@@ -296,7 +306,8 @@ try {
 
         $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state `
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
-                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark (Test-DarkTheme)
+                                   -Picture $ui.Picture -Audio $ui.Audio -Hooks $ui.Hooks `
+                                   -Dark (Test-DarkTheme)
         try {
             # "-editor" and not "-mode": the Modes PAGE is "-modes", and two names a letter
             # apart are two files nobody can tell apart in a folder.

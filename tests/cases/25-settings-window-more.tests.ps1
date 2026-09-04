@@ -70,47 +70,48 @@ Test-Case 'dialog: removing a combination takes its command and brightness along
     finally { $ui.Window.Close() }
 }
 
-# The key moving itself goes through pure functions, separately from the window: one of them serves
-# every mode-keyed map, and testing it by building a WPF tree is both dearer and murkier.
+# Dropping a key goes through a pure function, separately from the window: one of them serves
+# every mode-keyed map, and testing it by building a WPF tree is both dearer and murkier. There is
+# no rename map here any more - the rename happens in Move-UiModeKey, where the name is changed.
 
-Test-Case 'mode keys: a rename moves the entry and keeps the file order' {
-    $renames = Get-ComboRenames -Combos @(
-        [pscustomobject]@{ Name = 'Office'; OriginalName = 'Work' }
-        [pscustomobject]@{ Name = 'Movie night'; OriginalName = 'Movie night' }
-    )
-    Assert-Equal @('combo:Work') @($renames.Keys) 'only the renamed one is in the map'
-
+Test-Case 'mode keys: an entry that stays keeps its place in the file' {
     $source = [ordered]@{ 'solo:A' = 10; 'combo:Work' = 80; 'all' = 55 }
-    $moved = Move-ModeKeyedEntries -Source $source -Renames $renames
-    Assert-Equal @('solo:A', 'combo:Office', 'all') @($moved.Keys) 'moved in place, order untouched'
-    Assert-Equal 80 $moved['combo:Office'] 'with its value'
+    $moved = Move-ModeKeyedEntries -Source $source
+    Assert-Equal @('solo:A', 'combo:Work', 'all') @($moved.Keys) 'order untouched'
+    Assert-Equal 80 $moved['combo:Work'] 'with its value'
 }
 
 Test-Case 'mode keys: a removed combination takes its entry with it' {
     $source = [ordered]@{ 'combo:Work' = 80; 'all' = 55 }
-    $moved = Move-ModeKeyedEntries -Source $source -Renames @{} -Gone @('combo:Work')
+    $moved = Move-ModeKeyedEntries -Source $source -Gone @('combo:Work')
     Assert-Equal @('all') @($moved.Keys) 'the ghost setting is gone'
 }
 
-Test-Case 'mode keys: an occupied new key keeps its own value' {
-    # A value of its own on a taken key matters more than the one moving: silently throwing one of the
-    # two away is worse than keeping what is already there.
-    $renames = Get-ComboRenames -Combos @([pscustomobject]@{ Name = 'B'; OriginalName = 'A' })
-    $moved = Move-ModeKeyedEntries -Source ([ordered]@{ 'combo:A' = 1; 'combo:B' = 2 }) -Renames $renames
-    Assert-Equal 2 $moved['combo:B'] 'the value that was already there'
-    Assert-True (-not $moved.Contains('combo:A')) 'and the old key is gone either way'
-}
+Test-Case 'dialog: deleting a renamed combination leaves the one that took its old name alone' {
+    # "Work" is renamed to "Gaming", and a NEW combination claims the freed name. Deleting
+    # "Gaming" used to clear the name it had in the file as well - which by then belonged to
+    # somebody else, and the new "Work" lost every setting it had while staying in the list.
+    $settings = Get-DefaultSettings
+    $settings.combos['Work'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }
+    $settings.brightness['combo:Work'] = 55
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Set-UiMode -Ui $ui -Mode ([pscustomobject]@{ Key = 'combo:Work'; Kind = 'combo' }) `
+                   -Combo $ui.Combos[0] `
+                   -Edited ([pscustomobject]@{ Name = 'Gaming'; Patterns = @('LG ULTRAGEAR'); Primary = '' })
+        Assert-Equal 55 ([int]$ui.Levels['combo:Gaming'].Value) 'the rename took the brightness along'
 
-Test-Case 'mode keys: a chain of renames is applied in the order of the list' {
-    # "A" was renamed to "B", and "B" to "C". The order of application matters here, which is why the
-    # rename dictionary is ordered rather than a hash table.
-    $renames = Get-ComboRenames -Combos @(
-        [pscustomobject]@{ Name = 'C'; OriginalName = 'B' }
-        [pscustomobject]@{ Name = 'B'; OriginalName = 'A' }
-    )
-    $moved = Move-ModeKeyedEntries -Source ([ordered]@{ 'combo:A' = 1; 'combo:B' = 2 }) -Renames $renames
-    Assert-Equal 2 $moved['combo:C'] 'B moved on to C first'
-    Assert-Equal 1 $moved['combo:B'] 'and only then A took the freed name'
+        Set-UiMode -Ui $ui -Mode $null -Combo $null `
+                   -Edited ([pscustomobject]@{ Name = 'Work'; Patterns = @('LG ULTRAFINE'); Primary = ''
+                                               Level = (ConvertTo-LevelModel 30) })
+        Assert-Equal 30 ([int]$ui.Levels['combo:Work'].Value) 'the new combination has a brightness of its own'
+
+        $gaming = @($ui.Combos | Where-Object { $_.Name -eq 'Gaming' })[0]
+        Remove-UiCombo -Ui $ui -Combo $gaming
+        Assert-Equal 30 ([int]$ui.Levels['combo:Work'].Value) 'and it is still there after the other one goes'
+        Assert-True (-not $ui.Levels.Contains('combo:Gaming')) 'while the deleted one took its own'
+    }
+    finally { $ui.Window.Close() }
 }
 
 Test-Case 'rules: a mode that is gone drops the rule, and only clears a way back' {

@@ -538,6 +538,12 @@ works as a lever and pulls itself out. For 4K buy **VESA Certified** only.
   `$raw.PSObject.Properties['stats']` — dozens of places, twice as long and worse to read, with the
   same behaviour: a file edited by hand parses correctly as it is, and there are tests for that. A
   good practice, but not one that suits this code.
+- **Reading the monitors ever seen out of `HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY`** — tried on
+  2026-09-04 and dropped. Windows does keep the EDID of everything ever plugged in there, and it
+  needs no file of ours; what it gives back is seven entries for three monitors, two of them the
+  short IDs the LGs carried before the cables were moved and one the UltraFine as the integrated GPU
+  saw it. Two "LG ULTRAGEAR" to choose between, one unswitchable, with nothing in the key to say
+  which. `known-displays.json` remembers what WE have seen instead; see the entry for that day.
 
 ### Argument order: name them, do not count them
 
@@ -2430,3 +2436,248 @@ Verified through the production path (`Set-MonitorLevels`, which is what a switc
 the probe: `0xDC:4` → wrote `0xDC:6` → read back 6 → restored to 4, with `levels: XG27AQDMGR - picture 6`
 in the log. A monitor that does not confirm is reported as refusing or as silent, exactly as brightness is,
 because "we said so" is not "it obeyed" on this bus.
+## The window is the size of the window (2026-09-04)
+
+Nine windows rendered by `render-preview.ps1 -Fake` and read against the XAML. The verdict was
+"everything is enormous", and the first thing worth writing down is that the type sizes were not
+the problem: body 14, caption 12, headings 16 and 20, straight off the Windows scale, and the
+review confirmed them. What was big was the air, and the window around it.
+
+**The window opened at 980 x 700 with pages a third full.** On a 2560 x 1440 screen at 150 % that
+is 1470 x 1050 pixels. 880 x 620 now, minimum 760 x 520 — which is what the widest page still
+needs: the mode list's four columns, and the diary's three cards across. With the padding at 12
+instead of 16 and the gap between rows at 6 instead of 10, a row of Behavior went from 54 points
+to about 44.
+
+The row-gap change is why there is a `Row` style. There were fourteen copies of
+`<Grid Margin="0,10,0,0">` in the markup, and that gap is the page's rhythm: fourteen places to
+edit to change one number is how a rhythm drifts.
+
+### The desk row was two hardcoded widths, and both were the window as it opened
+
+The cards were 140 points wide, with a second rule from four displays on that divided a hardcoded
+534. Both numbers were the window of early September, and the window has been resizable since
+2026-09-03 — so at 880 three cards filled the left half of a 582-point strip and left the right
+half empty, and the arithmetic for four knew nothing of the width it had actually been given.
+
+It is a `UniformGrid` with one column per display now, so the row is exactly as wide as the card
+it sits in at any size, and `Update-DeskShapes` measures the slot each card really got. Three
+things about that:
+
+- **The band is measured, not the card.** The band is the strip the screen is drawn into, it
+  already stands inside the card's padding, and its width is what changes when the window is
+  dragged — so it is both the measure and the signal. `SizeChanged` on the band, guarded on
+  `WidthChanged`, because setting the band's HEIGHT below would otherwise come straight back in.
+- **A window that was never laid out has to draw something.** Every `ActualWidth` is 0 for the
+  tests, for `render-preview.ps1` before `Show`, and for the first pass of `Update-DeskPanel` on a
+  real window. `$script:DeskCardAssumed` stands in, and the `SizeChanged` pass corrects it a frame
+  later.
+- **The band grows to the tallest drawing** instead of the drawings shrinking into a fixed 76. At
+  76 a wide window drew three 16:9 screens 97 points tall and then shrank the whole row by a fifth
+  to get them back in, so widening the window past a point made the desk no bigger — and one 4:3
+  panel made every screen beside it small. There is a cap (`DeskBandMax`, 112) because otherwise a
+  desk of two on a dragged-wide window draws two screens 200 points tall and the table below falls
+  off the page; and a matching cap on the row (`DeskSlotMax`, 224 a card, which is what a 112-tall
+  16:9 needs) because past the point where the drawings stop growing, a wider window would only
+  push the cards apart. `Stretch` with a `MaxWidth` centres what is left over — measured at 2560:
+  692 points of gap each side.
+
+Converges in one extra pass and comes back to the same numbers on the way down: 760, 880, 1200,
+1920, 2560, 880 gave 91, 121, 200, 200, 200, 121 points of inner width, no drift.
+
+### Edit moved between rows, and the fix was the column order
+
+In the mode list Edit was column 2 and Remove column 3. Every mode has an Edit; only a combination
+and an orphan have a Remove. So the `*` column grew by 72 points on a row with nothing to remove
+and Edit sat that much further right — measured at 785 against 713 — and the eye had to find it
+again on every line.
+
+Reserving a fixed width for the Remove column was the obvious answer and the wrong one: the width
+of the word depends on the font and on Windows' text scaling, and a number here clips at the first
+desk that scales text up. Remove goes BEFORE Edit instead. Edit is the last column, so its right
+edge is the row's right edge, and an absent Remove costs its own place and nobody else's. Nothing
+is measured and nothing can clip. Destructive away from the edge is the better place for it anyway.
+
+The other half of the same complaint was rows of different heights — one line for a display's mode,
+two for a combination — so the shortcut and the buttons stepped up and down the list.
+`MinHeight = 40` on every row, which is what a two-line row wants.
+
+What this does NOT fix is the caption of a fully loaded combination. The text column now takes
+everything the other three leave it — 364 points of 590 at the default width — and
+`LG ULTRAFINE + LG ULTRAGEAR · ★ LG ULTRAGEAR · brightness 60 · contrast 70 · picture · audio ·
+command` needs about 600. It is trimmed with an ellipsis and the whole of it is on hover, which is
+what this window does everywhere it has had to cut a caption. A second line was tried before and
+taken out: this list is as long as the desk has modes.
+
+### The footer, and how to know whether anything has been edited
+
+The Diary and the About page hold no setting, and the footer offered **Save** and **Cancel** on
+both: a Save that would rewrite the file unchanged, and a Cancel offering to throw away nothing.
+
+Hiding Save on those two pages alone would have been a trap — edit Behavior, walk to About, and the
+edits are stranded on a page that cannot save them. So the footer asks whether anything has been
+edited, and the pair comes back the moment the answer is yes.
+
+Two things had to be got right:
+
+- **The comparison is against the window as it OPENED, not against `settings.json`.** The file is
+  edited by hand and may be missing half its keys, so what the window would write does not equal
+  the file even untouched — every page would have said "Cancel" for ever. `Get-UiFingerprint` is
+  what Save would write plus the two settings that are Windows' own and travel outside the file
+  (the startup shortcut, the display timeout), and `Set-UiBaseline` takes it twice: once when the
+  window is built, and again after `Show-SettingsDialog` has asked Windows for those two.
+- **`Read-SettingsFromUi -Quiet`.** The footer asks what the window WOULD write. Two modes on one
+  key make that answer "it cannot", and without the switch the log filled with `rejected save`
+  about a save nobody had attempted. Save itself still writes that line: that refusal is a thing
+  that happened.
+
+It is asked only when a page comes up, and that is enough rather than a compromise: neither of
+those two pages can change a setting, so the answer cannot go stale while one of them is open.
+
+### One thing in the review was not there
+
+"The toggles are pinned to the right edge while the dropdown is 196 wide, so the right edges of the
+controls are not aligned." Measured: `StartupBox`, `StatsBox`, `PlugModeBox` and `SleepBox` all end
+at the same x — 933 in that window. The toggle is 40 wide and the dropdown 196, and their LEFT
+edges differ by 156, which is what a picture of them looks like. Nothing was changed for it.
+
+### Small things, each with its reason
+
+- **A middle dot, not a hyphen.** A hyphen is a minus, a range and a word-joiner already, so
+  `144 Hz - taskbar` and `contrast 70 - audio` each took a moment to read as two facts. One
+  constant (`$script:UiDot`) because it appears in a dozen captions; `$script:UiArrow` for the same
+  reason, since `->` in the rule list stood two pages from cards that move by a real arrow; and
+  `$script:UiStar` so the caption saying which display keeps the taskbar says it the way the desk
+  cards draw it.
+- **The Monitor ID rode high.** Five `TextBlock`s in a Grid row are `Stretch` by default, so each
+  sits at the top of a box as tall as its own font's line height — and the mono column's is not the
+  same as the other four. `VerticalAlignment = Center` on all five, and the mono cell one size down:
+  at 13 that face is heavier than the text around it, and the column read as the emphasised one
+  when it is only the exact one.
+- **An empty `TextBlock` still spends its Margin.** The editor's two notes about what the monitors
+  answered left a double gap in the middle of the window for everybody who had never pressed either
+  button. `Set-UiNote` sets the text and the visibility together; `Text` alone was never enough.
+- **The fold read as a link.** A `BtnSubtle` at 13 points with a small triangle in front of it is a
+  dimmed caption somebody forgot to underline. It is the width of the editor now, with a rule above
+  it and the body's type size — and the rule is `InputBorderBrush`, because in the dark theme
+  `CardBorderBrush` is `#232323` against a `#202020` window, and it is standing on the window here,
+  not on a card. Folded the editor is 582 points; unfolded, on a two-display combination with
+  everything set, 1383.
+- **Ask the monitors** was between the contrast rows and the picture preset, where it read as
+  belonging to whichever section it happened to touch. One walk of the bus answers for brightness
+  AND contrast, so it belongs to the pair — beside the Brightness heading.
+- **The multiplication sign is centred on the maths axis**, not on the text one, which is why the
+  cross that clears a shortcut floated off the field's centre. A bordered square, 30 x 30, the
+  height of the field beside it.
+- **A disabled `BtnAccent` is not "not ready".** It is a grey-blue plate the size of the page's
+  primary action, and it read as the one button on About that had come out broken. With no address
+  the Support section is collapsed whole. The button stays disabled underneath as the second lock,
+  so an address brings the section back with one variable rather than with a rebuild.
+- **`Get-VersionLine` split into `Get-VersionName` and `Get-VersionHost`.** The About page wants the
+  two facts on two lines and `Set-Display.ps1 status` wants them on one; the line it prints is
+  byte-for-byte what it was, and the version still lives in exactly one place.
+- **`render-preview.ps1` ignores `ui-state.json`.** It was photographing the window at the size this
+  desk happened to leave it — 986 x 691 — so the pictures in README were a picture of the author's
+  window rather than of what somebody who has never opened it gets.
+
+## A monitor that is off is not a monitor that is gone (2026-09-04)
+
+The complaint: "I want to set a rule up for the ASUS, and the ASUS is not in the list, because it
+is switched off. But the UltraFine is switched off too, and it IS in the list."
+
+Both halves are true, and they are the same fact seen from two monitors that behave differently.
+Measured with everything but the UltraGear dark:
+
+```
+Label        ShortId Active Disconnected Output
+LG ULTRAGEAR GSM5BB3   True        False \\.\DISPLAY1
+LG ULTRAFINE GSM5CBC  False        False
+```
+
+Two records for three monitors. The LG keeps its CCD target when it goes dark — `QueryDisplayConfig`
+with `QDC_ALL_PATHS` still hands it back, `targetAvailable` and all — so `Get-DisplayState` has
+something to describe and the interface can say "off". The ASUS leaves the DisplayPort bus outright
+(the `Kernel-PnP` 1010 that `tools/trace-displays.ps1` pairs our log against), and after that there
+is no path, no target and no name: it is not "a display reported as unavailable", it is nothing at
+all. Everything downstream reads the state, so everything downstream lost it — the desk cards, the
+table, the members of a combination, `Get-DisplayModes` and therefore the modes a rule may point at.
+
+Which is the wrong way round for the whole class of settings involved. Nobody arranges a place in
+the row, or writes "when cs2 starts, switch to the ASUS", while looking at the display in question:
+that display is dark, which is exactly why they are at the keyboard configuring instead of playing.
+The one moment the feature is wanted is the one moment the display is missing.
+
+### The registry looked like the answer and is a graveyard
+
+Windows keeps the EDID of every monitor ever plugged in under
+`HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY`, which `Get-MonitorPhysicalSize` already reads for the
+panel sizes. Reading the roster out of there would have cost no new file at all. What is actually in
+that key on this machine, 2026-09-04:
+
+```
+AUSAA1D          5&2b9c6f03&0&UID4353
+Default_Monitor  5&2b9c6f03&0&UID4352
+GSM5BB3          5&2b9c6f03&0&UID4352
+GSM5BB4          5&2b9c6f03&0&UID4353
+GSM5CBB          5&2b9c6f03&0&UID4352
+GSM5CBC          1&8713bca&0&UID0
+GSM5CBC          5&2b9c6f03&0&UID4357
+```
+
+Seven entries for three monitors. `GSM5BB4` and `GSM5CBB` are the short IDs the two LGs carried
+before the cables were moved around in August — a monitor's short ID is the "monitor + input" pair,
+not the panel — and `GSM5CBC` on `1&8713bca&0&UID0` is the UltraFine as the integrated GPU once saw
+it. Offering that list would put two "LG ULTRAGEAR" in the members panel of a combination, one of
+which can never be switched on, and there is nothing in the key that says which. Dropped.
+
+### What was built instead
+
+`known-displays.json`, keyed by the monitor's NAME, written by us and only by us. The name is the
+one thing on a monitor that survives a cable being moved, and it is already the string every
+setting uses: `layout`, `primary`, a combination's members and a solo mode's key are all this one
+value. Two monitors of one model share a name and so share a record — the state tells twins apart
+by short ID and then by an ordinal, and a roster cannot: it is being asked about the one that is
+not there to be counted.
+
+Three decisions inside it, each with a reason:
+
+- **`Get-DeskDisplays` is a second function, not a change to `Get-DisplayState`.** The state is
+  what Windows says about the desk, and the switch path needs exactly that: a remembered monitor is
+  a name, not a target `SetDisplayConfig` can be handed. So `Switch-DisplayMode` still asks
+  `Get-DisplayState`, and the interface — the tray menu, the Settings window, the command line's
+  `status` and `modes` — asks `Get-DeskDisplays`, which is the state plus whatever the roster
+  remembers and Windows no longer mentions.
+- **A remembered record carries a state record's fields and not one more.** No `Remembered` flag.
+  Every consumer already knows what to do with `Disconnected` — the desk card fades its drawing and
+  disables the taskbar star, the table prints "not connected", `Get-ModeMembers` refuses to switch
+  it on, `Get-DisplayModes` gives its mode `Available = $false` — and adding a field would have meant
+  auditing a dozen places for whether they should treat the two cases apart. They should not. A test
+  compares the property names of a remembered record against a live one in both directions.
+- **The learning is where the tray already walks the desk.** `Update-StateCache` fills
+  `$script:KnownLabels` — the same idea for the length of one run, there because a monitor cannot be
+  named at the instant it drops off the bus — and now writes the roster from the same walk. Not in
+  `Get-DisplayState`: that is on the switch path, where the milliseconds are measured and printed in
+  the `done:` line. The write is skipped whenever the text would be identical, which is every time
+  bar the first menu open of a day: the stamp is a day, so a right-click on the icon costs a read
+  and a string compare.
+
+Three months of forgetting, and it is not a setting. There is no interface for clearing a row by
+hand — a monitor sold or left at an old desk has to stop being offered by itself, and a stamp is
+the only thing that can decide. A monitor the enumeration has just named survives its own stamp
+whatever it says, so a clock set wrong, or a folder copied off another machine, cannot throw away a
+display that is standing on the desk.
+
+### One thing changed that the complaint did not ask about
+
+The rule editor's dropdown now marks a target it cannot reach — `Only XG27AQDMGR   (not
+connected)` — and leaves it choosable. That is the opposite of the tray menu, where the same mode is
+greyed and dead, and the difference is the point: a menu switches now, a rule fires later. The
+wording is the phrase already used in four places, because "one phrase for one fact" is cheaper to
+read than a vocabulary.
+
+And the menu's first section is called **DISPLAYS**. It said CONNECTED DISPLAYS, which was already
+loose — a monitor with `targetAvailable = 0` has been listed there as "not connected" for weeks —
+and is plainly wrong once a monitor that is off the bus has a line too. That rename touches a comment
+inside the embedded C# and so changes its SHA, which means one `native-*.dll` rebuild on the next
+start, once. Worth it: the name of a section is how somebody reading the renderer finds what it
+draws.

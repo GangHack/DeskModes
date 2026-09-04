@@ -61,6 +61,9 @@ $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
 $script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
+# The roster of monitors ever seen. Redirected like the rest: a case that learns an invented desk
+# must not teach the real one, and the real file names the monitors on this actual machine.
+$script:KnownDisplaysFile = Join-Path $script:TestDir 'known-displays.json'
 # Where the Settings window stood: written when a window closes, and every test closes its window.
 $script:UiStateFile = Join-Path $script:TestDir 'ui-state.json'
 # The tests do not touch the real diary either: it is about a person, and mixing invented days into

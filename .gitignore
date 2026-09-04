@@ -27,6 +27,11 @@ ui-state.json
 # Needed to set a sleeping monitor's mode in one transition.
 display-modes.json
 
+# The monitors this desk has ever had, by name. What lets the interface offer a display that is
+# switched off at its own button and gone from the bus, and it names the actual monitors in front
+# of one person.
+known-displays.json
+
 # Personal settings: the set of monitors, the shortcut bindings and the order on the desk are
 # everybody's own. Only settings.example.json lives in the repository, and this file is created
 # by itself on the first run.

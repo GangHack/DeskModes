@@ -145,7 +145,7 @@ Test-Case 'dialog: renaming a combination carries its shortcut and audio' {
 }
 
 Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shortcut' {
-    $combo = [pscustomobject]@{ Name = 'Movie'; Patterns = @('ULTRAGEAR', 'GONE PANEL'); Primary = 'ULTRAGEAR'; OriginalName = 'Movie' }
+    $combo = [pscustomobject]@{ Name = 'Movie'; Patterns = @('ULTRAGEAR', 'GONE PANEL'); Primary = 'ULTRAGEAR' }
     $mode = [pscustomobject]@{ Key = 'combo:Movie'; Title = 'Movie'; Kind = 'combo'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -TakenNames @() `
                                -Hotkeys ([ordered]@{ 'combo:Movie' = 'Ctrl+Alt+F9' }) -Dark $false
@@ -248,7 +248,10 @@ Test-Case 'dialog: every mode row says what kind of mode it is' {
     # and the caption's room goes to what cannot be seen any other way.
     Assert-True ($combo -notlike '*Combination*') 'it does not say the obvious'
     Assert-True ($combo -like 'LG ULTRAFINE + XG27AQDMGR*') 'it opens with its displays'
-    Assert-True ($combo -like '*taskbar on LG ULTRAFINE*') 'and says where the taskbar goes'
+    # The star and the name, not the words "taskbar on": the card on the desk page draws that
+    # same star for the same fact, and this caption is the first thing on its row to be trimmed.
+    Assert-True ($combo -like "*$($script:UiStar) LG ULTRAFINE*") 'and says where the taskbar goes'
+    Assert-True ($combo -notlike '*taskbar on*') 'without spending eleven characters saying it'
 
     Assert-Equal 'Every connected display' (Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'all' })) 'all'
     Assert-True ((Get-ModeSubtitle -Mode ([pscustomobject]@{ Kind = 'orphan' })) -like '*kept until you remove it*') 'orphan'
@@ -602,24 +605,33 @@ Test-Case 'dialog: the seldom-needed settings are a card of their own, and still
 }
 
 Test-Case 'dialog: About says the same version line the command line does' {
+    # On two lines here and one on the command line, and the two halves have to add up to that
+    # one line exactly: it is what a bug report opens with, and a version the window and the
+    # console disagree about is worse than no version at all.
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
-        Assert-True ([string]$ui.VersionText.Text -like ((Get-VersionLine) + '*')) 'the same line, word for word'
+        Assert-Equal (Get-VersionLine) ([string]$ui.VersionText.Text + ' - ' + [string]$ui.VersionHost.Text) `
+                     'the same line, word for word'
+        Assert-True ([string]$ui.VersionText.Text -like "*$script:Version*") 'the version is the readable half'
+        Assert-True ([string]$ui.VersionHost.Text -like '*Windows *') 'and the build is the quiet one'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'dialog: with no address the Donate button is off and says why' {
-    # The card is built before there is anywhere to send anybody: a button that opens a 404 is
-    # worse than one that is honestly not ready.
+Test-Case 'dialog: with no address the whole Support section is gone, not a dead button' {
+    # A disabled BtnAccent is a grey-blue plate the size of the page's primary action, and it
+    # read as the one button on the page that had come out broken. The button stays disabled
+    # underneath as the second lock - a future address brings the section back with one variable.
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
         if ($script:DonateUrl) {
-            Assert-True $ui.DonateBtn.IsEnabled 'there is an address, so the button works'
+            Assert-Equal 'Visible' ([string]$ui.SupportCard.Visibility) 'there is an address, so there is a section'
+            Assert-True $ui.DonateBtn.IsEnabled 'and the button works'
         }
         else {
-            Assert-Equal $false ([bool]$ui.DonateBtn.IsEnabled) 'no address, no button'
-            Assert-True ([string]$ui.DonateHint.Text -like '*no address*') 'and it says so in words'
+            Assert-Equal 'Collapsed' ([string]$ui.SupportCard.Visibility) 'no address, no section'
+            Assert-Equal $false ([bool]$ui.DonateBtn.IsEnabled) 'and no button either'
+            Assert-True ([string]$ui.DonateHint.Text -like '*no address*') 'which says so in words when it comes back'
         }
     }
     finally { $ui.Window.Close() }
@@ -720,6 +732,101 @@ Test-Case 'dialog: a timeout Windows would not report leaves the row alone' {
         Assert-Equal 0 $ui.SleepBox.Items.Count 'and offers nothing'
         Assert-Equal -1 (Get-UiSleepMinutes -Ui $ui) 'which is what a Save would be told'
         Assert-True ([string]$ui.SleepHint.Text -like '*would not say*') 'the row says why'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: Edit stands in the same place on every row of the mode list' {
+    # Edit is on every row and Remove only on a combination and an orphan. With Edit in the third
+    # column its place depended on whether the fourth was occupied, so it sat 72 points further
+    # right on a display's mode than on the combination under it - and the eye had to find it
+    # again on every row. Edit is the LAST column now, so its right edge is the row's right edge.
+    $settings = Get-DefaultSettings
+    $settings.combos['Movie'] = [ordered]@{ displays = @('ULTRAGEAR'); primary = '' }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $columns = @{}
+        foreach ($row in @($ui.ModesPanel.Children)) {
+            foreach ($button in @($row.Children | Where-Object { $_ -is [System.Windows.Controls.Button] })) {
+                $label = [string]$button.Content
+                # Not @($columns[$label]) + ...: a key that is not there yet answers $null, and
+                # @($null) is an array holding one $null - which would make every list start with
+                # a nought and turn the assertions below into a check on nothing.
+                if (-not $columns.ContainsKey($label)) { $columns[$label] = @() }
+                $columns[$label] += [System.Windows.Controls.Grid]::GetColumn($button)
+            }
+            # And every row is the same height, one line of text or two: without that the shortcut
+            # and the buttons stepped up and down the list.
+            Assert-Equal 40 ([double]$row.MinHeight) 'one height for every row'
+        }
+        Assert-Equal 1 (@($columns['Edit'] | Sort-Object -Unique).Count) 'Edit is in one column, always the same one'
+        Assert-Equal 3 ([int]@($columns['Edit'])[0]) 'and it is the last of the four'
+        Assert-Equal 2 ([int]@($columns['Remove'])[0]) 'Remove comes before it, so an absent one moves nobody'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the footer says Close where there is nothing to save, and Cancel once there is' {
+    # The Diary and the About page hold no setting of their own. With nothing edited anywhere
+    # either, a Save that would rewrite the file unchanged and a Cancel offering to throw away
+    # nothing are two questions to answer on a page somebody opened to read.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        foreach ($page in 'diary', 'about') {
+            Set-UiPage -Ui $ui -Page $page
+            Assert-Equal 'Collapsed' ([string]$ui.SaveBtn.Visibility) "$page has nothing to save"
+            Assert-Equal 'Close' ([string]$ui.CancelBtn.Content) "and nothing to cancel either"
+        }
+        foreach ($page in 'desk', 'modes', 'rules', 'behavior') {
+            Set-UiPage -Ui $ui -Page $page
+            Assert-Equal 'Visible' ([string]$ui.SaveBtn.Visibility) "$page is a page of settings"
+            Assert-Equal 'Cancel' ([string]$ui.CancelBtn.Content) 'so both buttons mean something'
+        }
+
+        # And the pair comes back the moment anything is edited: the footer belongs to the WINDOW,
+        # and hiding Save with edits standing behind it would strand them on a page that cannot save.
+        $ui.NotifyBox.IsChecked = -not $ui.NotifyBox.IsChecked
+        Set-UiPage -Ui $ui -Page 'about'
+        Assert-Equal 'Visible' ([string]$ui.SaveBtn.Visibility) 'there is something to save now'
+        Assert-Equal 'Cancel' ([string]$ui.CancelBtn.Content) 'and something to throw away'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a window nobody has touched reads as unedited, however its file was written' {
+    # The comparison is against the window as it OPENED and not against settings.json: the file is
+    # edited by hand and may be missing half its keys, so what the window would write does not
+    # equal the file even untouched - and every page would say "Cancel" for ever.
+    $settings = Get-DefaultSettings
+    $settings.Remove('notifications')
+    $settings.Remove('layout')
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal $false (Test-UiEdited -Ui $ui) 'a half-written file is not an edit'
+        $ui.StatsBox.IsChecked = -not $ui.StatsBox.IsChecked
+        Assert-True (Test-UiEdited -Ui $ui) 'and a switch thrown is'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: asking what would be saved does not write "rejected save" into the log' {
+    # The footer asks Read-SettingsFromUi what the window WOULD write, several times per window.
+    # Two modes on one key make that answer "it cannot", and without -Quiet the log filled with a
+    # line about a save nobody had attempted.
+    $settings = Get-DefaultSettings
+    $settings.combos['Movie'] = [ordered]@{ displays = @('LG ULTRAFINE'); primary = '' }
+    $settings.hotkeys = [ordered]@{ 'all' = 'Ctrl+Alt+F5'; 'combo:Movie' = 'Ctrl+Alt+F5' }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $before = @(Get-Content $script:LogFile -ErrorAction SilentlyContinue).Count
+        Assert-True (Test-UiEdited -Ui $ui) 'a window that cannot be saved never matches how it opened'
+        $after = @(Get-Content $script:LogFile -ErrorAction SilentlyContinue).Count
+        Assert-Equal $before $after 'and it said nothing about it in the log'
+
+        # Save itself still does say so: that refusal is a thing that happened.
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+        Assert-Equal $false $got.Ok 'the duplicate is still refused'
+        Assert-True (@(Get-Content $script:LogFile).Count -gt $after) 'and a real refusal is written down'
     }
     finally { $ui.Window.Close() }
 }

@@ -1,7 +1,7 @@
 ﻿# --- drawing the tray menu --------------------------------------------------
 # Two bugs in a row were invisible in the code and visible only in the pixels: for a DISABLED item
 # the base ToolStripRenderer substitutes the system GrayText for our text colour, and runs the image
-# through DrawImageDisabled. The rows of the CONNECTED DISPLAYS section are disabled deliberately
+# through DrawImageDisabled. The rows of the DISPLAYS section are disabled deliberately
 # (they cannot be clicked) — and the whole section faded out: the text was barely readable, and the
 # green/amber/grey status dots turned into three identical grey smudges.
 #

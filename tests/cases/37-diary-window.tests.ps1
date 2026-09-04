@@ -151,13 +151,15 @@ Test-Case 'diary page: a share above a hundred does not draw past its track' {
     # it whatever the number says.
     $ui = New-DiaryUi -Days 1
     try {
+        # Children[1] is the track itself now. The percentage moved up beside the time, so the
+        # bar has the bottom floor to itself and there is no grid between the two.
         $split = (New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
-            Name = 'chrome'; Seconds = 3600; Share = 140.0 })).Children[1].Children[0].Child
+            Name = 'chrome'; Seconds = 3600; Share = 140.0 })).Children[1].Child
         Assert-Equal 100.0 ([double]$split.ColumnDefinitions[0].Width.Value) 'filled to the end'
         Assert-Equal 0.0 ([double]$split.ColumnDefinitions[1].Width.Value) 'and nothing is left over'
 
         $half = (New-StatsRow -Window $ui.Window -Row ([pscustomobject]@{
-            Name = 'chrome'; Seconds = 3600; Share = 25.0 })).Children[1].Children[0].Child
+            Name = 'chrome'; Seconds = 3600; Share = 25.0 })).Children[1].Child
         Assert-Equal 25.0 ([double]$half.ColumnDefinitions[0].Width.Value) 'a quarter is a quarter'
         Assert-Equal 75.0 ([double]$half.ColumnDefinitions[1].Width.Value) 'at any width of window'
     }

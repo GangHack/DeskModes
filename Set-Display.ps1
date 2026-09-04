@@ -101,6 +101,14 @@ function Resolve-ModeKey {
 $settings = Get-DisplaySettings
 $state = @(Get-DisplayState)
 
+# The roster is learned and read here as well as in the tray, because the command line is a whole
+# way of using this on its own: without it `status` and `modes` would hide a display that is
+# merely switched off, and asking for one by name would answer "Unknown mode" instead of the
+# sentence that says what is actually wrong. It costs one small read; the switch below asks
+# Windows for the state again itself, so nothing on the measured path changed.
+[void](Update-KnownDisplays -State $state)
+$state = @(Get-DeskDisplays -State $state)
+
 if ($Mode -eq 'status') {
     Write-Host ''
     # The version on the first line: status is what a person copies into a bug

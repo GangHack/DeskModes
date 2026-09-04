@@ -71,20 +71,20 @@ new file of the program ships by itself, a new file for us has to be named there
 
 | File | Lines | Go here for |
 | --- | --- | --- |
-| `DisplayCore.ps1` | 5222 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 810-2042, the compiled-assembly cache 2044-2153, `Switch-DisplayMode` at 3990 |
-| `SettingsDialog.ps1` | 4616 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup and the diary window. Building a window is separated from showing it so tests can build one and never show it |
-| `Displays.ps1` | 1508 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
+| `DisplayCore.ps1` | 5656 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 864-2195, the compiled-assembly cache 2197-2305, `Switch-DisplayMode` at 4217 |
+| `SettingsDialog.ps1` | 6086 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup and the diary window. Building a window is separated from showing it so tests can build one and never show it |
+| `Displays.ps1` | 1511 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
 | `Activity.ps1` | 583 | the diary, the report both the window and the page are built from, and that page |
-| `Set-Display.ps1` | 218 | the command line: argument parsing and printing, no logic |
+| `Set-Display.ps1` | 229 | the command line: argument parsing and printing, no logic |
 | `WindowLayout.ps1` | 228 | window-position snapshots per display set |
-| `render-preview.ps1` | 269 | dev tool: renders all five windows to PNG without showing them |
+| `render-preview.ps1` | 335 | dev tool: renders all nine windows to PNG without showing them, at the size the markup gives them rather than the size this desk left them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
 | `tools/check.ps1` | 234 | the four gates, and the only answer to "am I done" |
-| `tools/probe-picture.ps1` | 269 | dev tool: reads and writes ONE monitor register per run, so that an eye at the desk can say what changed. The only way to learn a picture preset's number; the program itself never asks for capabilities |
+| `tools/probe-picture.ps1` | 266 | dev tool: reads and writes ONE monitor register per run, so that an eye at the desk can say what changed. The only way to learn a picture preset's number; the program itself never asks for capabilities |
 | `tools/trace-displays.ps1` | 132 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
 | `tools/pack.ps1` | 211 | the release archive: what the user downloads, built from `git ls-files` |
-| `tests/` | — | the runner (107), the framework (79), the fakes (131), 39 files of cases (6393) and `live.ps1` (252) |
-| `docs/notes.md` | 2214 | the engineering diary: what Windows actually does, measured, day by day |
+| `tests/` | — | the runner (112), the framework (79), the fakes (131), 41 files of cases (7417) and `live.ps1` (252) |
+| `docs/notes.md` | 2575 | the engineering diary: what Windows actually does, measured, day by day |
 
 Line counts are signposts, not contracts — they drift. `docs/notes.md` is the place
 to look when a decision here looks arbitrary; it usually records the evening that
@@ -177,6 +177,14 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   survive a caller that set it to `Stop`. Both entry points do. See the comments at
   `DisplayCore.ps1:51` and `:297`: that is why `Add-Content` carries an explicit
   `-ErrorAction Stop`, and why settings parsing sits under one `try`.
+- **A monitor switched off is not always a monitor Windows can still see.** The LGs here keep
+  their CCD target with `targetAvailable = 0`, so the state holds a record for them; the ASUS
+  leaves the DisplayPort bus outright and `QueryDisplayConfig` stops mentioning it, so it fell out
+  of every list — including the one a rule about it is written from. `Get-DeskDisplays` is what the
+  interface asks instead of `Get-DisplayState`: the state plus the roster in `known-displays.json`,
+  each remembered monitor built with a state record's fields and nothing more, so `Disconnected` is
+  all any consumer has to read. The switch path still asks `Get-DisplayState`, and must keep doing
+  so — a remembered monitor is a name, not a target to set.
 - **`DISPLAY1` / `DISPLAY2` / `DISPLAY3` are not a monitor's identity.** Windows hands
   those names out by position, and they move between monitors across a reboot or a
   hotplug. Identity is the device path (`Id`) or the short Monitor ID.
@@ -208,6 +216,19 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   instant it is done. An editor set to "UTF-8" puts the BOM back on save, which is why both
   `.editorconfig` and gate 2 of `tools/check.ps1` say so — `.ps1` needs the BOM, `.cmd`
   must not have one, and the two live in one directory.
+- **No width in the Settings window is a number somebody wrote down.** It has been resizable since
+  2026-09-03, and every constant measured off the window as it happened to open has been wrong ever
+  since: the desk cards were 140 points with a second rule dividing a hardcoded 534, and three of
+  them filled the left half of the row. `Update-DeskShapes` measures the slot each card really got
+  and runs again on the band's `SizeChanged` — guarded on `WidthChanged`, because that same function
+  sets the band's *height*. What it is allowed to write down is a ceiling (`DeskBandMax`,
+  `DeskSlotMax`) and what to assume before anything has been laid out (`DeskCardAssumed`), which is
+  the state every test and `render-preview.ps1` is in.
+- **`Read-SettingsFromUi` is called by the footer, not only by Save.** `Get-UiFingerprint` asks it
+  what the window WOULD write so the footer can say "Close" where there is nothing to save, and it
+  passes `-Quiet` for exactly one reason: a new `Write-DisplayLog` in that function without the
+  same guard puts a line about a save nobody attempted into the log every time somebody opens the
+  Diary page.
 - **A rule's claim on the desk is its identity, not its index.** `Get-RuleSignature` is what
   `Get-RuleDecision` finds the holder by; the index is only where to look first. The list is
   edited by hand and from the Settings window while a rule is holding the desk, and deleting
@@ -245,8 +266,8 @@ held up by two things, and a new test must not break either:
   It has to be before: log rotation and type compilation write to it during load, and
   reassigning `$script:LogFile` afterwards is too late.
 - `$script:SettingsFile`, `$script:WindowStateFile`, `$script:LastModeFile`,
-  `$script:ModeCacheFile` and `$script:ActivityFile` all point into one temp directory,
-  which is removed at the end.
+  `$script:ModeCacheFile`, `$script:KnownDisplaysFile` and `$script:ActivityFile` all point into
+  one temp directory, which is removed at the end.
 
 To add a case, drop a `Test-Case` block into the matching file under `tests/cases/`.
 Name it as a sentence about behaviour, not about the function — the name is what a
@@ -290,8 +311,8 @@ value of this project, and no fake reproduces them.
   reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
   new location.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
-  `display-modes.json`, `window-state.json`, `ui-state.json`, `activity.json`, `stats.html` and
-  `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
+  `display-modes.json`, `known-displays.json`, `window-state.json`, `ui-state.json`,
+  `activity.json`, `stats.html` and `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
   `ScreenDeck-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
   three out of what is already committed. The screenshots under `docs/images/` are the
   exception that is *not* generated-and-ignored: they are committed, because README needs
