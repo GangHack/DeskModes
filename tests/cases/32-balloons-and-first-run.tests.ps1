@@ -1,6 +1,6 @@
 ﻿# --- the balloons and the first run -----------------------------------------
 # Notifications turned off mute the background messages — and one day they muted the answer to a click:
-# "About ScreenDeck" is clicked and nothing happens. The fork (switch -Always) is pure logic, and there
+# "About DeskModes" is clicked and nothing happens. The fork (switch -Always) is pure logic, and there
 # is no reason to test it on a live desk.
 #
 # A person sees the first run exactly once, and live it cannot be repeated without deleting the settings
@@ -44,7 +44,7 @@ $script:tray = New-Object psobject -Property @{
 }
 $script:tray | Add-Member -MemberType ScriptMethod -Name ShowBalloonTip -Value { $this.Shown++ }
 
-$script:AppName = 'ScreenDeck'
+$script:AppName = 'DeskModes'
 $script:TimerStopped = $false
 $script:SettingsOpened = $false
 $script:StartupTimer = New-Object psobject
@@ -96,7 +96,7 @@ Test-Case 'balloon: the same message speaks when notifications are on' {
 
 Test-Case 'balloon: an answer to a press speaks even with notifications off' {
     Set-BalloonScene -Notifications $false
-    Show-Balloon 'ScreenDeck' 'ScreenDeck 1.0.0 - Windows 26200, PowerShell 5.1' -Always
+    Show-Balloon 'DeskModes' 'DeskModes 1.0.0 - Windows 26200, PowerShell 5.1' -Always
     Assert-Equal 1 $script:tray.Shown 'a press always answers'
 }
 
@@ -111,7 +111,7 @@ Test-Case 'balloon: -Always is a licence for that one message, not for the rest'
     # off — which is exactly what the person turned off.
     Set-BalloonScene -Notifications $false
     Show-Balloon 'Displays switched' 'Both work displays are up.'
-    Show-Balloon 'ScreenDeck' 'ScreenDeck 1.0.0' -Always
+    Show-Balloon 'DeskModes' 'DeskModes 1.0.0' -Always
     Show-Balloon 'Displays switched' 'Both work displays are up.'
     Assert-Equal 1 $script:tray.Shown 'only the answer to the press got through'
 }

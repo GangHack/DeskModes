@@ -93,7 +93,7 @@ function Get-Relative {
 }
 
 Write-Host ''
-Write-Host 'ScreenDeck - check' -ForegroundColor Cyan
+Write-Host 'DeskModes - check' -ForegroundColor Cyan
 
 # --- 1. parse ---------------------------------------------------------------
 # ParseFile rather than a dot-source: the file is not executed, there are no side effects,

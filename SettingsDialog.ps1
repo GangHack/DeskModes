@@ -1,5 +1,5 @@
 ﻿<#
-    SettingsDialog.ps1 — ScreenDeck's windows, in WPF: the settings, the mode editor, the time
+    SettingsDialog.ps1 — DeskModes's windows, in WPF: the settings, the mode editor, the time
     picker for the timer and the diary.
 
     WPF and not WinForms: WinForms has no templates, and "modern" there means drawing every
@@ -805,7 +805,7 @@ $script:UiResourcesXaml = @'
 $script:SettingsWindowXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ScreenDeck - Settings"
+        Title="DeskModes - Settings"
         Width="880" Height="620" MinWidth="760" MinHeight="520"
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -833,7 +833,7 @@ $script:SettingsWindowXaml = @'
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="20,16,12,14">
                     <TextBlock Style="{StaticResource NavIcon}" Foreground="{StaticResource AccentBrush}"
                                FontSize="18" Text="&#xE7F4;"/>
-                    <TextBlock Text="ScreenDeck" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="DeskModes" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </StackPanel>
                 <ListBox x:Name="NavList" DockPanel.Dock="Top" Style="{StaticResource Nav}">
                     <ListBoxItem Tag="desk">
@@ -892,11 +892,28 @@ $script:SettingsWindowXaml = @'
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <StackPanel Margin="24,20,24,10">
-                        <TextBlock Style="{StaticResource H1}" Text="Your desk"/>
-                        <TextBlock Style="{StaticResource Hint}" Margin="0"
-                                   Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
-                    </StackPanel>
+                    <Grid Margin="24,20,24,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource H1}" Text="Your desk"/>
+                            <TextBlock Style="{StaticResource Hint}" Margin="0"
+                                       Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
+                        </StackPanel>
+                        <!-- Two commands in the page's head, like Add a combination on the next
+                             page. "As Windows has it" takes the order and the taskbar off the desk
+                             as it stands this second, which on a first run is the whole set-up in
+                             one click; "Which is which" puts a badge on every display for a moment,
+                             because three cards that all say LG tell nobody which LG. -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button x:Name="IdentifyBtn" Style="{StaticResource Btn}" Content="Which is which"
+                                    ToolTip="Show each display's name on it for a moment."/>
+                            <Button x:Name="ReadDeskBtn" Style="{StaticResource Btn}" Content="As Windows has it" Margin="8,0,0,0"
+                                    ToolTip="Order the cards the way the displays stand in Windows right now, and star the one that has the taskbar."/>
+                        </StackPanel>
+                    </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
                             <!-- One slot per display, filling the card's whole width whatever the
@@ -1009,7 +1026,7 @@ $script:SettingsWindowXaml = @'
                     </Grid.RowDefinitions>
                     <StackPanel Margin="24,20,24,10">
                         <TextBlock Style="{StaticResource H1}" Text="Behavior"/>
-                        <TextBlock Style="{StaticResource Hint}" Margin="0" Text="What ScreenDeck does on its own."/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0" Text="What DeskModes does on its own."/>
                     </StackPanel>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
@@ -1041,6 +1058,27 @@ $script:SettingsWindowXaml = @'
                                             <TextBlock Style="{StaticResource RowSub}" Text="Show a notification after switching."/>
                                         </StackPanel>
                                         <CheckBox x:Name="NotifyBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <!-- The one shortcut that is not a mode's. It lives here and not on the
+                                         Modes page because it has no row there to live on, and a person
+                                         who wants it is a person whose last switch went wrong - a key
+                                         pressed blind, which is why it can be set at all. -->
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="Back to the previous mode"/>
+                                            <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
+                                                       Text="A shortcut that returns to the mode you left. The tray menu has it too, named after where it goes."/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBox x:Name="BackHotkeyBox" Style="{StaticResource Input}" Width="150" Height="30" TextAlignment="Center"/>
+                                            <Button x:Name="ClearBackHotkeyBtn" Style="{StaticResource Btn}" Content="&#x00D7;"
+                                                    FontSize="15" Width="30" Height="30" Padding="0" Margin="6,0,0,0"
+                                                    ToolTip="Remove this shortcut"/>
+                                        </StackPanel>
                                     </Grid>
                                     <Grid Style="{StaticResource Row}">
                                         <Grid.ColumnDefinitions>
@@ -1323,7 +1361,7 @@ $script:SettingsWindowXaml = @'
                                  broken. Nothing to say is better said by saying nothing. -->
                             <Border x:Name="SupportCard" Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Support ScreenDeck"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="Support DeskModes"/>
                                     <TextBlock Style="{StaticResource Hint}"
                                                Text="Free and open, and it stays that way. If it saved you an evening, you can buy the author a coffee."/>
                                     <Grid>
@@ -1367,7 +1405,7 @@ $script:SettingsWindowXaml = @'
 $script:ModeEditorXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ScreenDeck - Mode"
+        Title="DeskModes - Mode"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -1478,6 +1516,13 @@ $script:ModeEditorXaml = @'
                     <StackPanel x:Name="PicturePanel"/>
                     <TextBlock x:Name="PictureNote" Style="{StaticResource RowSub}" Margin="0,8,0,0"
                                TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <!-- Windows' own HDR switch, per display. "Leave alone" is the default and
+                         costs nothing on a switch; a display that cannot do HDR is left alone
+                         whatever is chosen, and the log says so. -->
+                    <TextBlock Style="{StaticResource H2}" Text="HDR" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Turn HDR on or off when this mode comes on. A display that cannot do HDR is left as it is."/>
+                    <StackPanel x:Name="HdrPanel"/>
                     <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
                                Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
@@ -1499,7 +1544,7 @@ $script:ModeEditorXaml = @'
 $script:RuleEditorXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ScreenDeck - Rule"
+        Title="DeskModes - Rule"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -1541,6 +1586,17 @@ $script:RuleEditorXaml = @'
                     <TextBlock Style="{StaticResource Hint}" Text="Minutes with nobody at the keyboard or the mouse."/>
                     <TextBox x:Name="MinutesBox" Style="{StaticResource Input}" Width="90" Height="30"
                              HorizontalAlignment="Left"/>
+                </StackPanel>
+                <!-- The desk as a condition: a laptop docked at home has these two monitors, at the
+                     office that one, on the train none. Exactly these and no others, or the office
+                     rule would fire at home as well. The ticks come from the roster, so a display
+                     that is off right now can be ticked - the desk it describes is usually not the
+                     one in front of you while you write the rule. -->
+                <StackPanel x:Name="DisplaysPanel" Margin="0,14,0,0" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource H2}" Text="Connected displays"/>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="Exactly these, and no others. Connected is enough - one that is switched off still counts."/>
+                    <StackPanel x:Name="DisplaysChecks"/>
                 </StackPanel>
                 <TextBlock Style="{StaticResource H2}" Text="Switch to" Margin="0,14,0,0"/>
                 <ComboBox x:Name="ModeBox" Style="{StaticResource Select}" Height="30"/>
@@ -2146,7 +2202,7 @@ function Get-UiSleepMinutes {
 }
 
 # Written on Save, and only when it changed: this is Windows' setting, and rewriting it with the
-# same number on every Save would put ScreenDeck's name on a change nobody made.
+# same number on every Save would put DeskModes's name on a change nobody made.
 #
 # Answers whether the setting now says what the box says - "nothing to write" included. A refusal
 # has to reach the caller: this is the one setting in the window that Windows can turn down on its
@@ -2205,6 +2261,12 @@ function New-SettingsWindow {
         RulesPanel        = $win.FindName('RulesPanel')
         AddComboBtn       = $win.FindName('AddComboBtn')
         AddRuleBtn        = $win.FindName('AddRuleBtn')
+        ReadDeskBtn       = $win.FindName('ReadDeskBtn')
+        IdentifyBtn       = $win.FindName('IdentifyBtn')
+        # The shortcut that goes back to the mode before this one. Not in Hotkeys: that map is keyed
+        # by MODE, and everything that reads it - the rows, the orphan rows, the editor's "somebody
+        # else has this key" check - would take a key called back for a mode called back.
+        BackHotkeyBox     = $win.FindName('BackHotkeyBox')
         # The rules as the tray reads them, edited in place. Filled by Import-RuleSettings.
         Rules             = (New-Object System.Collections.ArrayList)
         SaveBtn           = $win.FindName('SaveBtn')
@@ -2271,6 +2333,8 @@ function New-SettingsWindow {
         # Mode key -> { display name -> "register:number" }: the monitor's own picture preset,
         # learnt from the monitor and written back to it on a switch.
         Picture           = [ordered]@{}
+        # Mode key -> { display name -> $true/$false }: HDR on or off with the mode.
+        Hdr               = [ordered]@{}
         Audio             = [ordered]@{}
         Hooks             = [ordered]@{}
         Modes             = @($Modes)
@@ -2313,6 +2377,20 @@ function New-SettingsWindow {
     Update-DeskPanel  -Ui $ui
     Update-DisplaysTable -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
+
+    # The way-back shortcut, out of the same map the modes' shortcuts came from, into a field of its
+    # own. The same capture and the same cross as the mode editor's field: one way of setting a key.
+    $backText = ''
+    if ($Settings -and $Settings.hotkeys -and $Settings.hotkeys.Contains($script:BackHotkeyName)) {
+        $backText = [string]$Settings.hotkeys[$script:BackHotkeyName]
+    }
+    $ui.BackHotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
+    Register-HotkeyCapture -Box $ui.BackHotkeyBox
+    $parsedBack = ConvertFrom-HotkeyString $backText
+    $ui.BackHotkeyBox.Text = $(if ($parsedBack) { $parsedBack.Text } else { $script:NoHotkeyText })
+    $clearBack = $win.FindName('ClearBackHotkeyBtn')
+    $clearBack.IsEnabled = [bool]$parsedBack
+    Register-HotkeyClearButton -Box $ui.BackHotkeyBox -Button $clearBack
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
     $ui.NotifyBox.IsChecked   = [bool]$Settings.notifications
@@ -2404,7 +2482,22 @@ function New-SettingsWindow {
     $ui.AddComboBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        Invoke-ModeEditor -Ui $ui -Mode $null -Combo $null
+        # A new combination opens on the displays that are on right now, with the current taskbar
+        # display chosen: the set in front of a person is the one they most often want to name.
+        Invoke-ModeEditor -Ui $ui -Mode $null -Combo $null -Template (New-DeskTemplate -State $ui.State)
+    })
+
+    $ui.ReadDeskBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        Invoke-DeskRead -Ui $ui
+    })
+
+    $ui.IdentifyBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        try { Show-DisplayBadges -State $ui.State }
+        catch { Write-DisplayLog "settings dialog: could not show the badges - $($_.Exception.Message)" }
     })
 
     $ui.AddRuleBtn.add_Click({
@@ -2421,7 +2514,7 @@ function New-SettingsWindow {
     $win.FindName('LogBtn').add_Click({
         if (Test-Path $script:LogFile) { Open-UiTarget -Target $script:LogFile }
         else { [void][System.Windows.MessageBox]::Show($script:ActiveUi.Window,
-                   'There is no log yet. It appears after the first switch.', 'ScreenDeck',
+                   'There is no log yet. It appears after the first switch.', 'DeskModes',
                    [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) }
     })
     $ui.DonateBtn.add_Click({ Open-UiTarget -Target $script:DonateUrl })
@@ -2441,7 +2534,7 @@ function New-SettingsWindow {
         if (-not $ui) { return }
         $got = Read-SettingsFromUi -Ui $ui -Settings $ui.Settings
         if (-not $got.Ok) {
-            [void][System.Windows.MessageBox]::Show($ui.Window, $got.Problem, 'ScreenDeck',
+            [void][System.Windows.MessageBox]::Show($ui.Window, $got.Problem, 'DeskModes',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
             return
         }
@@ -2489,6 +2582,7 @@ function Test-EditorExtrasSet {
     # Not @(...).Count: wrapping a dictionary in an array gives ONE element whatever is in it, and
     # the fold would spring open for every mode that has nothing set at all.
     if ((Get-PictureForSave -Editor $Editor).Count -gt 0)            { return $true }
+    if ((Get-HdrForSave -Editor $Editor).Count -gt 0)                { return $true }
     if (([string]$Editor.AudioBox.Text).Trim())                      { return $true }
     if (Get-HookFingerprint -Before $Editor.HookBeforeBox.Text -After $Editor.HookAfterBox.Text) { return $true }
     return $false
@@ -2863,6 +2957,79 @@ function Update-DisplaysTable {
     }
 }
 
+# The desk as Windows holds it this second: the displays that are on, left to right by the position
+# Windows gave them, and whichever of them carries the taskbar. A pure function of the state and the
+# positions, so the button that applies it is one line and this is what gets tested.
+#
+# Left to right by X, and by Y for a tie: two displays one above the other share an X, and an order
+# has to come out all the same. A display that is off has no position and is not in the answer - its
+# card stays where it was, behind the ones that are.
+function Get-DeskReadOrder {
+    param($State, $Positions)
+
+    $placed = @()
+    foreach ($m in @($State | Where-Object { $_ -and $_.Active })) {
+        $pos = $(if ($Positions -and $Positions.Contains([string]$m.Id)) { $Positions[[string]$m.Id] } else { $null })
+        if (-not $pos) { continue }
+        $placed += [pscustomobject]@{ Label = [string]$m.Label; X = [int]$pos.X; Y = [int]$pos.Y; Primary = [bool]$m.Primary }
+    }
+    $ordered = @($placed | Sort-Object -Property X, Y)
+    $primary = @($ordered | Where-Object { $_.Primary } | ForEach-Object { $_.Label })
+    return [pscustomobject]@{
+        Order   = @($ordered | ForEach-Object { $_.Label })
+        Primary = [string]$(if ($primary.Count -gt 0) { $primary[0] } else { '' })
+    }
+}
+
+# "As Windows has it": the cards take the order Windows holds and the star goes to the display that
+# has the taskbar now. On a desk that has never been arranged this is the whole of the set-up; on one
+# that has, it is a way back to what the eye can see after an experiment went wrong. Nothing is saved
+# here - the footer knows the window changed, and Save writes it like any other edit.
+function Invoke-DeskRead {
+    param($Ui)
+
+    $positions = @{}
+    try { $positions = Get-CcdSourcePositions } catch { $positions = @{} }   # no desk to ask: the cards stay
+    $read = Get-DeskReadOrder -State $Ui.State -Positions $positions
+    if (@($read.Order).Count -eq 0) { return }
+
+    $panel = $Ui.DeskPanel
+    $at = 0
+    foreach ($label in @($read.Order)) {
+        $card = @($panel.Children | Where-Object { $_.Tag -and [string]$_.Tag.Label -eq $label })
+        if ($card.Count -eq 0) { continue }
+        $i = $panel.Children.IndexOf($card[0])
+        if ($i -ne $at) {
+            $panel.Children.RemoveAt($i)
+            $panel.Children.Insert($at, $card[0])
+        }
+        $at++
+    }
+    if ($read.Primary) {
+        foreach ($child in @($panel.Children)) {
+            $info = $child.Tag
+            if ($info -and $info.Radio -and [string]$info.Label -eq $read.Primary) { $info.Radio.IsChecked = $true; break }
+        }
+    }
+    Update-DeskShapes -Ui $Ui
+}
+
+# What "Add a combination" opens on: the displays that are on, and the one with the taskbar. The same
+# shape as a combo's working record, so the editor reads it the way it reads one being edited - but it
+# is handed to the editor alone and never to Set-UiMode, which would write into it instead of adding a
+# new combination to the list.
+function New-DeskTemplate {
+    param($State)
+
+    $on = @($State | Where-Object { $_ -and $_.Active -and -not $_.Disconnected })
+    $primary = @($on | Where-Object { $_.Primary } | ForEach-Object { [string]$_.Label })
+    return [pscustomobject]@{
+        Name     = ''
+        Patterns = @($on | ForEach-Object { [string]$_.Label })
+        Primary  = [string]$(if ($primary.Count -gt 0) { $primary[0] } else { '' })
+    }
+}
+
 function Move-DeskCard {
     param($Panel, $Card, [int]$Delta)
 
@@ -3189,6 +3356,54 @@ function Import-ModeExtras {
             if ($hook) { $Ui.Hooks[[string]$key] = $hook }
         }
     }
+
+    # HDR is kept per display in the window whatever shape the file wrote it in: a bare true for a
+    # whole mode becomes one row per display the moment the editor opens (ConvertTo-HdrMap), and the
+    # file gets the per-display form back. That is the form a person can read a row of.
+    $Ui.Hdr = [ordered]@{}
+    if ($Settings -and $Settings.hdr) {
+        foreach ($key in @($Settings.hdr.Keys)) {
+            $one = ConvertTo-HdrSetting $Settings.hdr[$key]
+            if ($null -eq $one) { continue }
+            if ($one -is [bool]) { $Ui.Hdr[[string]$key] = $one }
+            else { $Ui.Hdr[[string]$key] = $one }
+        }
+    }
+}
+
+# A mode's HDR setting -> the editor's map, display name -> bool. A bare bool is spread over the
+# displays the mode has, so that the rows show what the switch will actually do to each of them.
+function ConvertTo-HdrMap {
+    param($Setting, [string[]]$Names)
+
+    $map = [ordered]@{}
+    if ($null -eq $Setting) { return $map }
+    if ($Setting -is [bool]) {
+        foreach ($name in @($Names)) { if ($name) { $map[[string]$name] = [bool]$Setting } }
+        return $map
+    }
+    if ($Setting -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Setting.Keys)) { $map[[string]$key] = [bool]$Setting[$key] }
+    }
+    return $map
+}
+
+# The window's HDR map -> what leaves for settings.json: only modes that say something.
+function ConvertTo-HdrSettings {
+    param($Hdr)
+
+    $out = [ordered]@{}
+    if (-not $Hdr) { return $out }
+    foreach ($key in @($Hdr.Keys)) {
+        $value = $Hdr[$key]
+        if ($value -is [bool]) { $out[[string]$key] = $value; continue }
+        if ($value -is [System.Collections.IDictionary] -and $value.Count -gt 0) {
+            $one = [ordered]@{}
+            foreach ($name in @($value.Keys)) { $one[[string]$name] = [bool]$value[$name] }
+            $out[[string]$key] = $one
+        }
+    }
+    return $out
 }
 
 # The window's audio map -> what leaves for settings.json. An empty device does not reach the
@@ -3606,7 +3821,7 @@ function Remove-UiModeKey {
     # Every map the window keys by mode. A new one added above and forgotten here is exactly the
     # ghost setting this function exists to prevent, which is why they are listed in one loop
     # rather than in five lines somebody can add a sixth beside.
-    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Audio, $Ui.Hooks)) {
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Hdr, $Ui.Audio, $Ui.Hooks)) {
         if ($map -and $map.Contains($Key)) { $map.Remove($Key) }
     }
     # Not a map, but keyed by mode all the same: a rule pointing at a mode that no longer exists
@@ -3640,7 +3855,7 @@ function Move-UiModeKey {
     param($Ui, [string]$From, [string]$To)
 
     if (-not $From -or -not $To -or $From -eq $To) { return }
-    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Audio, $Ui.Hooks)) {
+    foreach ($map in @($Ui.Hotkeys, $Ui.Levels, $Ui.Contrast, $Ui.Picture, $Ui.Hdr, $Ui.Audio, $Ui.Hooks)) {
         if (-not $map -or -not $map.Contains($From)) { continue }
         $value = $map[$From]
         $map.Remove($From)
@@ -3715,6 +3930,10 @@ function Set-UiMode {
         if ($null -ne $Edited.PSObject.Properties['Picture']) {
             if ($Edited.Picture -and @($Edited.Picture.Keys).Count -gt 0) { $Ui.Picture[$newKey] = $Edited.Picture }
             elseif ($Ui.Picture.Contains($newKey)) { $Ui.Picture.Remove($newKey) }
+        }
+        if ($null -ne $Edited.PSObject.Properties['Hdr']) {
+            if ($Edited.Hdr -and @($Edited.Hdr.Keys).Count -gt 0) { $Ui.Hdr[$newKey] = $Edited.Hdr }
+            elseif ($Ui.Hdr.Contains($newKey)) { $Ui.Hdr.Remove($newKey) }
         }
         # An empty device is not a setting either: the switch would look for a device called
         # nothing and write a warning into the log every time.
@@ -3803,7 +4022,7 @@ function Set-ModeEditorHeader {
         })
     }
 
-    $Window.Title = 'ScreenDeck - ' + $headTitle.Text
+    $Window.Title = 'DeskModes - ' + $headTitle.Text
 }
 
 # A combo's membership: the members' checkboxes and the "whose taskbar" dropdown. Returns the
@@ -3966,6 +4185,15 @@ function Sync-EditorInheritance {
         Update-PicturePanel -Editor $Editor
     }
 
+    # And HDR, by the same rule and for the same reason.
+    $hdr = $(if ($key -and $Editor.HdrSource.Contains($key)) { $Editor.HdrSource[$key] } else { $null })
+    $shownHdr = Get-HdrFingerprint -Map $Editor.Hdr
+    if (-not $shownHdr -or $shownHdr -eq $Editor.AutoHdr) {
+        $Editor.Hdr = ConvertTo-HdrMap -Setting $hdr -Names (Get-EditorPictureNames -Editor $Editor)
+        $Editor.AutoHdr = Get-HdrFingerprint -Map $Editor.Hdr
+        Update-HdrPanel -Editor $Editor
+    }
+
     # Typing a name can inherit a brightness, a device or a command from the key that name owns.
     # Inheriting one out of sight would be worse than not inheriting it at all: the fields below
     # are read on Save, and an empty one erases.
@@ -4085,6 +4313,105 @@ function Update-PicturePanel {
     }
 }
 
+# --- HDR in the editor ------------------------------------------------------
+# One row per display of the mode, a dropdown of three answers: leave alone, on, off. Nothing to ask
+# the monitor - this is Windows' switch - so the row has no button, only the choice.
+
+$script:HdrChoices = @('Leave alone', 'On', 'Off')
+
+function Get-HdrFingerprint {
+    param($Map)
+
+    if (-not $Map -or $Map.Count -eq 0) { return '' }
+    return (@(@($Map.Keys) | ForEach-Object { [string]$_ + '=' + [string][bool]$Map[$_] }) -join '|')
+}
+
+# The entry that answers for a display: its whole name, or a piece of one written by hand.
+function Get-HdrKeyFor {
+    param($Editor, [string]$Name)
+
+    if (-not $Name -or -not $Editor.Hdr) { return '' }
+    if ($Editor.Hdr.Contains($Name)) { return [string]$Name }
+    foreach ($key in @($Editor.Hdr.Keys)) {
+        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId '') { return [string]$key }
+    }
+    return ''
+}
+
+# What leaves the editor: the displays the mode still has, under the key each was found by - the
+# same courtesy Get-PictureForSave pays a hand-written piece of a name.
+function Get-HdrForSave {
+    param($Editor)
+
+    $out = [ordered]@{}
+    foreach ($name in @(Get-EditorPictureNames -Editor $Editor)) {
+        $key = Get-HdrKeyFor -Editor $Editor -Name $name
+        if ($key) { $out[$key] = [bool]$Editor.Hdr[$key] }
+    }
+    return $out
+}
+
+function Update-HdrPanel {
+    param($Editor)
+
+    $panel = $Editor.HdrPanel
+    if (-not $panel) { return }
+    $panel.Children.Clear()
+    $win = $Editor.Window
+
+    $names = @(Get-EditorPictureNames -Editor $Editor)
+    if ($names.Count -eq 0) {
+        $empty = $(if ($Editor.Kind -eq 'combo') { 'Tick a display first.' }
+                   else { 'This mode has no display to set it on.' })
+        [void]$panel.Children.Add((New-UiTextBlock -Text $empty -Style 'RowSub' -Window $win))
+        return
+    }
+
+    $Editor.HdrBusy = $true
+    try {
+        foreach ($name in $names) {
+            $key = Get-HdrKeyFor -Editor $Editor -Name $name
+            $row = New-Object System.Windows.Controls.Grid
+            $row.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+            foreach ($width in @((New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)),
+                                 [System.Windows.GridLength]::Auto)) {
+                $column = New-Object System.Windows.Controls.ColumnDefinition
+                $column.Width = $width
+                [void]$row.ColumnDefinitions.Add($column)
+            }
+            $title = New-UiTextBlock -Text $name -Style 'RowTitle' -Window $win
+            $title.VerticalAlignment = 'Center'
+            $title.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
+            [void]$row.Children.Add($title)
+
+            $box = New-Object System.Windows.Controls.ComboBox
+            $box.Style = $win.FindResource('Select')
+            $box.Width = 150
+            $box.Height = 30
+            foreach ($choice in $script:HdrChoices) { [void]$box.Items.Add($choice) }
+            $box.SelectedIndex = $(if (-not $key) { 0 } elseif ([bool]$Editor.Hdr[$key]) { 1 } else { 2 })
+            # The display's name rides on the box: the handler holds no closure (see the note about
+            # .GetNewClosure() above) and finds the editor in $script:ActiveEditor.
+            $box.Tag = $name
+            $box.add_SelectionChanged({
+                $ed = $script:ActiveEditor
+                if (-not $ed -or $ed.HdrBusy) { return }
+                $name = [string]$this.Tag
+                $key = Get-HdrKeyFor -Editor $ed -Name $name
+                switch ($this.SelectedIndex) {
+                    0 { if ($key) { $ed.Hdr.Remove($key) } }
+                    1 { $ed.Hdr[$(if ($key) { $key } else { $name })] = $true }
+                    2 { $ed.Hdr[$(if ($key) { $key } else { $name })] = $false }
+                }
+            })
+            [System.Windows.Controls.Grid]::SetColumn($box, 1)
+            [void]$row.Children.Add($box)
+            [void]$panel.Children.Add($row)
+        }
+    }
+    finally { $Editor.HdrBusy = $false }
+}
+
 # The button's whole job: ask that monitor what it is holding right now and write it down. A
 # monitor that is asleep or has DDC/CI switched off in its menu answers nothing, and then nothing
 # is written down - guessing a preset would be worse than saying so.
@@ -4138,11 +4465,15 @@ function New-ModeEditorWindow {
         $Levels,
         $Contrast,
         $Picture,
+        $Hdr,
         $Audio,
         $Hooks,
         [string[]]$TakenNames = @(),
         $Owner,
-        [bool]$Dark
+        [bool]$Dark,
+        # What a NEW combination opens on (New-DeskTemplate). Read for the ticks and the taskbar
+        # only; the heading still says "New combination", and Save still adds to the list.
+        $Template = $null
     )
 
     Initialize-WpfRuntime
@@ -4177,6 +4508,7 @@ function New-ModeEditorWindow {
     if (-not $Levels)   { $Levels   = [ordered]@{} }
     if (-not $Contrast) { $Contrast = [ordered]@{} }
     if (-not $Picture)  { $Picture  = [ordered]@{} }
+    if (-not $Hdr)      { $Hdr      = [ordered]@{} }
     if (-not $Audio)    { $Audio    = [ordered]@{} }
     if (-not $Hooks)    { $Hooks    = [ordered]@{} }
     $hotkeyText = $(if ($key -and $Hotkeys.Contains($key)) { [string]$Hotkeys[$key] } else { '' })
@@ -4195,7 +4527,7 @@ function New-ModeEditorWindow {
 
     $checks = @()
     if ($kind -eq 'combo') {
-        $checks = @(Add-ComboMemberChecks -Window $win -Combo $Combo `
+        $checks = @(Add-ComboMemberChecks -Window $win -Combo $(if ($Combo) { $Combo } else { $Template }) `
                         -Displays @($State | Where-Object { $_ }))
     }
 
@@ -4233,6 +4565,13 @@ function New-ModeEditorWindow {
         PictureSource  = $Picture
         PicturePanel   = $win.FindName('PicturePanel')
         PictureNote    = $win.FindName('PictureNote')
+        # HDR the same way as the presets: a copy per display, the whole map it is inherited from,
+        # and a panel of one row per display. Busy while the rows are being rebuilt, so that setting
+        # a dropdown from code does not count as a person's choice.
+        Hdr            = [ordered]@{}
+        HdrSource      = $Hdr
+        HdrPanel       = $win.FindName('HdrPanel')
+        HdrBusy        = $false
         # Whether the device list has already been fetched. It is fetched on the first opening
         # of the dropdown and never on building the window: enumerating the endpoints goes to
         # COM, and the tests build editors headless.
@@ -4249,6 +4588,7 @@ function New-ModeEditorWindow {
         AutoAudio      = ''
         AutoHook       = ''
         AutoPicture    = ''
+        AutoHdr        = ''
         Result         = $null
     }
     # The handlers find the editor here rather than in a closure: see the comment about
@@ -4267,6 +4607,11 @@ function New-ModeEditorWindow {
         foreach ($name in @($Picture[$key].Keys)) { $ed.Picture[[string]$name] = [string]$Picture[$key][$name] }
     }
     Update-PicturePanel -Editor $ed
+
+    if ($key -and $Hdr.Contains($key)) {
+        $ed.Hdr = ConvertTo-HdrMap -Setting $Hdr[$key] -Names (Get-EditorPictureNames -Editor $ed)
+    }
+    Update-HdrPanel -Editor $ed
 
     $ed.AudioBox.Text = [string]$(if ($key -and $Audio.Contains($key)) { $Audio[$key] } else { '' })
     $ed.HookBeforeBox.Text = [string]$(if ($hook) { $hook.before } else { '' })
@@ -4319,6 +4664,7 @@ function New-ModeEditorWindow {
             # just been unticked is KEPT in the model until Save: ticking it back must not have
             # cost the person the preset they learnt.
             Update-PicturePanel -Editor $ed
+            Update-HdrPanel -Editor $ed
         })
     }
 
@@ -4327,7 +4673,7 @@ function New-ModeEditorWindow {
         if (-not $ed) { return }
         $got = Read-ModeFromUi -Editor $ed
         if (-not $got.Ok) {
-            [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'ScreenDeck',
+            [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'DeskModes',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
             return
         }
@@ -4384,6 +4730,7 @@ function Read-ModeFromUi {
             Mode = [pscustomobject]@{
                 Hotkey = $hk; Level = $Editor.Brightness.Model
                 Contrast = $Editor.Contrast.Model; Picture = (Get-PictureForSave -Editor $Editor)
+                Hdr = (Get-HdrForSave -Editor $Editor)
                 Audio = $device; Hook = $hook
             }
             Problem = ''
@@ -4412,6 +4759,7 @@ function Read-ModeFromUi {
             Name = $name; Patterns = $chosen; Primary = $prim
             Hotkey = $hk; Level = $Editor.Brightness.Model
             Contrast = $Editor.Contrast.Model; Picture = (Get-PictureForSave -Editor $Editor)
+            Hdr = (Get-HdrForSave -Editor $Editor)
             Audio = $device; Hook = $hook
         }
         Problem = ''
@@ -4452,17 +4800,19 @@ function Show-ModeEditor {
         $Levels,
         $Contrast,
         $Picture,
+        $Hdr,
         $Audio,
         $Hooks,
         [string[]]$TakenNames = @(),
         $Owner,
-        [bool]$Dark
+        [bool]$Dark,
+        $Template = $null
     )
 
     $ed = New-ModeEditorWindow -Mode $Mode -Combo $Combo -State $State `
                                -Hotkeys $Hotkeys -Levels $Levels -Contrast $Contrast `
-                               -Picture $Picture -Audio $Audio -Hooks $Hooks -TakenNames $TakenNames `
-                               -Owner $Owner -Dark $Dark
+                               -Picture $Picture -Hdr $Hdr -Audio $Audio -Hooks $Hooks -TakenNames $TakenNames `
+                               -Owner $Owner -Dark $Dark -Template $Template
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
         return $null
@@ -4477,7 +4827,7 @@ function Show-ModeEditor {
 # for both "Add a combination" and every Edit row: the rules about taken names and shortcuts
 # have to be the same for every mode.
 function Invoke-ModeEditor {
-    param($Ui, $Mode, $Combo)
+    param($Ui, $Mode, $Combo, $Template = $null)
 
     # Everything keyed by mode is handed over as whole maps: the editor finds its own record by
     # key itself, and that key changes along with the name while the window is open.
@@ -4485,8 +4835,8 @@ function Invoke-ModeEditor {
 
     $made = Show-ModeEditor -Mode $Mode -Combo $Combo -State $Ui.State `
                             -Hotkeys $Ui.Hotkeys -Levels $Ui.Levels -Contrast $Ui.Contrast `
-                            -Picture $Ui.Picture -Audio $Ui.Audio -Hooks $Ui.Hooks -TakenNames $taken `
-                            -Owner $Ui.Window -Dark $Ui.Dark
+                            -Picture $Ui.Picture -Hdr $Ui.Hdr -Audio $Ui.Audio -Hooks $Ui.Hooks -TakenNames $taken `
+                            -Owner $Ui.Window -Dark $Ui.Dark -Template $Template
     if ($made) { Set-UiMode -Ui $Ui -Mode $Mode -Combo $Combo -Edited $made }
 }
 
@@ -4530,6 +4880,7 @@ function Get-ModeRowSubtitle {
     }
     # The device's name is not printed: it is long enough to push the row into a second line,
     # and the row's job is to say that the setting is there at all.
+    if ($Ui.Hdr.Contains($key))      { $parts += 'HDR' }
     if ($Ui.Audio.Contains($key))    { $parts += 'audio' }
     if ($Ui.Hooks.Contains($key))    { $parts += 'command' }
     return (@($parts | Where-Object { $_ }) -join $script:UiDot)
@@ -4579,7 +4930,7 @@ function Resolve-PanelModes {
     $known = @($modes | ForEach-Object { [string]$_.Key })
     $strays = @()
     foreach ($key in @(@($Ui.Hotkeys.Keys) + @($Ui.Levels.Keys) + @($Ui.Contrast.Keys) +
-                       @($Ui.Picture.Keys) + @($Ui.Audio.Keys) + @($Ui.Hooks.Keys))) {
+                       @($Ui.Picture.Keys) + @($Ui.Hdr.Keys) + @($Ui.Audio.Keys) + @($Ui.Hooks.Keys))) {
         $key = [string]$key
         if (-not $key -or $known -contains $key -or $strays -contains $key) { continue }
         $strays += $key
@@ -4600,6 +4951,7 @@ function Resolve-PanelModes {
     $Ui.Levels   = Get-MapInModeOrder -Map $Ui.Levels   -Modes $modes
     $Ui.Contrast = Get-MapInModeOrder -Map $Ui.Contrast -Modes $modes
     $Ui.Picture  = Get-MapInModeOrder -Map $Ui.Picture  -Modes $modes
+    $Ui.Hdr      = Get-MapInModeOrder -Map $Ui.Hdr      -Modes $modes
     $Ui.Audio    = Get-MapInModeOrder -Map $Ui.Audio    -Modes $modes
     $Ui.Hooks    = Get-MapInModeOrder -Map $Ui.Hooks    -Modes $modes
 
@@ -4620,6 +4972,9 @@ function Update-ModesPanel {
     if ($InitialHotkeys) {
         $Ui.Hotkeys = [ordered]@{}
         foreach ($key in @($InitialHotkeys.Keys)) {
+            # Not a mode's key: it has a field of its own on the Behavior page, and in this map it
+            # would become an orphan row called "back" (see Resolve-PanelModes).
+            if ([string]$key -eq $script:BackHotkeyName) { continue }
             $text = [string]$InitialHotkeys[$key]
             if ($text) { $Ui.Hotkeys[[string]$key] = $text }
         }
@@ -4810,8 +5165,9 @@ function Update-PlugModeBox {
 # rather than two that have to be kept in step.
 
 $script:RuleWhenTitles = [ordered]@{
-    process = 'a program is running'
-    idle    = 'nobody is at the computer'
+    process  = 'a program is running'
+    idle     = 'nobody is at the computer'
+    displays = 'these displays are connected'
 }
 
 function Import-RuleSettings {
@@ -5036,7 +5392,10 @@ function Add-ProcessItems {
 # The rule editor, built separately from being shown — for the same reason as every other window
 # here: a window built without being shown can be tested.
 function New-RuleEditorWindow {
-    param($Rule, $Modes, $Owner, [bool]$Dark)
+    # $Displays is the desk with the remembered monitors in it (Get-DeskDisplays): the ticks for the
+    # "these displays are connected" condition. Empty, and that condition offers no ticks - the tests
+    # that do not care hand nothing in.
+    param($Rule, $Modes, $Owner, [bool]$Dark, $Displays = @())
 
     Initialize-WpfRuntime
     $palette = Get-UiPalette -Dark $Dark
@@ -5050,7 +5409,7 @@ function New-RuleEditorWindow {
     # A new rule starts on the shape everything downstream expects, not on an empty bag: then
     # there is one shape of a rule in this file and not two.
     if (-not $Rule) {
-        $Rule = [ordered]@{ when = 'process'; process = ''; minutes = 20; mode = ''; back = ''; enabled = $true }
+        $Rule = [ordered]@{ when = 'process'; process = ''; minutes = 20; displays = @(); mode = ''; back = ''; enabled = $true }
     }
 
     $ed = [pscustomobject]@{
@@ -5060,6 +5419,9 @@ function New-RuleEditorWindow {
         ProcessBox   = $win.FindName('ProcessBox')
         IdlePanel    = $win.FindName('IdlePanel')
         MinutesBox   = $win.FindName('MinutesBox')
+        DisplaysPanel = $win.FindName('DisplaysPanel')
+        # One CheckBox per display of the desk, Tag = the name the rule stores.
+        DisplayChecks = @()
         ModeBox      = $win.FindName('ModeBox')
         BackBox      = $win.FindName('BackBox')
         # The rule being edited, so Save can write into the very entry the list holds rather than
@@ -5087,6 +5449,7 @@ function New-RuleEditorWindow {
         $ed.ProcessBox.Text = [string]$Rule['process']
         $minutes = [int]$Rule['minutes']
         $ed.MinutesBox.Text = [string]$(if ($minutes -gt 0) { $minutes } else { 20 })
+        $ed.DisplayChecks = @(Add-RuleDisplayChecks -Window $win -Patterns @($Rule['displays']) -Displays @($Displays))
 
         Set-RuleModeItems -Box $ed.ModeBox -Modes $Modes -Selected ([string]$Rule['mode'])
         Set-RuleModeItems -Box $ed.BackBox -Modes $Modes -Selected ([string]$Rule['back']) `
@@ -5112,7 +5475,7 @@ function New-RuleEditorWindow {
         if (-not $ed) { return }
         $got = Read-RuleFromUi -Editor $ed
         if (-not $got.Ok) {
-            [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'ScreenDeck',
+            [void][System.Windows.MessageBox]::Show($ed.Window, $got.Problem, 'DeskModes',
                 [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
             return
         }
@@ -5129,8 +5492,48 @@ function Update-RuleEditorPanels {
     param($Editor)
 
     $when = Get-RuleEditorWhen -Editor $Editor
-    $Editor.ProcessPanel.Visibility = $(if ($when -eq 'process') { 'Visible' } else { 'Collapsed' })
-    $Editor.IdlePanel.Visibility    = $(if ($when -eq 'idle')    { 'Visible' } else { 'Collapsed' })
+    $Editor.ProcessPanel.Visibility  = $(if ($when -eq 'process')  { 'Visible' } else { 'Collapsed' })
+    $Editor.IdlePanel.Visibility     = $(if ($when -eq 'idle')     { 'Visible' } else { 'Collapsed' })
+    $Editor.DisplaysPanel.Visibility = $(if ($when -eq 'displays') { 'Visible' } else { 'Collapsed' })
+}
+
+# The ticks for the displays condition: one per display of the desk, in the desk's order, ticked where
+# the rule names it. A name the rule holds that matches no display of the desk gets a tick of its own,
+# already on - the same courtesy a combo's members get (Add-ComboMemberChecks): the monitor may be one
+# this machine has not seen for months, and losing it from the rule on an unrelated edit is not ours.
+function Add-RuleDisplayChecks {
+    param($Window, $Patterns, $Displays)
+
+    $panel = $Window.FindName('DisplaysChecks')
+    $checks = @()
+    $patterns = @(@($Patterns) | ForEach-Object { [string]$_ } | Where-Object { $_ })
+
+    foreach ($m in @($Displays | Where-Object { $_ })) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Style = $Window.FindResource('Check')
+        $cb.Content = $(if ($m.Disconnected) { [string]$m.Label + '   (not connected)' } else { [string]$m.Label })
+        $cb.Tag = [string]$m.Label
+        foreach ($pat in $patterns) {
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
+        }
+        [void]$panel.Children.Add($cb)
+        $checks += $cb
+    }
+    foreach ($pat in $patterns) {
+        $matched = $false
+        foreach ($m in @($Displays | Where-Object { $_ })) {
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $matched = $true; break }
+        }
+        if ($matched) { continue }
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Style = $Window.FindResource('Check')
+        $cb.Content = ($pat + '   (not connected)')
+        $cb.Tag = $pat
+        $cb.IsChecked = $true
+        [void]$panel.Children.Add($cb)
+        $checks += $cb
+    }
+    return $checks
 }
 
 function Get-RuleEditorWhen {
@@ -5157,6 +5560,8 @@ function Read-RuleFromUi {
     $parsed = 0
     if ([int]::TryParse(([string]$Editor.MinutesBox.Text).Trim(), [ref]$parsed)) { $minutes = $parsed }
 
+    $displays = @($Editor.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+
     $problem = ''
     if (-not $mode) { $problem = 'Choose the mode this rule switches to.' }
     elseif ($when -eq 'process' -and -not $process) {
@@ -5164,6 +5569,9 @@ function Read-RuleFromUi {
     }
     elseif ($when -eq 'idle' -and $minutes -lt 1) {
         $problem = 'Give the idle time in whole minutes, at least one.'
+    }
+    elseif ($when -eq 'displays' -and $displays.Count -eq 0) {
+        $problem = 'Tick the displays that make up this desk - at least one.'
     }
     # "Go back to" where it already is would mean the rule undoes itself the moment the condition
     # ends and then fires again — a desk that flickers every fifteen seconds.
@@ -5178,6 +5586,7 @@ function Read-RuleFromUi {
         Ok = $true
         Rule = [ordered]@{
             when = $when; process = $process; minutes = $(if ($minutes -gt 0) { $minutes } else { 0 })
+            displays = $displays
             mode = $mode; back = $back; enabled = [bool]$Editor.Rule['enabled']
         }
         Problem = ''
@@ -5185,9 +5594,9 @@ function Read-RuleFromUi {
 }
 
 function Show-RuleEditor {
-    param($Rule, $Modes, $Owner, [bool]$Dark)
+    param($Rule, $Modes, $Owner, [bool]$Dark, $Displays = @())
 
-    $ed = New-RuleEditorWindow -Rule $Rule -Modes $Modes -Owner $Owner -Dark $Dark
+    $ed = New-RuleEditorWindow -Rule $Rule -Modes $Modes -Owner $Owner -Dark $Dark -Displays $Displays
     try {
         if ($ed.Window.ShowDialog()) { return $ed.Result }
         return $null
@@ -5203,7 +5612,7 @@ function Invoke-RuleEditor {
     param($Ui, $Rule)
 
     $made = Show-RuleEditor -Rule $Rule -Modes (Get-RuleTargetModes -Ui $Ui) `
-                            -Owner $Ui.Window -Dark $Ui.Dark
+                            -Owner $Ui.Window -Dark $Ui.Dark -Displays $Ui.State
     if (-not $made) { return }
 
     if ($Rule) {
@@ -5299,6 +5708,21 @@ function Read-SettingsFromUi {
         $seen[$parsed.Text] = $key
         $newHotkeys[$key] = $parsed.Text
     }
+    # The way-back shortcut joins the same map under its own name, and the same rule: one key
+    # combination drives one thing, and "back" is a thing.
+    $backParsed = ConvertFrom-HotkeyString ([string]$Ui.BackHotkeyBox.Text)
+    if ($backParsed) {
+        if ($seen.ContainsKey($backParsed.Text)) {
+            if (-not $Quiet) {
+                Write-DisplayLog "settings dialog: rejected save - $($backParsed.Text) is assigned to both $($seen[$backParsed.Text]) and the way back"
+            }
+            return [pscustomobject]@{
+                Ok = $false; Settings = $null
+                Problem = "$($backParsed.Text) is assigned twice. Each combination of keys can only drive one mode."
+            }
+        }
+        $newHotkeys[$script:BackHotkeyName] = $backParsed.Text
+    }
 
     # Saved into a COPY rather than into the object we were handed: $Settings is the very
     # dictionary the tray lives with, and a failed write to disk must not leave three
@@ -5359,6 +5783,7 @@ function Read-SettingsFromUi {
         brightness = (ConvertFrom-LevelModels  -Models $Ui.Levels)
         contrast   = (ConvertFrom-LevelModels  -Models $Ui.Contrast)
         picture    = (ConvertTo-PictureSettings -Picture $Ui.Picture)
+        hdr        = (ConvertTo-HdrSettings -Hdr $Ui.Hdr)
     }
     foreach ($field in @($sources.Keys)) {
         $updated[$field] = Move-ModeKeyedEntries -Source $sources[$field] -Gone $gone -What $field
@@ -5401,6 +5826,8 @@ function Get-DialogModes {
     $known = @($modes | ForEach-Object { $_.Key })
     foreach ($key in @($Settings.hotkeys.Keys)) {
         if ($known -contains $key) { continue }
+        # The way-back shortcut is not a mode that went missing (see $script:BackHotkeyName).
+        if ([string]$key -eq $script:BackHotkeyName) { continue }
         $modes += [pscustomobject]@{
             Key       = $key
             Title     = Get-ModeTitleFromKey $key
@@ -5456,8 +5883,8 @@ function Show-SettingsDialog {
         if (-not (Save-DisplaySettings $updated)) {
             [void][System.Windows.MessageBox]::Show(
                 "Could not write settings.json - nothing was saved." + [environment]::NewLine +
-                "Check that the folder ScreenDeck sits in can be written to. Details are in the log.",
-                'ScreenDeck', [System.Windows.MessageBoxButton]::OK,
+                "Check that the folder DeskModes sits in can be written to. Details are in the log.",
+                'DeskModes', [System.Windows.MessageBoxButton]::OK,
                 [System.Windows.MessageBoxImage]::Warning)
             return $null
         }
@@ -5469,7 +5896,7 @@ function Show-SettingsDialog {
             [void][System.Windows.MessageBox]::Show(
                 "Windows would not change when the displays go dark." + [environment]::NewLine +
                 "Everything else was saved. Set it in Settings - System - Power; details are in the log.",
-                'ScreenDeck', [System.Windows.MessageBoxButton]::OK,
+                'DeskModes', [System.Windows.MessageBoxButton]::OK,
                 [System.Windows.MessageBoxImage]::Warning)
         }
         return $updated
@@ -5478,6 +5905,150 @@ function Show-SettingsDialog {
         $ui.Window.Close()
         $script:ActiveUi = $null
     }
+}
+
+# --- which display is which --------------------------------------------------
+# A badge on every display that is on, for a moment: its name, its Monitor ID and what it is showing.
+# Three cards that all begin with LG tell nobody which LG is which; Windows has the same button in
+# its own display settings for the same reason. The badges are plain windows shown and then closed
+# by a timer - nothing is drawn on anybody's desktop, and nothing is left behind.
+
+$script:BadgeMilliseconds = 2500
+# The badges on show right now, so the timer that closes them finds them without a closure.
+$script:BadgeWindows = @()
+$script:BadgeTimer = $null
+
+# The two lines of a badge. Pure, and the reason the badge can be tested without a screen.
+function Get-BadgeText {
+    param($Display)
+
+    $line = [string]$Display.ShortId
+    if ($Display.Width -gt 0 -and $Display.Height -gt 0) {
+        $mode = '{0} x {1}' -f $Display.Width, $Display.Height
+        if ($Display.Hz -gt 0) { $mode += ' @ {0} Hz' -f $Display.Hz }
+        $line = $(if ($line) { $line + $script:UiDot + $mode } else { $mode })
+    }
+    if ($Display.Primary) { $line = $(if ($line) { $line + $script:UiDot + 'taskbar' } else { 'taskbar' }) }
+    return [pscustomobject]@{ Title = [string]$Display.Label; Line = $line }
+}
+
+# One badge: a dark plate with light text whatever the theme, because it lies on top of whatever is
+# on that screen and has to read against a game as well as against a document. Fixed size and
+# centred by arithmetic rather than SizeToContent: a window that measures itself after Show has a
+# frame at (0, 0) first, and that frame is on the wrong display.
+function New-DisplayBadge {
+    param($Display, $Rect)
+
+    Initialize-WpfRuntime
+    $text = Get-BadgeText -Display $Display
+
+    $win = New-Object System.Windows.Window
+    $win.WindowStyle = 'None'
+    $win.ResizeMode = 'NoResize'
+    $win.AllowsTransparency = $true
+    $win.Background = [System.Windows.Media.Brushes]::Transparent
+    $win.ShowInTaskbar = $false
+    $win.ShowActivated = $false
+    $win.Topmost = $true
+    $win.Width = 460
+    $win.Height = 150
+    $win.WindowStartupLocation = 'Manual'
+    if ($Rect) {
+        $win.Left = [double]$Rect.Left + (([double]$Rect.Right - [double]$Rect.Left) - $win.Width) / 2
+        $win.Top  = [double]$Rect.Top  + (([double]$Rect.Bottom - [double]$Rect.Top) - $win.Height) / 2
+    }
+
+    $plate = New-Object System.Windows.Controls.Border
+    $plate.CornerRadius = New-Object System.Windows.CornerRadius 14
+    $plate.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(0xE6, 0x20, 0x20, 0x20))
+    $plate.Padding = New-Object System.Windows.Thickness 32, 22, 32, 22
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $stack.VerticalAlignment = 'Center'
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = $text.Title
+    $title.FontSize = 40
+    $title.FontWeight = 'SemiBold'
+    $title.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Display, Segoe UI'
+    $title.Foreground = [System.Windows.Media.Brushes]::White
+    $title.TextAlignment = 'Center'
+    $title.TextTrimming = 'CharacterEllipsis'
+    [void]$stack.Children.Add($title)
+    if ($text.Line) {
+        $line = New-Object System.Windows.Controls.TextBlock
+        $line.Text = $text.Line
+        $line.FontSize = 18
+        $line.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(0xC8, 0xC8, 0xC8))
+        $line.TextAlignment = 'Center'
+        $line.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+        [void]$stack.Children.Add($line)
+    }
+    $plate.Child = $stack
+    $win.Content = $plate
+    return $win
+}
+
+# Where each display that is on stands, in the units a WPF window is placed in. Matched to the state
+# by the output name, which is what both sides call a screen (\\.\DISPLAY1). The same scale as
+# Get-ScreenRects uses, for the same reason.
+function Get-DisplayBadgeRects {
+    param($State)
+
+    $scale = 1.0
+    try {
+        $pixels = [System.Windows.Forms.SystemInformation]::VirtualScreen.Width
+        if ($pixels -gt 0) { $scale = [System.Windows.SystemParameters]::VirtualScreenWidth / $pixels }
+    }
+    catch { }   # one to one, then
+
+    $out = @()
+    $screens = @()
+    try { $screens = @([System.Windows.Forms.Screen]::AllScreens) } catch { return $out }   # no screens, no badges
+    foreach ($m in @($State | Where-Object { $_ -and $_.Active -and $_.Output })) {
+        $screen = @($screens | Where-Object { [string]$_.DeviceName -eq [string]$m.Output })
+        if ($screen.Count -eq 0) { continue }
+        $b = $screen[0].Bounds
+        $out += [pscustomobject]@{
+            Display = $m
+            Rect    = [pscustomobject]@{ Left = $b.Left * $scale; Top = $b.Top * $scale
+                                         Right = $b.Right * $scale; Bottom = $b.Bottom * $scale }
+        }
+    }
+    return $out
+}
+
+# Show them all and take them down together. A WinForms timer and not a Dispatcher one: the tray
+# runs a WinForms message loop, and that is the loop this timer is pumped by wherever the badges were
+# asked for from. The tick reads $script:BadgeWindows rather than carrying the list in a closure -
+# see the note about .GetNewClosure() at the top of the handlers.
+function Show-DisplayBadges {
+    param($State)
+
+    Close-DisplayBadges
+    $shown = @()
+    foreach ($one in @(Get-DisplayBadgeRects -State $State)) {
+        $win = New-DisplayBadge -Display $one.Display -Rect $one.Rect
+        $win.Show()
+        $shown += $win
+    }
+    if ($shown.Count -eq 0) { return }
+    $script:BadgeWindows = $shown
+
+    $script:BadgeTimer = New-Object System.Windows.Forms.Timer
+    $script:BadgeTimer.Interval = $script:BadgeMilliseconds
+    $script:BadgeTimer.add_Tick({ Close-DisplayBadges })
+    $script:BadgeTimer.Start()
+}
+
+function Close-DisplayBadges {
+    if ($script:BadgeTimer) {
+        try { $script:BadgeTimer.Stop(); $script:BadgeTimer.Dispose() } catch { }   # already gone
+        $script:BadgeTimer = $null
+    }
+    foreach ($win in @($script:BadgeWindows)) {
+        try { $win.Close() } catch { }   # a badge the person closed themselves, say
+    }
+    $script:BadgeWindows = @()
 }
 
 # --- the timer window -------------------------------------------------------
@@ -5500,7 +6071,7 @@ $script:TimerWindowXaml = @'
      right now and stands at 248. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ScreenDeck - Timer"
+        Title="DeskModes - Timer"
         Width="330" Height="248"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen" Topmost="True"
@@ -6169,8 +6740,8 @@ function New-StatsUi {
                 Write-DisplayLog "stats: the page failed - $($_.Exception.Message)"
                 [void][System.Windows.MessageBox]::Show(
                     "Could not write stats.html." + [environment]::NewLine +
-                    "Check that the folder ScreenDeck sits in can be written to. Details are in the log.",
-                    'ScreenDeck', [System.Windows.MessageBoxButton]::OK,
+                    "Check that the folder DeskModes sits in can be written to. Details are in the log.",
+                    'DeskModes', [System.Windows.MessageBoxButton]::OK,
                     [System.Windows.MessageBoxImage]::Warning)
             }
         })

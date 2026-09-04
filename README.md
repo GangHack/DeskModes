@@ -1,6 +1,6 @@
-﻿# ScreenDeck
+﻿# DeskModes
 
-[![check](https://github.com/GangHack/ScreenDeck/actions/workflows/check.yml/badge.svg)](https://github.com/GangHack/ScreenDeck/actions/workflows/check.yml)
+[![check](https://github.com/GangHack/DeskModes/actions/workflows/check.yml/badge.svg)](https://github.com/GangHack/DeskModes/actions/workflows/check.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Turn the displays on your desk on and off in named sets, with one hotkey.
@@ -13,7 +13,7 @@ display you chose.
 No installer, no service, no dependencies — a folder of PowerShell scripts talking to the
 Windows display API. Delete the folder and it is gone.
 
-![The Settings window, on the page where the desk is arranged](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings.png)
+![The Settings window, on the page where the desk is arranged](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings.png)
 
 ## What it actually does
 
@@ -55,9 +55,20 @@ Every one of these exists because the naive version broke on a real desk:
   are the manufacturer's - one monitor here shows two different ones as "Gamer 1".
 - **Runs your own command around a switch.** One line per mode: close an app, change the
   power plan, turn off the lights in the room. What it does is your business.
-- **Switches by itself on a rule.** A process started, or nobody has touched the computer
-  for twenty minutes — go to this mode, and come back when it is over. Built in Settings,
-  and switched off there without being deleted.
+- **Switches by itself on a rule.** A process started, nobody has touched the computer for
+  twenty minutes, or the connected displays are exactly these — go to this mode, and come back
+  when it is over. The last one is the laptop and its dock: two monitors at home, one at the
+  office, none on the train. Built in Settings, and switched off there without being deleted.
+- **Carries HDR with the mode.** On for the game, off for the spreadsheet beside it, per display,
+  and a display that cannot do HDR is left as it is.
+- **Puts the previous set back when nothing came up.** If none of a mode's displays attaches, the
+  displays that were on come back on by themselves, and the switch says so. A desk that went dark
+  is the one thing a shortcut cannot fix.
+- **Goes back.** The tray menu has *Back to Work*, named after wherever you were; the command line
+  takes `back`; and a shortcut for it lives on the Behavior page — for the moment the picture is
+  wrong and you are pressing keys blind.
+- **Says which display is which.** A badge on every display for a moment, from the tray or from
+  the Settings window: its name, its Monitor ID and what it is showing.
 - **Turns the computer off on a timer.** From the tray menu — a ready length, or your own
   picked on a slider — with the countdown on the icon and a warning a minute before,
   movable and cancellable at any point.
@@ -77,7 +88,9 @@ it can be resized; where it stood and which page you left it on come back with i
 **Your desk** is the picture above. The display cards are drawn to the size of the panels
 themselves — read out of each monitor's EDID, not guessed from its resolution — so the row is
 the layout rather than a picture of it, and the table under it says what each display reports
-about itself.
+about itself. Two buttons stand in the page's head: **As Windows has it** puts the cards in the
+order Windows holds right now and stars the display that has the taskbar — on a first run, that
+is the set-up; **Which is which** shows each display's name on it for a moment.
 
 A display you have switched off at its own button is still there, marked `not connected`. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them
@@ -93,28 +106,28 @@ Control Panel.
 **Modes** is everything you can switch to. Each one is a row, and **Edit** opens the one place
 that mode is configured:
 
-![The Modes page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-modes.png)
+![The Modes page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-modes.png)
 
 The mode editor holds everything one mode owns. What the mode IS stays in sight — its name,
 its displays, where the taskbar goes and the keys that reach it; what it does to the hardware
 — brightness, contrast, the playback device and the commands — is folded under one line, and
 unfolds by itself for a mode that already has any of them set:
 
-![The mode editor](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-editor.png)
+![The mode editor](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-editor.png)
 
 And the shutdown timer, from the tray menu, when a ready length is not the one you want:
 
-![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-timer.png)
+![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-timer.png)
 
 **Diary** is the same window's page too: where the time went, by display, by mode and by
 application, for today, a week, a month or everything the diary holds.
 
-![The Diary page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-diary.png)
+![The Diary page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-diary.png)
 
 **About** sits at the bottom of the pane, where Windows keeps its own: the version to paste
 into a bug report, the log, the folder everything lives in, and the project page.
 
-![The About page](https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/settings-about.png)
+![The About page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-about.png)
 
 ## Requirements
 
@@ -130,12 +143,12 @@ show for it.
 
 ## Quickstart
 
-Download the ZIP from [Releases](https://github.com/GangHack/ScreenDeck/releases) and
+Download the ZIP from [Releases](https://github.com/GangHack/DeskModes/releases) and
 unpack it anywhere you like — your user folder is fine, no admin rights are needed. Or take
 the whole repository, which also gets you the tests and the engineering notes:
 
 ```bash
-git clone https://github.com/GangHack/ScreenDeck.git
+git clone https://github.com/GangHack/DeskModes.git
 ```
 
 Then:
@@ -166,9 +179,11 @@ your accent color:
   refresh rate, amber `(below N Hz)` when Windows dropped it, grey when the display is off,
   hollow when it is not connected — a display switched off at its own button is still listed,
   because that is when you want to set something up for it.
+  Under the list, **Which is which...** puts a badge on every display for a moment.
 - **SWITCH TO** — your modes: one per display, your combinations, all. The one
   matching the current desk is ticked; modes whose displays are unplugged are greyed with
-  `(not connected)`.
+  `(not connected)`. Under them, **Back to <mode>** — named after the mode you left — once you
+  have left one.
 - **Shut down in…** and **Sleep in…** — 15 minutes, 30, an hour, two, each with the time on
   the clock it lands on (`1 h    at 02:26`), or **Pick a time…** for anything else. That one
   opens a small popup by the cursor: a slider over uneven steps (five minutes near, hours far
@@ -193,7 +208,9 @@ Every mode is one of three things: **one display** (there is a mode per display,
 **all of them**, or **a combination** — the sets you name yourself. That is the only concept
 you configure, and it is the only one you can delete.
 
-Create one in the Settings window with **Add a combination**: pick a name, tick the
+Create one in the Settings window with **Add a combination**: it opens with the displays that
+are on already ticked and the current taskbar display chosen, so on the usual day the name is
+all there is to type. Otherwise pick a name, tick the
 displays, optionally choose which of them keeps the taskbar while the combination is on,
 press a shortcut, and set the brightness of its monitors — all in the same window, which is
 also what **Edit** opens later. One display can be in as many combinations as you like —
@@ -227,7 +244,7 @@ Written by the Settings window, and safe to edit by hand. See
 
 | Key | What it is |
 | --- | --- |
-| `hotkeys` | mode key → keys, e.g. `"combo:Work": "Ctrl+Alt+F3"` |
+| `hotkeys` | mode key → keys, e.g. `"combo:Work": "Ctrl+Alt+F3"`. One entry is not a mode: `"back"` is the shortcut that returns to the mode you left |
 | `layout` | display names left to right, as they physically stand on your desk |
 | `primary` | which display gets the taskbar, when it is among those switched on |
 | `combos` | combination name → `{ "displays": [...], "primary": "..." }`; a bare array works too |
@@ -239,6 +256,7 @@ Written by the Settings window, and safe to edit by hand. See
 | `rules` | switch by itself when something happens. Edited in Settings. See [Rules](#rules) |
 | `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after*. Edited in the mode editor |
 | `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }`. Edited in the mode editor |
+| `hdr` | mode key → `true`/`false` for every display of the mode, or `{ display → true/false }`. A display not mentioned is left as it is. Edited in the mode editor |
 | `stats` | keep the diary. Off by default |
 | `audio` | mode key → part of a playback device name. Edited in the mode editor |
 
@@ -326,15 +344,17 @@ list by hand:
 ```json
 "rules": [
     { "when": "process", "process": "cs2", "mode": "solo:LG ULTRAGEAR" },
-    { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work" }
+    { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work" },
+    { "when": "displays", "displays": ["U2720Q", "ULTRAGEAR"], "mode": "combo:Home", "back": "solo:LAPTOP" }
 ]
 ```
 
 | Field | What it is |
 | --- | --- |
-| `when` | `process` — that process is running; `idle` — nobody has touched the computer for `minutes` |
+| `when` | `process` — that process is running; `idle` — nobody has touched the computer for `minutes`; `displays` — the connected displays are exactly the ones in `displays` |
 | `process` | process name, with or without `.exe`, as Task Manager shows it |
 | `minutes` | for `idle` only. Zero means the rule never fires |
+| `displays` | for `displays` only: names or Monitor IDs, matched the way `layout` matches them. Exactly this set — a rule for the one monitor at the office does not fire at home, where that monitor is there too. Connected is enough; a display that is off at its own button counts |
 | `mode` | mode key to go to |
 | `back` | where to return when the condition ends. Empty — back to wherever the desk was |
 | `enabled` | `false` switches a rule off without deleting it |
@@ -470,8 +490,10 @@ same report in the console.
 .\Set-Display.ps1 modes         mode keys and their bound hotkeys
 .\Set-Display.ps1 audio         playback devices, to fill in the audio setting
 .\Set-Display.ps1 brightness    which displays answer over DDC/CI, and at what level
+.\Set-Display.ps1 hdr           which displays can do HDR, and whether it is on
 .\Set-Display.ps1 stats         the diary, as a report in the console
 .\Set-Display.ps1 all           every connected display
+.\Set-Display.ps1 back          the mode you left last, whoever switched away from it
 .\Set-Display.ps1 "Movie night" a combination, by its name
 .\Set-Display.ps1 work          the same, when the name is one word
 .\Set-Display.ps1 ULTRAGEAR     one display, by part of its name
@@ -538,7 +560,23 @@ Four things worth knowing:
 | **Windows Settings** | Several clicks per display, and it forgets the arrangement. |
 | **DisplayFusion** | Excellent and paid, a whole window-management suite. This is one job. |
 | **MonitorSwitcher** | Saves profiles keyed to the monitor's EDID, which changes when the monitor moves to another input. |
+| **PowerToys Power Display** | Brightness, contrast and colour over DDC/CI, with profiles of those. It does not switch which displays are on, or where they stand. |
 | **Command-line tools that wrap the legacy display API** | On some machines that API reports success and does nothing; and a display it has switched off loses its name, so it cannot be switched back on by name. |
+
+## Why PowerShell, and why that is safe
+
+Because the job is a dozen Windows API calls and a window, and Windows PowerShell 5.1 is on every
+Windows 10 and 11 machine already. There is nothing to install, nothing runs as a service, and the
+program is text you can read before you run it — every line of it is in this repository, and the
+folder you unpack is the folder that runs. The Windows API layer is compiled from the C# at the
+top of `DisplayCore.ps1` on the first start, into a `native-*.dll` next to the scripts, and that
+file is rebuilt whenever the source changes; it is the only binary here, and it is made on your
+machine from the source you can see.
+
+What that costs you: a first start takes about a second longer while that assembly compiles, the
+`.cmd` launchers open through `powershell.exe` rather than as an `.exe` of their own, and
+SmartScreen has never heard of the ZIP you downloaded. What it does not cost you: a background
+service, an installer, a registry footprint or an uninstaller — delete the folder and it is gone.
 
 ## How it works
 
@@ -645,12 +683,12 @@ because that is where they are of any use.
 
 The engineering notes are worth a look if you are here for the display API rather than the
 tool — they are a day-by-day account of what Windows actually does, with measurements:
-[`docs/notes.md`](https://github.com/GangHack/ScreenDeck/blob/main/docs/notes.md).
+[`docs/notes.md`](https://github.com/GangHack/DeskModes/blob/main/docs/notes.md).
 
 ## Also here
 
 - [CHANGELOG.md](CHANGELOG.md) — what changed in each version, and why you would care.
-- [CONTRIBUTING.md](https://github.com/GangHack/ScreenDeck/blob/main/CONTRIBUTING.md) — how to make a change stick, and the one command that
+- [CONTRIBUTING.md](https://github.com/GangHack/DeskModes/blob/main/CONTRIBUTING.md) — how to make a change stick, and the one command that
   decides whether it is done.
 - [SECURITY.md](SECURITY.md) — what the tool touches, what it does not, and how to report a
   hole privately.

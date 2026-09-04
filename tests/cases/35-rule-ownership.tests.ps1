@@ -2,7 +2,7 @@
 # Get-RuleDecision decides what should happen (20-rules); this is the other half — what the tray does
 # with the answer. The distinction that matters here is between a switch that HAPPENED and one that was
 # refused, and it is not academic: a rule fires on the very events the refresh-rate watchdog wakes on,
-# and that one holds Local\ScreenDeckSwitch for about a second afterwards. "A switch is already in
+# and that one holds Local\DeskModesSwitch for about a second afterwards. "A switch is already in
 # progress" is therefore an ordinary answer here, not a breakage.
 #
 # Claiming the desk after a switch that never happened cost the rule its turn: the next tick saw the
@@ -35,7 +35,7 @@ $script:RoOutcome = 'done'
 # this — it is a built-in, and a fake by that name is a trap for whoever reads the next test — so the
 # scene names a process that exists (this host) or one that cannot (a name nothing is called).
 $script:RoLive = (Get-Process -Id $PID).ProcessName
-$script:RoDead = 'screendeck-no-such-process'
+$script:RoDead = 'deskmodes-no-such-process'
 
 function Get-ActiveSettings { return $script:RoSettings }
 function Get-CurrentModeKey { return $script:RoMode }

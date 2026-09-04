@@ -341,3 +341,54 @@ Test-Case 'rules: the program is offered from a list, and typed by hand just as 
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case 'rules: the displays condition offers a tick per display of the desk, the off one included' {
+    $desk = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUS1234' 'path-xg' $false $true)
+    )
+    $ui, $settings = New-RuleUi
+    try {
+        $ed = New-RuleEditorWindow -Rule $null -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false -Displays $desk
+        try {
+            Assert-Equal 3 @($ed.DisplayChecks).Count 'three ticks for three displays'
+            Assert-True ([string]$ed.DisplayChecks[2].Content -like '*not connected*') 'the one that is off says so'
+
+            $ed.WhenBox.SelectedItem = @($ed.WhenBox.Items | Where-Object { [string]$_.Tag -eq 'displays' })[0]
+            Assert-Equal 'Visible' ([string]$ed.DisplaysPanel.Visibility) 'the ticks come up'
+            Assert-Equal 'Collapsed' ([string]$ed.ProcessPanel.Visibility) 'and the program box goes'
+            $ed.ModeBox.SelectedItem = @($ed.ModeBox.Items | Where-Object { [string]$_.Tag -eq 'all' })[0]
+
+            $got = Read-RuleFromUi -Editor $ed
+            Assert-Equal $false $got.Ok 'no display ticked is refused'
+            Assert-True ($got.Problem -like '*Tick the displays*') 'and it says what to do'
+
+            $ed.DisplayChecks[0].IsChecked = $true
+            $ed.DisplayChecks[2].IsChecked = $true
+            $got = Read-RuleFromUi -Editor $ed
+            Assert-True $got.Ok 'two ticks make a desk'
+            Assert-Equal 'displays' ([string]$got.Rule['when']) 'of the displays kind'
+            Assert-Equal 'LG ULTRAGEAR|XG27AQDMGR' (@($got.Rule['displays']) -join '|') 'naming the ticked ones, the off one too'
+        }
+        finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'rules: a displays rule opens with its desk ticked, and a row names the desk' {
+    $rule = [ordered]@{ when = 'displays'; process = ''; minutes = 0; displays = @('ULTRAFINE', 'DELL U2720Q'); mode = 'all'; back = ''; enabled = $true }
+    $ui, $settings = New-RuleUi -Rules @($rule)
+    try {
+        Assert-Equal "ULTRAFINE, DELL U2720Q are connected$($script:UiArrow)All displays" (Get-RuleRowTitle -Rule $ui.Rules[0]) 'the row'
+        $ed = New-RuleEditorWindow -Rule $ui.Rules[0] -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false -Displays $script:DlgState
+        try {
+            Assert-Equal 'displays' ([string]$ed.WhenBox.SelectedItem.Tag) 'the condition'
+            $ticked = @($ed.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+            Assert-Equal 'LG ULTRAFINE|DELL U2720Q' ($ticked -join '|') 'the desk it names: the ULTRAFINE by its piece of a name, the DELL kept as a tick of its own'
+            Assert-True ([string]$ed.DisplayChecks[-1].Content -like 'DELL U2720Q*not connected*') 'and the DELL, which this desk has never seen, says so'
+        }
+        finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
+    }
+    finally { $ui.Window.Close() }
+}

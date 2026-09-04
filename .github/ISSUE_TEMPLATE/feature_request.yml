@@ -7,7 +7,7 @@ body:
       value: |
         A few things are deliberate non-goals and will be declined: an installer
         or a service, any dependency, and translating the interface. The reasons
-        are in [AGENTS.md](https://github.com/GangHack/ScreenDeck/blob/main/AGENTS.md).
+        are in [AGENTS.md](https://github.com/GangHack/DeskModes/blob/main/AGENTS.md).
 
   - type: textarea
     id: problem

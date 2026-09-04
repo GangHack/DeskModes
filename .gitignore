@@ -48,7 +48,7 @@ stats.html
 # The built release and its hash — tools\pack.ps1 makes them out of what is already in the
 # repository. Committing the archive would mean storing the contents twice, the second time in a
 # form that cannot be edited.
-ScreenDeck-*.zip*
+DeskModes-*.zip*
 
 # The release notes: the extract from CHANGELOG.md that pack.ps1 prepares for the release page.
 # The original is CHANGELOG.md itself.

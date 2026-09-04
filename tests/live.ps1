@@ -74,7 +74,7 @@ function Get-LastDoneLine {
 # A switch with a retry, and the retry here is not belt and braces.
 #
 # The refresh-rate watchdog in a live tray (Restore-BestModes) takes THE SAME named mutex
-# Local\ScreenDeckSwitch and holds it while it gathers state — by its own comment, about a second. It
+# Local\DeskModesSwitch and holds it while it gathers state — by its own comment, about a second. It
 # gets the DisplaySettingsChanged event from OUR switch, so the busy window opens right after every
 # successful step. A run that fires modes off with no pause lands in that window every time: the first
 # step goes through and all the rest get a skip. Verified 2026-08-26 — that is exactly what happened.
@@ -101,7 +101,7 @@ function Invoke-LiveSwitch {
     }
 
     Write-LiveCheck $false 'the switch got its turn' `
-        ("skipped $Attempts times - something holds Local\ScreenDeckSwitch far longer than the watchdog does")
+        ("skipped $Attempts times - something holds Local\DeskModesSwitch far longer than the watchdog does")
     return $null
 }
 
@@ -122,7 +122,7 @@ function Invoke-Cli {
 # --- the command-line smoke test: it changes nothing -------------------------
 
 Write-Host ''
-Write-Host 'ScreenDeck - live' -ForegroundColor Cyan
+Write-Host 'DeskModes - live' -ForegroundColor Cyan
 Write-Host ''
 Write-Host 'the command line (read-only)' -ForegroundColor White
 

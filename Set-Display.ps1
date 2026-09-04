@@ -17,12 +17,14 @@
     What to switch to, or what to report. Resolved in this order: an exact mode key
     ("solo:LG ULTRAGEAR", "combo:Work", "all"), a combination name from the
     settings, a display's short Monitor ID, then part of a display's name.
+    "back" is the mode that was left last, whoever switched away from it.
 
     These names report instead of switching:
       status      what the system shows right now (read-only, the default)
       modes       every mode key with its shortcut
       brightness  which displays answer over DDC/CI, at what level, and on which
                   picture preset
+      hdr         which displays can do HDR, and whether it is on right now
       audio       playback device names, for the "audio" setting
       stats       the diary: what, where and for how long
 
@@ -73,6 +75,12 @@ $ErrorActionPreference = 'Stop'
 
 function Resolve-ModeKey {
     param([string]$Text, $Modes)
+
+    # the mode before the current one - whatever was left last, by this tool, from anywhere
+    if ($Text -eq $script:BackHotkeyName) {
+        $Text = [string](Get-PreviousModeKey)
+        if (-not $Text) { throw 'Nothing to go back to yet - no mode has been left from this folder.' }
+    }
 
     # the exact key
     $hit = $Modes | Where-Object { $_.Key -eq $Text } | Select-Object -First 1
@@ -176,6 +184,27 @@ if ($Mode -eq 'brightness') {
     Write-Host '    "brightness": { "combo:Work": 80, "combo:Movie night": { "ULTRAFINE": 25 } }' -ForegroundColor DarkGray
     Write-Host 'The Preset column is a register and a number, and it goes in the same shape:' -ForegroundColor DarkGray
     Write-Host '    "picture": { "combo:Work": { "ULTRAFINE": "0x15:45" } }' -ForegroundColor DarkGray
+    return
+}
+
+if ($Mode -eq 'hdr') {
+    # What to expect before writing an "hdr" entry: a display that cannot do it is left alone by the
+    # switch, and the log says so - this is where to see it up front.
+    Write-Host ''
+    Write-Host 'HDR:' -ForegroundColor Cyan
+    $rows = @()
+    foreach ($t in @(Get-CcdTargets | Where-Object { $_.Active })) {
+        $hdr = Get-DisplayHdr -Target $t
+        $rows += [pscustomobject]@{
+            Display   = $t.Label
+            Supported = $(if (-not $hdr) { '?' } elseif ($hdr.Supported) { 'yes' } else { 'no' })
+            On        = $(if (-not $hdr) { '?' } elseif ($hdr.Enabled) { 'yes' } else { 'no' })
+        }
+    }
+    if ($rows.Count -eq 0) { Write-Host '  (no display is on)'; return }
+    $rows | Format-Table -AutoSize
+    Write-Host 'Put it into settings.json as part of a mode, for example:' -ForegroundColor DarkGray
+    Write-Host '    "hdr": { "combo:Game": true, "combo:Work": { "ULTRAGEAR": false } }' -ForegroundColor DarkGray
     return
 }
 

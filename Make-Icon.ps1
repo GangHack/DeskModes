@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Draws the ScreenDeck icon: white monitors on a blue tile.
+    Draws the DeskModes icon: white monitors on a blue tile.
 
 .DESCRIPTION
     Writes a real multi-size .ico (PNG inside, the Vista+ format) plus a preview

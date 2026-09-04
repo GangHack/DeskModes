@@ -412,18 +412,18 @@ Test-Case 'switch: a switch already in progress is skipped, not queued behind it
     # straight through, and holding it from the test itself is useless — it would be testing nothing. So a
     # separate thread holds it, and the synchronisation is on named events with a bounded wait: the test
     # has no right to hang, whatever the outcome of the grab.
-    $held = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestHeld')
-    $go = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestGo')
+    $held = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\DeskModesTestHeld')
+    $go = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\DeskModesTestGo')
     $holder = [powershell]::Create()
     [void]$holder.AddScript({
-        $m = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
+        $m = New-Object System.Threading.Mutex($false, 'Local\DeskModesSwitch')
         $got = $m.WaitOne(0)
         # We only signal on a successful grab: if a live tray has taken the mutex, the wait in the test
         # will expire, and the failure will be readable rather than mysterious.
         if ($got) {
-            $flag = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestHeld')
+            $flag = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\DeskModesTestHeld')
             [void]$flag.Set()
-            $wait = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\ScreenDeckTestGo')
+            $wait = New-Object System.Threading.EventWaitHandle($false, 'ManualReset', 'Local\DeskModesTestGo')
             [void]$wait.WaitOne(10000)
             $m.ReleaseMutex()
         }
@@ -531,7 +531,7 @@ Test-Case 'result: a display that did not come up is not a success, and is worth
 }
 
 Test-Case 'result: a busy mutex is a skip, and the one answer that clears by itself' {
-    # The refresh-rate watchdog holds Local\ScreenDeckSwitch for about a second after every switch,
+    # The refresh-rate watchdog holds Local\DeskModesSwitch for about a second after every switch,
     # including ours, so this is an ordinary answer on every automatic path.
     $r = New-SwitchResult -ModeKey 'all' -Outcome 'busy' -Message 'A switch is already in progress.'
     Assert-True $r.Skipped 'the command line exits 2 by this'
@@ -590,4 +590,39 @@ Test-Case 'switch: a mode with nothing to set on the bus does not go near it' {
 
     [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
     Assert-True (-not (($script:SwCalls -join ',') -match 'levels:')) 'nothing was asked of the monitors'
+}
+
+Test-Case 'switch: when none of the wanted displays comes up, the previous set is put back' {
+    # A black desk is the one failure a shortcut cannot mend: the person cannot see the menu to try again
+    # from. So the set that was on before the switch goes back on, and the switch is a refusal.
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    # The ASUS is asked for alone; it never attaches - Get-CcdOutput finds nothing for it.
+    function Get-CcdOutput { param([string]$DevicePath) return '' }
+
+    $threw = ''
+    try { [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet) } catch { $threw = $_.Exception.Message }
+
+    Assert-True ($threw -like '*previous set was put back*') 'the switch says what it did'
+    Assert-Equal 'topology:path-ug+path-uf' (@($script:SwCalls | Where-Object { $_ -like 'topology:*' })[-1]) 'and the two that were on are asked for again'
+    Assert-True (-not ($script:SwCalls -contains 'lastMode')) 'a mode that never came up is not remembered as the choice'
+}
+
+Test-Case 'switch: one display that came up is kept - a partial verdict, not a revert' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    # Only the ASUS stays silent; the two LGs answer as before.
+    function Get-CcdOutput {
+        param([string]$DevicePath)
+        if ($DevicePath -eq 'path-xg') { return '' }
+        $m = @($script:SwDesk) | Where-Object { $_.Id -eq $DevicePath } | Select-Object -First 1
+        return $(if ($m) { [string]$m.Output } else { '' })
+    }
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet
+
+    Assert-Equal 'partial' $r.Outcome 'the desk moved, one display did not follow'
+    Assert-True (-not ($script:SwCalls -match '^topology')) 'nothing was put back'
 }

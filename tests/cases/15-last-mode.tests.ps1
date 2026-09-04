@@ -107,3 +107,35 @@ Test-Case 'session: the stamp this machine gives is two parts, and the second is
     Assert-True ([int64]::TryParse($parts[1], [ref]$seconds)) 'whole seconds, comparable with slack'
     Assert-True (Test-SameSession -Saved $now) 'and it is our own session'
 }
+
+# --- the mode before this one -----------------------------------------------
+# "Back" is the answer to a switch that landed somewhere wrong: a key pressed blind. So the mode
+# being left has to be written down, and a repeat press of the same shortcut must not erase it.
+
+Test-Case 'previous: leaving a mode writes it down as the one to go back to' {
+    if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
+    Assert-Equal '' (Get-PreviousModeKey) 'nothing left yet'
+    Save-LastMode -Key 'combo:Work'
+    Assert-Equal '' (Get-PreviousModeKey) 'the first mode chosen was not left from anywhere'
+    Save-LastMode -Key 'solo:XG27AQDMGR'
+    Assert-Equal 'combo:Work' (Get-PreviousModeKey) 'the mode that was left'
+    Remove-Item $script:LastModeFile -Force
+}
+
+Test-Case 'previous: pressing the same shortcut again is not leaving' {
+    if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
+    Save-LastMode -Key 'combo:Work'
+    Save-LastMode -Key 'solo:XG27AQDMGR'
+    Save-LastMode -Key 'solo:XG27AQDMGR'
+    Assert-Equal 'combo:Work' (Get-PreviousModeKey) 'still the mode before the current one'
+    Remove-Item $script:LastModeFile -Force
+}
+
+Test-Case 'previous: an automatic switch re-stamps the session and keeps the way back' {
+    if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
+    '{"key":"solo:XG27AQDMGR","previous":"combo:Work","session":"1/2","when":"2026-08-30T09:00:00"}' |
+        Set-Content -Path $script:LastModeFile -Encoding UTF8
+    Update-LastModeSession
+    Assert-Equal 'combo:Work' (Get-PreviousModeKey) 'the way back survived the re-stamp'
+    Remove-Item $script:LastModeFile -Force
+}

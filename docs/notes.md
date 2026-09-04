@@ -1,4 +1,4 @@
-﻿# ScreenDeck — engineering notes
+﻿# DeskModes — engineering notes
 
 This is an **engineering diary**, not documentation. The description of the project, its
 installation and its settings are in the [README](../README.md); what is here is what has no
@@ -134,7 +134,7 @@ seconds of waiting on a path that had failed anyway.
 If Windows rejects the configuration, **nothing** changes — `SetDisplayConfig` is called with
 `SDC_VALIDATE` first. There is no way to be left without a picture.
 
-**One switch at a time** (the mutex `Local\ScreenDeckSwitch`). Without it, two quick presses
+**One switch at a time** (the mutex `Local\DeskModesSwitch`). Without it, two quick presses
 started two processes that cut across each other — one was switching a monitor on while the other
 was changing its mode. In the log that looked like random refusals. Now the second press is
 dropped with a `skip:` entry.
@@ -1317,7 +1317,7 @@ remainder. There is now a case named after exactly this.
 ### A mutex belongs to a thread, not to an object
 
 The case "a second quick press goes down the skip branch" I first wrote like this: take
-`Local\ScreenDeckSwitch` right in the test and call the switch. It is green — and it tests nothing. A
+`Local\DeskModesSwitch` right in the test and call the switch. It is green — and it tests nothing. A
 Win32 mutex is **reentrant for its own thread**: `WaitOne(0)` from the same thread goes straight through,
 and the switch calmly takes it a second time and works as usual. I worked it out from `$r.Message` turning
 out to be the summary of a successful switch instead of "A switch is already in progress.".
@@ -1351,7 +1351,7 @@ membership, the primary monitor, the layout's X/Y and the refresh rates, then th
 through on the second attempt; on the first it found what runs like this exist for.
 
 **The refresh-rate watchdog takes the same mutex as a switch.** `Restore-BestModes` starts with
-`Local\ScreenDeckSwitch` and holds it while it gathers state: a full `Get-DisplayState`, `Get-CurrentMode`
+`Local\DeskModesSwitch` and holds it while it gathers state: a full `Get-DisplayState`, `Get-CurrentMode`
 for every monitor and **two** visits to `Test-FullscreenApp` — by its own comment in the code, about a
 second. And what starts it is `DisplaySettingsChanged`, that is, **our own** switch. The busy window opens
 right after every successful step.
@@ -1824,7 +1824,7 @@ transitions on every desk that has never seen the Settings window.
 ### A rule that fired into a busy mutex lost its turn
 
 `Invoke-RulesCheck` claimed ownership of the desk before calling `Invoke-Mode`, and never looked at what
-came back. A busy `Local\ScreenDeckSwitch` answers `Skipped`, and that is an ordinary answer here rather
+came back. A busy `Local\DeskModesSwitch` answers `Skipped`, and that is an ordinary answer here rather
 than a breakage: a rule fires on the very events the refresh-rate watchdog wakes on, and that one holds the
 mutex for about a second. The reapply path was taught this on 30 August (`$script:LastSwitchWent`); the
 rules were not.
@@ -1988,7 +1988,7 @@ into the same one, and both callers now read two named fields:
 * **`Ok`** — the desk **is** in the requested mode now. Nothing else means that. A switch that came to
   nothing ran to the end, has a summary, has a duration in the log, and is not a success.
 * **`Retry`** — asking again in a moment can change this answer. True for a busy mutex (the refresh-rate
-  watchdog holds `Local\ScreenDeckSwitch` for about a second after every switch, ours included) and for a
+  watchdog holds `Local\DeskModesSwitch` for about a second after every switch, ours included) and for a
   display that has not attached yet. False for Windows turning the configuration down and for a mode that
   is no longer in the settings.
 
@@ -2127,7 +2127,7 @@ the place to look for the next one is wherever a return value is read in pieces.
 The first CI run went green with the analyzer actually installed — 1.25.0, clean, 1099 assertions — so
 the third gate, which is skipped here for want of the module, finally had a verdict rather than a
 warning. That left the release itself untested, so it was built by hand the way the tag will build it:
-`pack.ps1 -ExpectVersion 1.0.0`, 17 files, 189 KB, one `ScreenDeck` folder inside, the CHANGELOG section
+`pack.ps1 -ExpectVersion 1.0.0`, 17 files, 189 KB, one `DeskModes` folder inside, the CHANGELOG section
 pulled out whole. Unpacked into a folder of its own, `.ps1` still carried the BOM and `.cmd` still did
 not, and `Set-Display.ps1 status` printed the desk.
 
@@ -2418,7 +2418,7 @@ changed), and it is what decided the design. Measured 2026-09-03 on all three mo
 
 **The conclusion that shaped the feature: the names are not the setting.** Two numbers wearing one name and
 looking different means a table of "6 = Reader" would be wrong on the next monitor and sometimes on this
-one. So ScreenDeck learns nothing about names. `Remember` reads the number the monitor is holding at that
+one. So DeskModes learns nothing about names. `Remember` reads the number the monitor is holding at that
 moment, keeps it with the register that answered — `"0x15:45"` — and writes exactly that back. Writing 45
 gave Yegor back exactly his picture; nothing in the code knows what to call it.
 
@@ -2750,3 +2750,106 @@ Two decisions inside it:
 them, and a diary that holds less about a person is the better diary — that is the file's whole
 argument for existing at all. Days written before today keep their two values until each is next
 saved; `ConvertTo-ActivityDay` stopped carrying them over, so the first save drops them.
+
+## The name, and five things the neighbours had (2026-09-05)
+
+The program is **DeskModes** from today. ScreenDeck turned out to be somebody else's Windows
+application already - a virtual Stream Deck for Bitfocus Companion, on GitHub, on the Elgato
+marketplace, on SourceForge - and every search for the word landed on Elgato's hardware besides.
+Nothing has been released, so the rename cost 116 occurrences in 27 files and nothing else; inside
+the repository there is not one absolute path, which is why it was an hour and not an evening.
+Outside it: the GitHub repository, the folder on disk and the startup shortcut are Yegor's to
+rename, and `Test-RunAtStartup` reads the old `.lnk` as "off" until the box is ticked again.
+
+The same day, a pass over what the free neighbours do that this did not - Monarch, Display Profile
+Manager, PowerToys' Power Display - and five things came out of it. Each one is small; together they
+are the difference between a tool for this desk and a tool for a desk it has never seen.
+
+### Nothing came up: put the previous set back
+
+Monarch's headline feature is a confirmation dialog with a countdown - change the layout, and if
+nobody clicks within N seconds it reverts. For a tool driven by shortcuts a dialog on every press is
+the wrong shape, but the fear behind it is right: a desk that went dark is the one failure a shortcut
+cannot mend, because there is no menu to try again from.
+
+So the switch does it itself, and only in the one case where it can be sure. `Set-WantedModes`
+already reports which of the wanted displays never got an output name within eight seconds; when
+that list is EVERY wanted display, and the topology really moved, `Switch-DisplayMode` asks
+`Set-CcdTopology` for the set that was on before and throws the refusal. Not on a repeat press
+(nothing was put out, so there is nothing to put back), and not when one display came up (a
+partial verdict names the one that did not, as before). The set goes back in the desk's own order,
+not the sorted copy the comparison uses - the first test caught exactly that.
+
+### Back, blind
+
+The other half of the same fear: the picture is there but wrong, and a person wants the mode they
+just left without reading anything. `last-mode.json` now carries `previous` beside `key`;
+`Save-LastMode` writes the mode being left into it, and a repeat press of the same shortcut leaves
+it alone - otherwise "back" from a repeat press would go nowhere. `Get-PreviousModeKey` is the one
+question; the tray menu item is named after the answer ("Back to Work"), the command line takes
+`back`, and the shortcut for it is set on the Behavior page.
+
+The name `back` travels in the `hotkeys` map beside the mode keys, because that is the one map the
+tray registers shortcuts from - and it is the first entry of that map that is not a mode. Two
+readers had to learn to step over it (`Get-DialogModes`, `Update-ModesPanel`), or the Modes page
+grew an orphan row called "back". AGENTS.md has the trap.
+
+### The desk as a condition
+
+The biggest audience this program does not have is the laptop with a dock: two monitors at home,
+one at the office, none on the train, and Windows rearranging the desk at every stop. The rules
+had "a program is running" and "nobody is at the computer"; now they have "these displays are
+connected". The decision is one pure function, `Test-DisplaySetMatch`, and one decision inside it
+was argued over: **exactly** these, not **at least** these. "At least" makes the office rule -
+one monitor - fire at home as well, where that monitor is also there; first-match ordering could
+rescue it, but a rule whose meaning depends on its position in a list is a rule somebody will
+break by dragging. Connected and not on, because a monitor put out at its own button is still part
+of the desk, and it is the set of the desk that says where the computer is standing. Each display
+may answer for one pattern only, or `["LG", "ULTRAGEAR"]` against one LG and one DELL would count
+two matches and say yes.
+
+The facts the tray gathers gained `Connected` (label and Monitor ID per display), out of the state
+cache and never a fresh query: the check runs every fifteen seconds, and the cache was refreshed by
+the very event a plug raises. The ticks in the rule editor come from the roster, so the display
+that is off right now - the one the rule is usually about - can be ticked.
+
+### The first minute
+
+Two things every neighbour does that lower the first minute to a click. Display Profile Manager
+and PowerToys both have "identify": a badge on each display saying which is which, and three cards
+that all begin with LG needed it here too. It is a plain WPF window per display - dark plate, light
+text, topmost, no activation - closed by a **WinForms** timer, because the tray runs a WinForms
+message loop and that is the loop this timer is pumped by wherever the badges were asked for from.
+Fixed size, centred by arithmetic: a window that measures itself after `Show()` has a frame at
+(0, 0) first, on the wrong display.
+
+And the set-up itself: **As Windows has it** on Your desk reads `Get-CcdSourcePositions`, orders
+the cards by X (Y for a tie) and stars whoever is primary; a new combination opens with the
+displays that are on already ticked and the taskbar chosen. Both are one function each over the
+state, tested with a shadowed positions call. That test taught a lesson worth its own line in
+AGENTS.md: a fake declared inside a `Test-Case` block that returns `$positions` gets the CALLER's
+`$positions` - the empty one `Invoke-DeskRead` had just declared - because PowerShell resolves a
+name up the call scopes and the caller is nearer than the test. The fake reads `$script:` now.
+
+### HDR
+
+The one row of the comparison where Display Profile Manager was ahead. The diary already held the
+fact that HDR survives a switch (2026-08-11), which is why the native side had deliberately not
+declared it; it is declared now, not to restore HDR but to let a mode WANT it one way - on for the
+game, off for the spreadsheet. `DisplayConfigGetDeviceInfo` type 9 answers with a bitfield (bit 0
+supported, bit 1 on) and `DisplayConfigSetDeviceInfo` type 10 takes bit 0 as "turn it on"; both are
+addressed by the adapter LUID and target id, which `Get-CcdTargets` now carries as `Adapter` and
+`TargetId`. The LUID travels whole because PowerShell hands back a copy of a nested struct -
+`$h.adapterId.Low = x` assigns into nothing, and `Get-CcdTargets` had already learnt that.
+
+`Set-ModeHdr` reads before it writes: the toggle blanks the screen for a moment, and a display
+already where the mode wants it must not blink for nothing. A display that cannot do it is left
+alone with a line in the log; `.\Set-Display.ps1 hdr` says up front which of yours can. Read-only
+probe on this desk, with only the ASUS on: `supported=True on=False`, answered in under a
+millisecond. The write path is exercised by the tests through a shadowed `Set-DisplayHdr` and has
+not been run against a real display yet - that is a line for `tests/live.ps1`, and for the first
+tester with an HDR monitor.
+
+A collision worth a sentence: the C# constant `SET_ADVANCED_COLOR_STATE` and a struct of the same
+name cannot share the class, and `Add-Type` says so only at test time. The struct is
+`ADVANCED_COLOR_STATE`.

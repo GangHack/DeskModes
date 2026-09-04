@@ -41,8 +41,8 @@ $ErrorActionPreference = 'Stop'
 # The engine is needed for one thing: the map from an output (\\.\DISPLAY2) to a name a person knows.
 # Loading it writes to the log, and this run is nobody's business in last-run.log — the tests point the
 # log elsewhere the same way, and for the same reason.
-if (-not $env:SCREENDECK_LOG_FILE) {
-    $env:SCREENDECK_LOG_FILE = Join-Path ([IO.Path]::GetTempPath()) 'screendeck-probe.log'
+if (-not $env:DESKMODES_LOG_FILE) {
+    $env:DESKMODES_LOG_FILE = Join-Path ([IO.Path]::GetTempPath()) 'deskmodes-probe.log'
 }
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'DisplayCore.ps1')
 

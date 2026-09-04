@@ -79,8 +79,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $zip = Get-ChildItem -Path 'ScreenDeck-*.zip' | Select-Object -First 1
+          $zip = Get-ChildItem -Path 'DeskModes-*.zip' | Select-Object -First 1
           gh release create $env:GITHUB_REF_NAME --verify-tag `
             $zip.FullName "$($zip.FullName).sha256" `
-            --title "ScreenDeck $($env:GITHUB_REF_NAME -replace '^v', '')" `
+            --title "DeskModes $($env:GITHUB_REF_NAME -replace '^v', '')" `
             --notes-file release-notes.md

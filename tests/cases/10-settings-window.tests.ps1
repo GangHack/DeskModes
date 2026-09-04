@@ -830,3 +830,109 @@ Test-Case 'dialog: asking what would be saved does not write "rejected save" int
     }
     finally { $ui.Window.Close() }
 }
+
+# --- the way-back shortcut and the desk as Windows has it --------------------
+
+Test-Case 'dialog: the way-back shortcut is set on the Behavior page and saved beside the modes' {
+    $settings = Get-DefaultSettings
+    $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
+    $settings.hotkeys[$script:BackHotkeyName] = 'Ctrl+Alt+F9'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 'Ctrl+Alt+F9' $ui.BackHotkeyBox.Text 'shown in its own field'
+        Assert-True (-not $ui.Hotkeys.Contains($script:BackHotkeyName)) 'and not in the map of modes'
+        $rows = @($ui.ModesPanel.Children | Where-Object { $_.Tag -and [string]$_.Tag -eq $script:BackHotkeyName })
+        Assert-Equal 0 $rows.Count 'so there is no orphan row called back'
+
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+        Assert-True $got.Ok 'saved'
+        Assert-Equal 'Ctrl+Alt+F9' ([string]$got.Settings.hotkeys[$script:BackHotkeyName]) 'under its own name in the file'
+        Assert-Equal 'Ctrl+Alt+F5' ([string]$got.Settings.hotkeys['all']) 'next to the modes'
+
+        # The same key as a mode is the same refusal a duplicate between two modes gets.
+        $ui.BackHotkeyBox.Text = 'Ctrl+Alt+F5'
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+        Assert-Equal $false $got.Ok 'refused'
+        Assert-True ($got.Problem -like '*assigned twice*') 'with words'
+
+        # Cleared, it leaves the file.
+        $ui.BackHotkeyBox.Text = $script:NoHotkeyText
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+        Assert-True (-not $got.Settings.hotkeys.Contains($script:BackHotkeyName)) 'gone'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: the mode list never grows a row for the way back' {
+    $settings = Get-DefaultSettings
+    $settings.hotkeys[$script:BackHotkeyName] = 'Ctrl+Alt+F9'
+    $modes = @(Get-DialogModes -State $script:DlgState -Settings $settings)
+    Assert-Equal 0 @($modes | Where-Object { $_.Kind -eq 'orphan' }).Count 'no orphan for it'
+}
+
+Test-Case 'desk: as Windows has it orders the cards by position and stars the taskbar display' {
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUS1234' 'path-xg' $false)
+    )
+    $state[1].Primary = $true
+    # The UltraFine stands left of the UltraGear in Windows; the ASUS is off and has no position.
+    $positions = @{ 'path-ug' = [pscustomobject]@{ X = 2560; Y = 0 }; 'path-uf' = [pscustomobject]@{ X = 0; Y = 200 } }
+    $read = Get-DeskReadOrder -State $state -Positions $positions
+    Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($read.Order) 'left to right as Windows has them'
+    Assert-Equal 'LG ULTRAFINE' $read.Primary 'and the one with the taskbar'
+
+    $settings = Get-DefaultSettings
+    $settings.layout = @('XG27AQDMGR', 'LG ULTRAGEAR', 'LG ULTRAFINE')
+    $settings.primary = 'ULTRAGEAR'
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        # Under $script: on purpose: the fake is called from inside Invoke-DeskRead, whose own
+        # (empty) $positions is the nearest one a plain name would find.
+        $script:TestReadPositions = $positions
+        function Get-CcdSourcePositions { return $script:TestReadPositions }
+        Invoke-DeskRead -Ui $ui
+        $got = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR', 'XG27AQDMGR') @($got.layout) 'the two that are on lead, the off one keeps its card behind them'
+        Assert-Equal 'LG ULTRAFINE' ([string]$got.primary) 'and the star moved'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a new combination opens on the displays that are on, with the taskbar chosen' {
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf' $false)
+    )
+    $state[0].Primary = $true
+    $template = New-DeskTemplate -State $state
+    Assert-Equal @('LG ULTRAGEAR') @($template.Patterns) 'only what is on'
+    Assert-Equal 'LG ULTRAGEAR' $template.Primary 'and its taskbar'
+    Assert-Equal '' $template.Name 'no name yet - that is the one thing a person has to type'
+
+    $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $state -Dark $false -Template $template
+    try {
+        Assert-Equal 'New combination' $ed.Window.FindName('HeadTitle').Text 'still a new one'
+        $ticked = @($ed.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+        Assert-Equal @('LG ULTRAGEAR') $ticked 'the display that is on is ticked'
+        Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem) 'and chosen for the taskbar'
+    }
+    finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+}
+
+Test-Case 'badges: a badge names the display and says what it shows' {
+    $m = New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug'
+    $m.Primary = $true
+    $text = Get-BadgeText -Display $m
+    Assert-Equal 'LG ULTRAGEAR' $text.Title 'the name, large'
+    Assert-Equal ('GSM5BB3' + $script:UiDot + '2560 x 1440 @ 144 Hz' + $script:UiDot + 'taskbar') $text.Line 'the ID, the mode and the taskbar under it'
+
+    $win = New-DisplayBadge -Display $m -Rect ([pscustomobject]@{ Left = 1000; Top = 0; Right = 3560; Bottom = 1440 })
+    try {
+        Assert-Equal 2050 ([int]$win.Left) 'centred on that screen, not at the origin'
+        Assert-True $win.Topmost 'on top of whatever is there'
+        Assert-True (-not $win.ShowActivated) 'and it takes no focus from what a person is doing'
+    }
+    finally { $win.Close() }
+}

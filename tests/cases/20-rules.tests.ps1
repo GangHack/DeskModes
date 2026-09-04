@@ -8,13 +8,70 @@ Write-Host 'rules' -ForegroundColor White
 function New-TestRule {
     param([string]$When = 'process', [string]$Process = '', [int]$Minutes = 0,
           [string]$Mode = 'solo:A', [string]$Back = '', [bool]$Enabled = $true)
-    return [ordered]@{ when = $When; process = $Process; minutes = $Minutes
+    return [ordered]@{ when = $When; process = $Process; minutes = $Minutes; displays = @()
                        mode = $Mode; back = $Back; enabled = $Enabled }
 }
 
 function New-TestFacts {
-    param($Processes = @(), [int]$IdleSeconds = 0)
-    return [pscustomobject]@{ Processes = @($Processes); IdleSeconds = $IdleSeconds }
+    param($Processes = @(), [int]$IdleSeconds = 0, $Connected = @())
+    return [pscustomobject]@{ Processes = @($Processes); IdleSeconds = $IdleSeconds; Connected = @($Connected) }
+}
+
+# The desk as the tray reports it to the rules: a name and a Monitor ID per connected display.
+function New-TestDesk {
+    param([string[]]$Labels)
+    return @($Labels | ForEach-Object { [pscustomobject]@{ Label = $_; ShortId = 'ID-' + $_ } })
+}
+
+Test-Case 'rule match: the connected displays are exactly the ones named' {
+    $rule = New-TestRule -When 'displays'
+    $rule.displays = @('DELL', 'ULTRAGEAR')
+    $facts = New-TestFacts -Connected (New-TestDesk 'DELL U2720Q', 'LG ULTRAGEAR')
+    Assert-True (Test-RuleMatch -Rule $rule -Facts $facts) 'the desk at home'
+    $office = New-TestFacts -Connected (New-TestDesk 'DELL U2720Q')
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts $office) 'one of the two is missing'
+    $more = New-TestFacts -Connected (New-TestDesk 'DELL U2720Q', 'LG ULTRAGEAR', 'XG27AQDMGR')
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts $more) 'and a third display is another desk'
+}
+
+Test-Case 'rule match: a one-display rule does not fire while that display has company' {
+    # "At least" would make the office rule fire at home too - the office monitor is there as well.
+    $rule = New-TestRule -When 'displays'
+    $rule.displays = @('DELL')
+    Assert-True (Test-RuleMatch -Rule $rule -Facts (New-TestFacts -Connected (New-TestDesk 'DELL U2720Q'))) 'alone: yes'
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts -Connected (New-TestDesk 'DELL U2720Q', 'LG ULTRAGEAR'))) 'with a neighbour: no'
+}
+
+Test-Case 'rule match: two patterns cannot share one display' {
+    $rule = New-TestRule -When 'displays'
+    $rule.displays = @('LG', 'ULTRAGEAR')
+    # Both patterns fit the one LG; the DELL fits neither. Counting alone would say yes.
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts -Connected (New-TestDesk 'LG ULTRAGEAR', 'DELL U2720Q'))) 'not this desk'
+}
+
+Test-Case 'rule match: a displays rule that names nothing never fires' {
+    $rule = New-TestRule -When 'displays'
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts -Connected @())) 'an empty set is not a desk'
+}
+
+Test-Case 'rule: the displays are part of what makes a rule itself' {
+    $atHome = New-TestRule -When 'displays' -Mode 'combo:Home'
+    $atHome.displays = @('DELL', 'ULTRAGEAR')
+    $office = New-TestRule -When 'displays' -Mode 'combo:Home'
+    $office.displays = @('DELL')
+    Assert-True ((Get-RuleSignature -Rule $atHome) -ne (Get-RuleSignature -Rule $office)) 'two desks, two rules'
+    Assert-Equal 'DELL, ULTRAGEAR are connected' (Format-RuleReason -Rule $atHome) 'and the log names the desk'
+    Assert-Equal 'DELL is the only display' (Format-RuleReason -Rule $office) 'in words, for one display too'
+}
+
+Test-Case 'rule: a rule read from the file always carries a displays list' {
+    $rules = @(ConvertTo-RuleSettings @(
+        [pscustomobject]@{ when = 'process'; process = 'cs2'; mode = 'all' }
+        [pscustomobject]@{ when = 'displays'; displays = @('DELL', ''); mode = 'combo:Home' }
+    ))
+    Assert-Equal 0 @($rules[0].displays).Count 'empty for a program rule'
+    Assert-Equal 1 @($rules[1].displays).Count 'and the blank name is dropped'
+    Assert-Equal 'DELL' ([string]$rules[1].displays[0]) 'leaving the real one'
 }
 
 Test-Case 'rule match: a running process' {

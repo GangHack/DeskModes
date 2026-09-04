@@ -35,7 +35,7 @@ $root = Split-Path -Parent $PSScriptRoot
 # The same answer DisplayCore.ps1 gives itself (see $script:LogFile there): the environment variable wins,
 # and the tests set it. Reading last-run.log unconditionally meant that whoever ran this after a test run
 # was handed the wrong file with no hint of it.
-$logFile = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FILE } else { Join-Path $root 'last-run.log' })
+$logFile = $(if ($env:DESKMODES_LOG_FILE) { $env:DESKMODES_LOG_FILE } else { Join-Path $root 'last-run.log' })
 
 # And its predecessor. The log rotates at half a megabyte, and the rotation renames the file to
 # .old — so "the last twenty-four hours" straddles the seam whenever it happens to have just rotated, and

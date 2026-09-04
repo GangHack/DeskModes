@@ -541,7 +541,7 @@ function New-ActivityHtml {
     $dim    = $(if ($Dark) { '#9a9a9a' } else { '#6a6a6a' })
     $track  = $(if ($Dark) { '#333333' } else { '#ebebeb' })
 
-    $title = 'ScreenDeck - diary'
+    $title = 'DeskModes - diary'
     $range = '{0} .. {1}, {2} day(s)' -f $Report.From, $Report.To, $Report.DaysRecorded
 
     return @"

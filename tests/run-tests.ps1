@@ -37,9 +37,9 @@ $root = Split-Path -Parent $PSScriptRoot
 # The log is redirected BEFORE the dot-source: DisplayCore writes into it while it is being loaded
 # (log rotation, type compilation), and replacing $script:LogFile afterwards was too late — those
 # lines went into the real last-run.log.
-$script:LogDir = Join-Path $env:TEMP ('screendeck-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$script:LogDir = Join-Path $env:TEMP ('deskmodes-tests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $script:LogDir | Out-Null
-$env:SCREENDECK_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
+$env:DESKMODES_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 
 # The framework comes before the code under test: Test-Case and the assertions are needed by
 # everybody, and the dot-source puts them in THIS file's scope, where the counters and $Only live.
@@ -75,7 +75,7 @@ $script:ActivityFile = Join-Path $script:TestDir 'activity.json'
 . (Join-Path $PSScriptRoot 'fakes.ps1')
 
 Write-Host ''
-Write-Host 'ScreenDeck - tests' -ForegroundColor Cyan
+Write-Host 'DeskModes - tests' -ForegroundColor Cyan
 Write-Host ''
 
 # --- the cases --------------------------------------------------------------
@@ -96,7 +96,7 @@ foreach ($case in $cases) { . $case.FullName }
 # --- the total --------------------------------------------------------------
 
 Remove-Item -LiteralPath $script:TestDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item Env:\SCREENDECK_LOG_FILE -ErrorAction SilentlyContinue
+Remove-Item Env:\DESKMODES_LOG_FILE -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($script:Failed -eq 0) {

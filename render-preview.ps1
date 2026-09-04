@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Renders every window of ScreenDeck to PNG, without showing one on the desk.
+    Renders every window of DeskModes to PNG, without showing one on the desk.
 
 .DESCRIPTION
     A development tool: it builds the windows with the same New-SettingsWindow,
@@ -61,8 +61,8 @@ $ErrorActionPreference = 'Stop'
 
 # The log goes off to the side: this is a development tool, and its traces have no
 # business in the record of real switches.
-if (-not $env:SCREENDECK_LOG_FILE) {
-    $env:SCREENDECK_LOG_FILE = Join-Path $env:TEMP 'screendeck-render-preview.log'
+if (-not $env:DESKMODES_LOG_FILE) {
+    $env:DESKMODES_LOG_FILE = Join-Path $env:TEMP 'deskmodes-render-preview.log'
 }
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
@@ -79,7 +79,7 @@ $script:KeepWindowsInWorkArea = $false
 # particular desk happened to leave it: ui-state.json is a note about one machine, and the
 # pictures in README must not be a picture of the author's window. Pointed at a file in TEMP
 # rather than switched off, so Save-UiState on close still has somewhere harmless to write.
-$script:UiStateFile = Join-Path $env:TEMP 'screendeck-render-preview-ui-state.json'
+$script:UiStateFile = Join-Path $env:TEMP 'deskmodes-render-preview-ui-state.json'
 if (Test-Path $script:UiStateFile) { Remove-Item $script:UiStateFile -Force }
 
 function New-FakeState {

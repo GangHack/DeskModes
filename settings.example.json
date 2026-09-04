@@ -1,4 +1,4 @@
-{
+﻿{
     "hotkeys": {
         "solo:DELL U2720Q": "Ctrl+Alt+F1",
         "solo:LG ULTRAGEAR": "Ctrl+Alt+F2",
@@ -32,7 +32,8 @@
     },
     "rules": [
         { "when": "process", "process": "cs2", "mode": "solo:LG ULTRAGEAR" },
-        { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work", "enabled": false }
+        { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work", "enabled": false },
+        { "when": "displays", "displays": ["DELL U2720Q", "LG ULTRAGEAR"], "mode": "combo:Work", "enabled": false }
     ],
     "hooks": {
         "combo:Movie night": { "after": "taskkill /im slack.exe" },
@@ -43,6 +44,9 @@
         "combo:Movie night": { "DELL": 25 }
     },
     "contrast": {},
+    "hdr": {
+        "solo:LG ULTRAGEAR": true
+    },
     "stats": false,
     "audio": {
         "combo:Movie night": "DELL"

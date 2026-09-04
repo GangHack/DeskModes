@@ -1,6 +1,6 @@
 ﻿# AGENTS.md
 
-House rules for ScreenDeck. The README tells a user what the tool does; this file
+House rules for DeskModes. The README tells a user what the tool does; this file
 tells whoever edits it how things are done here and what people trip over.
 
 Read it before the first edit. Every rule below cost someone an evening.
@@ -190,7 +190,7 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   hotplug. Identity is the device path (`Id`) or the short Monitor ID.
 - **`Set-StrictMode` was tried on 2026-08-24 and rejected.** Both `2.0` and `Latest`
   break settings parsing, which is built on "the key may be missing". Do not try again.
-- **`Local\ScreenDeckSwitch` is taken by two things, not one.** `Switch-DisplayMode` holds
+- **`Local\DeskModesSwitch` is taken by two things, not one.** `Switch-DisplayMode` holds
   it for a whole switch, and the refresh-rate watchdog `Restore-BestModes` holds it for
   about a second while it collects state — and what starts the watchdog is
   `DisplaySettingsChanged`, i.e. *our own* switch. So a running tray makes the mutex busy
@@ -233,6 +233,22 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   `Get-RuleDecision` finds the holder by; the index is only where to look first. The list is
   edited by hand and from the Settings window while a rule is holding the desk, and deleting
   a rule above the holder renumbers everything below it.
+- **`"back"` in `hotkeys` is not a mode.** It is the one entry of that map that names no mode: the
+  shortcut that returns to the mode before the current one (`Get-PreviousModeKey`,
+  `$script:BackHotkeyName`). Everything that turns a hotkey key into a row, an orphan row or a title
+  steps over it — `Get-DialogModes`, `Update-ModesPanel`, and the Behavior page holds its field.
+  A new reader of that map that forgets to will show a mode called "back" that cannot be opened.
+- **A fake declared inside a `Test-Case` reads the CALLER's variables first.** PowerShell resolves a
+  name up the call scopes, and the nearest scope to a shadowed `Get-CcdSourcePositions` is the
+  function that called it. A test that wrote `function Get-X { return $positions }` got the empty
+  `$positions` that `Invoke-DeskRead` had just declared, not its own. Put what a fake hands back
+  under `$script:` (see the desk-read case in `tests/cases/10-settings-window.tests.ps1`).
+- **HDR goes through `DisplayConfigGetDeviceInfo` 9 / `DisplayConfigSetDeviceInfo` 10**, per target,
+  addressed by the adapter LUID and target id that `Get-CcdTargets` now carries (`Adapter`,
+  `TargetId`). The LUID travels as a whole struct on purpose: PowerShell hands back a COPY of a
+  nested struct, so `$h.adapterId.Low = x` assigns into nothing. HDR itself survives a switch
+  (measured 2026-08-11), so `Set-ModeHdr` only ever acts on a mode that names it, and reads before
+  it writes — the toggle blanks the screen.
 
 ## Tests
 
@@ -262,7 +278,7 @@ Layout:
 **No test touches the real displays, `settings.json`, the log or the diary.** That is
 held up by two things, and a new test must not break either:
 
-- `$env:SCREENDECK_LOG_FILE` is set to a temp file *before* `DisplayCore.ps1` is dot-sourced.
+- `$env:DESKMODES_LOG_FILE` is set to a temp file *before* `DisplayCore.ps1` is dot-sourced.
   It has to be before: log rotation and type compilation write to it during load, and
   reassigning `$script:LogFile` afterwards is too late.
 - `$script:SettingsFile`, `$script:WindowStateFile`, `$script:LastModeFile`,
@@ -276,7 +292,7 @@ failure prints.
 **The orchestrator tests work by shadowing functions.** `Switch-DisplayMode` reaches
 hardware only through named functions (`Get-DisplayState`, `Set-CcdFullConfig`,
 `Set-CcdTopology`, `Set-CcdLayout`, `Set-DisplayMode`, `Set-BestModeFor`,
-`Wait-ForTopology`) and disk only through `Save-LastMode`, `Save-AppliedModes`,
+`Wait-ForTopology`, `Set-MonitorLevels`, `Set-ModeHdr`) and disk only through `Save-LastMode`, `Save-AppliedModes`,
 `Save-WindowLayout` and `Invoke-ModeHook`. PowerShell resolves functions dynamically up
 the call scopes, so declaring `function Set-CcdFullConfig { … }` *inside* a `Test-Case`
 block overrides the real one for everything that block calls, and dies with the block.
@@ -313,7 +329,7 @@ value of this project, and no fake reproduces them.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
   `display-modes.json`, `known-displays.json`, `window-state.json`, `ui-state.json`,
   `activity.json`, `stats.html` and `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
-  `ScreenDeck-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
+  `DeskModes-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
   three out of what is already committed. The screenshots under `docs/images/` are the
   exception that is *not* generated-and-ignored: they are committed, because README needs
   them and GitHub cannot run a renderer.

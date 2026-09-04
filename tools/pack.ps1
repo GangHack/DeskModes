@@ -7,7 +7,7 @@
     house rules stay in the repository: whoever came here to switch monitors does not need them,
     and 150 kilobytes of engineering notes in the tool's folder only get in the way.
 
-        .\tools\pack.ps1                        ScreenDeck-<version>.zip next to the root
+        .\tools\pack.ps1                        DeskModes-<version>.zip next to the root
         .\tools\pack.ps1 -OutDir C:\out         put it somewhere else
         .\tools\pack.ps1 -NotesOut notes.md     also pull out the CHANGELOG section
         .\tools\pack.ps1 -ExpectVersion 1.0.0   refuse if the code says another version
@@ -152,7 +152,7 @@ if ($missing.Count -gt 0) {
 # We pack out of the working tree rather than through git archive: the repository holds LF, and CRLF
 # is put on by .gitattributes at checkout. An archive with LF would break the second gate for anyone
 # who runs check.ps1 out of the unpacked folder.
-$zipName = "ScreenDeck-$version.zip"
+$zipName = "DeskModes-$version.zip"
 $zipPath = Join-Path $OutDir $zipName
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
@@ -164,17 +164,17 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.IO.Compression
 
 Write-Host ''
-Write-Host "ScreenDeck - pack $version" -ForegroundColor Cyan
+Write-Host "DeskModes - pack $version" -ForegroundColor Cyan
 Write-Host ''
 
-# Every entry goes under a shared ScreenDeck/ folder, so that unpacking into any directory gives one
+# Every entry goes under a shared DeskModes/ folder, so that unpacking into any directory gives one
 # folder rather than scattering two dozen files over somebody else's.
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
     foreach ($relative in $manifest) {
         $full = Join-Path $root ($relative -replace '/', '\')
         [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $zip, $full, "ScreenDeck/$relative", [System.IO.Compression.CompressionLevel]::Optimal)
+            $zip, $full, "DeskModes/$relative", [System.IO.Compression.CompressionLevel]::Optimal)
         Write-Host "  +  $relative" -ForegroundColor DarkGray
     }
 }

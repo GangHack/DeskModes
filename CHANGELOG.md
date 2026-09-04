@@ -4,10 +4,59 @@ What changed, and why you would care. Versions follow
 [semantic versioning](https://semver.org/): the middle number moves when
 something new appears, the last one when something is fixed.
 
-The version is printed by `.\Set-Display.ps1 status` and by **About ScreenDeck**
+The version is printed by `.\Set-Display.ps1 status` and by **About DeskModes**
 in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
+
+### The program is called DeskModes
+
+- The name on the window, in the tray, in the log and on the startup shortcut. Nothing has been
+  released under any other name, so nothing of yours has to be renamed - except the **Start with
+  Windows** shortcut, which is made under the new name when you tick the box again.
+
+### A desk that went dark comes back by itself
+
+- **When none of the displays a mode asked for comes up, the previous set is put back** and the
+  switch reports a refusal rather than an empty summary. A black desk is the one failure a
+  shortcut cannot mend: you cannot see the menu to try again from. One display that did come up is
+  kept, as before, and the verdict names the one that did not.
+- **Back to the previous mode.** The tray menu has *Back to Work*, named after wherever you were;
+  the command line takes `back`; and the Behavior page has a shortcut for it, because the time you
+  want it is the time you are pressing keys blind. `last-mode.json` remembers the mode you left, and
+  a repeat press of the same shortcut does not count as leaving.
+
+### A rule for the desk itself
+
+- **"These displays are connected"** joins "a program is running" and "nobody is at the computer".
+  A laptop docked at home has these two monitors, at the office that one, on the train none - tick
+  the set, and the rule puts the desk into the mode you named while exactly those displays are
+  connected, and back when they are not. Exactly those and no others, or the office rule would fire
+  at home too, where the office monitor is also there. Connected is enough: a display that is off
+  at its own button still counts, because it is the set of the desk that says where the computer is
+  standing. The ticks come from the roster, so a display that is off right now can be ticked.
+
+### The desk sets itself up
+
+- **As Windows has it**, on Your desk: the cards take the order Windows holds this second and the
+  star goes to the display that has the taskbar now. On a first run that is the whole set-up in one
+  click; later it is the way back to what the eye can see.
+- **A new combination opens on the displays that are on**, with the current taskbar display chosen.
+  The set in front of you is the one you most often want to name; the name is the one thing left
+  to type.
+- **Which is which**, on Your desk and in the tray menu: a badge on every display for two and a half
+  seconds - its name, its Monitor ID, what it is showing and whether it has the taskbar. Three cards
+  that all begin with LG tell nobody which LG is which.
+
+### HDR follows the mode
+
+- **A mode can turn HDR on or off, per display.** The game wants it on, the spreadsheet beside it
+  wants it off, and the toggle is three clicks deep in Windows settings. One row per display in the
+  mode editor - *Leave alone*, *On*, *Off* - and a display that cannot do HDR is left as it is, with
+  a line in the log saying so. A display already where the mode wants it is not touched, because
+  the toggle itself blanks the screen for a moment. `.\Set-Display.ps1 hdr` says which of yours can
+  do it and whether it is on. By hand it is `"hdr": { "combo:Game": true, "combo:Work": { "ULTRAGEAR":
+  false } }`.
 
 ### A display that is switched off is still a display you can set up
 
@@ -91,7 +140,7 @@ in the tray menu — that line is the right thing to paste into a bug report.
   Windows and PowerShell builds under it and a **Copy** button that puts the whole line on the
   clipboard - it is the first thing a bug report needs and the one thing nobody can type from
   memory. Then the log, the folder everything lives in, the project page and **Report a
-  problem**. **About ScreenDeck** in the tray menu opens the window there instead of showing a
+  problem**. **About DeskModes** in the tray menu opens the window there instead of showing a
   notification you cannot copy from.
 - A **Support** section is written and waiting, and while there is no address behind it the
   section is not shown at all. A donate button that cannot be pressed is a large coloured plate
@@ -105,7 +154,7 @@ in the tray menu — that line is the right thing to paste into a bug report.
   mode's editor, and the switch puts it back there every time.
 - **No names and no lists**, deliberately. The numbers behind those names are the manufacturer's,
   and on this desk one monitor shows two different numbers as "Gamer 1" - they look nothing alike.
-  So ScreenDeck remembers the number the monitor is holding when you press the button, along with
+  So DeskModes remembers the number the monitor is holding when you press the button, along with
   the register it answered on, and writes exactly that back.
 - The setting is one line per display in `settings.json` - `"picture": { "combo:Work": {
   "ULTRAGEAR": "0x15:45" } }` - and `.\Set-Display.ps1 brightness` now prints the register and

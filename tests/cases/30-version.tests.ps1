@@ -17,7 +17,7 @@ Test-Case 'version: it is there and reads as a version' {
 Test-Case 'version: the line names the tool, the version, Windows and PowerShell' {
     $line = Get-VersionLine
 
-    Assert-True ($line -like 'ScreenDeck *') 'it starts with the name, so a pasted line is self-explaining'
+    Assert-True ($line -like 'DeskModes *') 'it starts with the name, so a pasted line is self-explaining'
     Assert-True ($line -like "*$script:Version*") 'the version itself is in there'
     Assert-True ($line -like '*Windows *') 'and the Windows build - most refusals here are a build plus a driver'
     Assert-True ($line -like '*PowerShell *') 'and which PowerShell ran it'

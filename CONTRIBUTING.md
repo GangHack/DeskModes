@@ -115,7 +115,7 @@ The theme comes from the system, so switch Windows to the theme you want *before
 rendering; the script has no switch for it.
 
 **In the README they are linked absolutely**, as
-`https://raw.githubusercontent.com/GangHack/ScreenDeck/main/docs/images/…`, and that is
+`https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/…`, and that is
 not a style choice. `README.md` ships inside the release ZIP and `docs/` does not, so a
 relative `docs/images/desk.png` is four broken pictures for everyone who reads the README
 from the unpacked folder instead of on GitHub. The same goes for the links to

@@ -20,7 +20,7 @@
 # instead of reading a C# compiler complaint about a type they never wrote. The .cmd files call
 # powershell.exe by name and never reach this.
 if ($PSVersionTable.PSEdition -eq 'Core') {
-    throw ("ScreenDeck needs Windows PowerShell 5.1, and this is PowerShell {0}. Start it from the " +
+    throw ("DeskModes needs Windows PowerShell 5.1, and this is PowerShell {0}. Start it from the " +
            ".cmd files in this folder, or name the shell yourself: " +
            "powershell -ExecutionPolicy Bypass -File .\Set-Display.ps1 status") -f $PSVersionTable.PSVersion
 }
@@ -30,7 +30,7 @@ $script:ToolRoot     = $PSScriptRoot
 # (compiling the types, rotating the log) are written while this file is being loaded, and replacing
 # $script:LogFile after the dot-source is too late. The log is the main tool for working things out,
 # and there must be no foreign traces in it.
-$script:LogFile      = $(if ($env:SCREENDECK_LOG_FILE) { $env:SCREENDECK_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
+$script:LogFile      = $(if ($env:DESKMODES_LOG_FILE) { $env:DESKMODES_LOG_FILE } else { Join-Path $PSScriptRoot 'last-run.log' })
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
@@ -52,7 +52,7 @@ $script:UiStateFile = Join-Path $PSScriptRoot 'ui-state.json'
 $script:Version = '1.0.0'
 
 function Get-VersionName {
-    return 'ScreenDeck {0}' -f $script:Version
+    return 'DeskModes {0}' -f $script:Version
 }
 
 function Get-VersionHost {
@@ -69,8 +69,8 @@ function Get-VersionLine {
 # The addresses the About page opens. Here rather than in the window's markup for the reason the
 # version is here: README links the same project, and two copies of an address drift apart at
 # the first rename.
-$script:RepoUrl = 'https://github.com/GangHack/ScreenDeck'
-$script:IssuesUrl = 'https://github.com/GangHack/ScreenDeck/issues'
+$script:RepoUrl = 'https://github.com/GangHack/DeskModes'
+$script:IssuesUrl = 'https://github.com/GangHack/DeskModes/issues'
 # Empty on purpose until there is an address to put here. The Support card is built either way;
 # with no address the button says so and does nothing, which is honest, while a button that
 # opens a 404 is not.
@@ -133,6 +133,8 @@ Limit-DisplayLog
 
 function Get-DefaultSettings {
     return [ordered]@{
+        # Mode key -> keys. One entry is not a mode: "back" is the shortcut that returns to the
+        # mode before the current one (see Get-PreviousModeKey).
         hotkeys         = [ordered]@{}
         maximizeRefresh = $true
         notifications   = $true
@@ -168,10 +170,13 @@ function Get-DefaultSettings {
         # Get-RuleDecision).
         #   "rules": [
         #       { "when": "process", "process": "cs2", "mode": "solo:XG27AQDMGR" },
-        #       { "when": "idle", "minutes": 20, "mode": "solo:LG ULTRAGEAR" }
+        #       { "when": "idle", "minutes": 20, "mode": "solo:LG ULTRAGEAR" },
+        #       { "when": "displays", "displays": ["U2720Q", "ULTRAGEAR"], "mode": "combo:Home" }
         #   ]
         # when     process — a process is running; idle — nobody has worked at the
-        #          computer for minutes minutes;
+        #          computer for minutes minutes; displays — the connected displays are
+        #          exactly the ones named (the laptop docked at home, say), matched by a
+        #          piece of the name or the Monitor ID like layout is;
         # mode     the key of the mode to go to;
         # back     where to go back to once the condition ends; empty — to wherever
         #          the desk was before it fired;
@@ -215,6 +220,11 @@ function Get-DefaultSettings {
         # here, because the numbers are the vendor's and two of them can wear the same name.
         #   "picture": { "combo:Work": { "ULTRAGEAR": "0x15:45", "XG27": "0xDC:6" } }
         picture         = [ordered]@{}
+        # HDR as part of a mode: mode key -> true/false for every display of the mode, or
+        # { a piece of a name -> true/false } for one each. A display the mode does not
+        # mention is left as it is (see Set-ModeHdr).
+        #   "hdr": { "combo:Game": true, "combo:Work": { "ULTRAGEAR": false } }
+        hdr             = [ordered]@{}
         # The diary: which application, on which monitor and in which mode, for how
         # long. Kept next to the scripts in activity.json, goes nowhere, and window
         # titles are NOT recorded — only the process name. Off by default: this is data
@@ -297,9 +307,12 @@ function ConvertTo-RuleSettings {
         $when = [string]$r.when
         if (-not $when) { $when = 'process' }
         [ordered]@{
-            when    = $when.ToLowerInvariant()
-            process = [string]$r.process
-            minutes = $(if ($null -ne $r.minutes) { [int]$r.minutes } else { 0 })
+            when     = $when.ToLowerInvariant()
+            process  = [string]$r.process
+            minutes  = $(if ($null -ne $r.minutes) { [int]$r.minutes } else { 0 })
+            # Always an array, even for the two conditions that do not use it: the tray joins it into
+            # the rule's signature, and a missing key there would read as a different rule.
+            displays = @(@($r.displays) | ForEach-Object { [string]$_ } | Where-Object { $_ })
             mode    = [string]$r.mode
             back    = [string]$r.back
             enabled = $(if ($null -ne $r.enabled) { [bool]$r.enabled } else { $true })
@@ -390,6 +403,14 @@ function Get-DisplaySettings {
                 if (-not $p.Name) { continue }
                 $one = ConvertTo-PictureSetting $p.Value
                 if ($one) { $s.picture[$p.Name] = $one }
+            }
+        }
+
+        if ($raw.hdr) {
+            foreach ($p in $raw.hdr.PSObject.Properties) {
+                if (-not $p.Name) { continue }
+                $one = ConvertTo-HdrSetting $p.Value
+                if ($null -ne $one) { $s.hdr[$p.Name] = $one }
             }
         }
 
@@ -539,13 +560,16 @@ function Test-SameSession {
 # $Whose finishes the sentence "warn: could not ..." — the two callers fail for the same reasons and a
 # reader has to be able to tell which of them was writing.
 function Write-LastMode {
-    param([string]$Key, [string]$When, [string]$Whose)
+    param([string]$Key, [string]$When, [string]$Whose, [string]$Previous = '')
 
     try {
         [ordered]@{
-            key     = $Key
-            session = Get-SystemSessionId
-            when    = $When
+            key      = $Key
+            # The mode before this one - what "back" goes to. Kept here rather than in memory
+            # because the tray is restarted and the command line has no memory at all.
+            previous = $Previous
+            session  = Get-SystemSessionId
+            when     = $When
         } | ConvertTo-Json -Compress |
             Set-Content -Path $script:LastModeFile -Encoding UTF8 -ErrorAction Stop
     }
@@ -560,8 +584,27 @@ function Write-LastMode {
 function Save-LastMode {
     param([Parameter(Mandatory)][string]$Key)
 
-    Write-LastMode -Key $Key -When (Get-Date).ToString('s') -Whose 'remember the mode'
+    # The mode being left becomes the one to go back to. Pressing the same shortcut twice is not a
+    # departure, so the previous stays what it was - otherwise "back" from a repeat press would go
+    # nowhere at all.
+    $last = Get-LastMode
+    $previous = ''
+    if ($last) { $previous = $(if ($last.Key -ne $Key) { [string]$last.Key } else { [string]$last.Previous }) }
+    Write-LastMode -Key $Key -When (Get-Date).ToString('s') -Whose 'remember the mode' -Previous $previous
 }
+
+# The mode to go back to: the one that was chosen before the current one, or an empty string when
+# nothing has been left yet. The tray, the menu and the command line all ask this and nothing else.
+function Get-PreviousModeKey {
+    $last = Get-LastMode
+    if (-not $last) { return '' }
+    return [string]$last.Previous
+}
+
+# The name "back" travels in the hotkeys map beside the mode keys, because that is the one map the
+# tray registers shortcuts from. It is not a mode: everything that turns a hotkey key into a row, an
+# orphan or a title has to step over it.
+$script:BackHotkeyName = 'back'
 
 # Re-stamp the session without touching the choice. An automatic switch is not a choice, so it must not
 # write the key — but it HAS touched the desk, and the startup restore reads the session to tell "a fresh
@@ -577,7 +620,7 @@ function Update-LastModeSession {
     # case, not the rare one, and each of them used to cost a read, a serialise and a write.
     if ($last.Session -eq (Get-SystemSessionId)) { return }
 
-    Write-LastMode -Key $last.Key -When $last.When -Whose 're-stamp the session'
+    Write-LastMode -Key $last.Key -When $last.When -Whose 're-stamp the session' -Previous $last.Previous
 }
 
 # What was chosen last time: Key, Session, When. $null if the file is absent or unreadable.
@@ -593,9 +636,10 @@ function Get-LastMode {
         $when = $raw.when
         if ($when -is [datetime]) { $when = $when.ToString('s', [cultureinfo]::InvariantCulture) }
         return [pscustomobject]@{
-            Key     = [string]$raw.key
-            Session = [string]$raw.session
-            When    = [string]$when
+            Key      = [string]$raw.key
+            Previous = [string]$raw.previous
+            Session  = [string]$raw.session
+            When     = [string]$when
         }
     }
     catch {
@@ -983,9 +1027,20 @@ public class NativeCcd {
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref SOURCE_DEVICE_NAME d);
     [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref TARGET_PREFERRED_MODE d);
 
-    // HDR is deliberately NOT declared here. Verified 2026-08-11: HDR survives a change in the set of
-    // monitors and does not have to be restored (the details, and the recipe should that ever change, are
-    // in the engineering diary).
+    // HDR. It survives a change in the set of monitors by itself (verified 2026-08-11), so a switch never
+    // has to RESTORE it; what these two calls are for is a mode that WANTS it one way - HDR on for the
+    // game, off for the spreadsheet next to it. The value word is a bitfield: bit 0 says the display can
+    // do advanced colour at all, bit 1 says it is on. The set call takes bit 0 as "turn it on".
+    [StructLayout(LayoutKind.Sequential)] public struct ADVANCED_COLOR_INFO {
+        public HEADER header; public uint value, colorEncoding, bitsPerColorChannel; }
+    [StructLayout(LayoutKind.Sequential)] public struct ADVANCED_COLOR_STATE {
+        public HEADER header; public uint value; }
+    [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref ADVANCED_COLOR_INFO d);
+    [DllImport("user32.dll")] public static extern int DisplayConfigSetDeviceInfo(ref ADVANCED_COLOR_STATE d);
+    public const uint GET_ADVANCED_COLOR_INFO = 9;
+    public const uint SET_ADVANCED_COLOR_STATE = 10;
+    public const uint ADVANCED_COLOR_SUPPORTED = 1;
+    public const uint ADVANCED_COLOR_ENABLED = 2;
 
     public const uint QDC_ALL_PATHS = 1;
     public const uint QDC_ONLY_ACTIVE_PATHS = 2;
@@ -2542,6 +2597,11 @@ function Get-CcdTargets {
             Available  = ($p.targetInfo.targetAvailable -ne 0)
             Native     = $native
             PathIndex  = $i
+            # Who to address a per-target question to (HDR, say): the adapter's LUID and the target's
+            # id, as one struct and one number - a LUID's fields cannot be set one at a time from
+            # PowerShell, which hands back a copy of a nested struct.
+            Adapter    = $p.targetInfo.adapterId
+            TargetId   = [uint32]$p.targetInfo.id
         }
     }
 
@@ -3904,7 +3964,7 @@ function Update-HotkeyKeys {
         # Everything tied to the same mode moves along with the shortcut: audio, commands, brightness,
         # contrast. Otherwise after a cable was moved the shortcut would work while the brightness no
         # longer applied to it — and two halves of one setting would have drifted apart.
-        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast', 'picture') {
+        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast', 'picture', 'hdr') {
             $dict = $Settings[$field]
             if (-not $dict -or -not $dict.Contains($old)) { continue }
             if ($dict.Contains($hit.Key)) { continue }
@@ -4392,6 +4452,14 @@ function Invoke-SwitchTail {
     }
     & $note 'levels'
 
+    # HDR by the same rule: nothing in the dictionary, nothing asked of the system. Not over DDC - this
+    # is Windows' own switch, and it answers in a millisecond.
+    if ($Settings.hdr -and $Settings.hdr.Contains($ModeKey) -and @($LevelTargets).Count -gt 0) {
+        try { [void](Set-ModeHdr -Setting $Settings.hdr[$ModeKey] -Targets $LevelTargets) }
+        catch { Write-DisplayLog "warn: hdr - failed: $($_.Exception.Message)" }
+    }
+    & $note 'hdr'
+
     [void](Invoke-ModeHook -Settings $Settings -ModeKey $ModeKey -Phase 'after')
     & $note 'hook'
 
@@ -4416,7 +4484,7 @@ function Switch-DisplayMode {
     # One switcher at a time. Without this, two quick presses started two processes that cut across
     # each other: one was switching a monitor on while the other was changing its mode at the same
     # moment — and the result became unpredictable.
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\DeskModesSwitch')
     # WaitOne can THROW and hand us the mutex in the same breath: a previous holder that died without
     # letting go raises AbandonedMutexException, and ownership passes to us all the same. Outside a try
     # that meant an owned mutex nobody ever released, and in the tray — a process that lives for weeks —
@@ -4656,6 +4724,24 @@ function Switch-DisplayMode {
         $step = Set-WantedModes -Wanted $wanted -AlreadyBest:$alreadyBest -KeepMode:$KeepMode
         & $notePhase $phases 'modes'
 
+        # Not one of the displays we asked for attached: the set we put out is out, and the set we put
+        # on never came. That is a black desk - the one failure a shortcut cannot mend, because the
+        # person cannot see the menu to try again from. So the set that was on before the switch goes
+        # back on, and the switch reports a refusal rather than a summary with nothing in it.
+        #
+        # Only when the topology really moved: on a repeat press nothing was put out, so there is
+        # nothing to put back, and "did not attach" there is a monitor that is asleep, not a desk that
+        # went dark. And only when EVERY wanted display failed - one that came up keeps the picture, and
+        # the partial verdict below says which did not.
+        if (-not $sameTopology -and $wanted.Count -gt 0 -and @($step.Failed).Count -ge $wanted.Count) {
+            $wasOn = @($monitors | Where-Object { $_.Active })
+            Write-DisplayLog ("revert: none of the requested displays came up - putting back " + (@($wasOn | ForEach-Object { $_.Label }) -join ', '))
+            $reverted = Set-CcdTopology -DevicePaths @($wasOn | ForEach-Object { $_.Id })
+            if ($reverted) { Write-DisplayLog 'revert: the previous set is back' }
+            else           { Write-DisplayLog 'revert: Windows refused the previous set as well' }
+            throw ("None of the displays of '{0}' came up, so the previous set was put back. Check the cable and Deep Sleep Mode in the monitor's menu." -f $mode.Title)
+        }
+
         $verdict = Format-SwitchResult -Summary $step.Summary -Failed $step.Failed `
                                        -Refused $refused -LayoutFailed $layoutFailed
         $text = $verdict.Text
@@ -4843,7 +4929,7 @@ function Restore-BestModes {
     # During a switch we do not interfere — the modes are being set there anyway.
     # The wait is inside a try for the same reason as in Switch-DisplayMode: an abandoned mutex arrives
     # as an exception that has already handed us ownership, and out here that would have leaked it.
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckSwitch')
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\DeskModesSwitch')
     $held = $false
     try { $held = $mutex.WaitOne(0) }
     catch [System.Threading.AbandonedMutexException] {
@@ -5030,6 +5116,130 @@ function Get-LevelPlan {
     return $plan
 }
 
+# --- HDR following the mode -------------------------------------------------
+# A game wants HDR on, and everything else on the same display wants it off: the toggle is three clicks
+# deep in Windows settings, and a mode is the natural place to hang it. A mode carries one answer per
+# display, or one for all of them, and "not mentioned" leaves the display exactly as it is - HDR
+# survives a switch by itself (see the note in NativeCcd), so a mode that says nothing costs nothing.
+
+# What one target says about itself: Supported and Enabled, or $null when the system would not answer -
+# an inactive target, a display without the capability, an older Windows.
+function Get-DisplayHdr {
+    param($Target)
+
+    $M = [System.Runtime.InteropServices.Marshal]
+    $info = New-Object NativeCcd+ADVANCED_COLOR_INFO
+    $h = New-Object NativeCcd+HEADER
+    $h.type = [NativeCcd]::GET_ADVANCED_COLOR_INFO
+    $h.size = $M::SizeOf($info)
+    $h.adapterId = $Target.Adapter
+    $h.id = [uint32]$Target.TargetId
+    $info.header = $h
+    if ([NativeCcd]::DisplayConfigGetDeviceInfo([ref]$info) -ne 0) { return $null }
+    return [pscustomobject]@{
+        Supported = (($info.value -band [NativeCcd]::ADVANCED_COLOR_SUPPORTED) -ne 0)
+        Enabled   = (($info.value -band [NativeCcd]::ADVANCED_COLOR_ENABLED) -ne 0)
+    }
+}
+
+# Turn HDR on or off on one target. $true when Windows took it.
+function Set-DisplayHdr {
+    param($Target, [bool]$Enabled)
+
+    $M = [System.Runtime.InteropServices.Marshal]
+    $set = New-Object NativeCcd+ADVANCED_COLOR_STATE
+    $h = New-Object NativeCcd+HEADER
+    $h.type = [NativeCcd]::SET_ADVANCED_COLOR_STATE
+    $h.size = $M::SizeOf($set)
+    $h.adapterId = $Target.Adapter
+    $h.id = [uint32]$Target.TargetId
+    $set.header = $h
+    $set.value = $(if ($Enabled) { 1 } else { 0 })
+    return ([NativeCcd]::DisplayConfigSetDeviceInfo([ref]$set) -eq 0)
+}
+
+# A value out of settings.json -> $true, $false, { name -> bool }, or $null for "there is no entry".
+# Booleans are what the window writes; "on"/"off"/"true"/"false" are for a hand that edits the file.
+function ConvertTo-HdrSetting {
+    param($Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [bool]) { return [bool]$Value }
+    if ($Value -is [string]) {
+        switch ($Value.Trim().ToLowerInvariant()) {
+            'true'  { return $true }
+            'on'    { return $true }
+            'false' { return $false }
+            'off'   { return $false }
+            default { return $null }
+        }
+    }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [double]) { return $null }
+
+    $perDisplay = [ordered]@{}
+    $properties = $(if ($Value -is [System.Collections.IDictionary]) {
+                        @($Value.Keys | ForEach-Object { [pscustomobject]@{ Name = $_; Value = $Value[$_] } })
+                    } else { @($Value.PSObject.Properties) })
+    foreach ($p in $properties) {
+        if (-not $p.Name) { continue }
+        $one = ConvertTo-HdrSetting $p.Value
+        if ($one -is [bool]) { $perDisplay[[string]$p.Name] = $one }
+    }
+    if ($perDisplay.Count -eq 0) { return $null }
+    return $perDisplay
+}
+
+# Which of the wanted displays get what: label -> bool. The same matching brightness uses.
+function Get-HdrPlan {
+    param($Setting, $Wanted)
+
+    $plan = [ordered]@{}
+    if ($null -eq $Setting) { return $plan }
+    foreach ($m in @($Wanted)) {
+        if ($Setting -is [bool]) { $plan[[string]$m.Label] = [bool]$Setting; continue }
+        if ($Setting -is [System.Collections.IDictionary]) {
+            foreach ($key in @($Setting.Keys)) {
+                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId) {
+                    $plan[[string]$m.Label] = [bool]$Setting[$key]
+                    break
+                }
+            }
+        }
+    }
+    return $plan
+}
+
+# Apply a mode's HDR to the displays that are on. One CCD walk for everybody, a read before every
+# write: a display already where the mode wants it is not touched, because the toggle itself blanks
+# the screen for a moment. Returns the labels that changed.
+function Set-ModeHdr {
+    param($Setting, $Targets)
+
+    $plan = Get-HdrPlan -Setting $Setting -Wanted $Targets
+    if ($plan.Count -eq 0) { return @() }
+
+    $byOutput = @{}
+    foreach ($t in @(Get-CcdTargets)) { if ($t.Active -and $t.Output) { $byOutput[[string]$t.Output] = $t } }
+
+    $changed = @()
+    foreach ($t in @($Targets)) {
+        $label = [string]$t.Label
+        if (-not $plan.Contains($label)) { continue }
+        $want = [bool]$plan[$label]
+        $target = $byOutput[[string]$t.Device]
+        if (-not $target) { Write-DisplayLog "hdr: $label is not on the desk - left alone"; continue }
+        $now = Get-DisplayHdr -Target $target
+        if (-not $now -or -not $now.Supported) { Write-DisplayLog "hdr: $label does not support HDR - left alone"; continue }
+        if ($now.Enabled -eq $want) { continue }
+        if (Set-DisplayHdr -Target $target -Enabled $want) {
+            Write-DisplayLog ("hdr: {0} -> {1}" -f $label, $(if ($want) { 'on' } else { 'off' }))
+            $changed += $label
+        }
+        else { Write-DisplayLog "warn: hdr - Windows refused to turn it $(if ($want) { 'on' } else { 'off' }) on $label" }
+    }
+    return $changed
+}
+
 # --- the monitor's picture preset following the mode ------------------------
 # A mode already carries brightness and contrast; the preset is the third thing the monitor holds
 # in its own firmware, and the one a person changes with the bezel buttons: Reader for reading,
@@ -5038,7 +5248,7 @@ function Get-LevelPlan {
 # What this deliberately does NOT do is name them. Probed on this desk on 2026-09-03: on the LG
 # UltraGear register 0x15 answers 1 for Reader and 6 for Gamer 1 - and 45, which the menu ALSO
 # calls Gamer 1 and which looks different from 6. The name is not the setting; the number is. So
-# there is no table of models here and no learning of names: ScreenDeck remembers the number the
+# there is no table of models here and no learning of names: DeskModes remembers the number the
 # monitor is holding right now, and writes that number back.
 #
 # Which register holds it is the monitor's business too: MCCS names 0xDC, both LGs here are silent
@@ -5336,8 +5546,43 @@ function Test-RuleMatch {
             if ($minutes -le 0) { return $false }
             return ([int]$Facts.IdleSeconds -ge $minutes * 60)
         }
+        'displays' {
+            return (Test-DisplaySetMatch -Patterns @($Rule.displays) -Connected @($Facts.Connected))
+        }
         default { return $false }
     }
+}
+
+# Whether the CONNECTED displays are exactly the ones a rule names - every pattern finds a display of its
+# own, and no display is left over. Exactly, and not "at least": the laptop-and-dock case this exists for
+# is "these two monitors are here, so this is the desk at home", and a rule for the one monitor at the
+# office must not fire at home as well because that monitor is there too. Connected, not on: a monitor
+# that is off at its own button is still part of the desk, and it is the set of the desk that says
+# where the computer is standing.
+#
+# $Connected is what the tray gathers: Label and ShortId per display, so a rule can name a display the
+# way layout and a combo's members do - by a piece of its name or by its Monitor ID.
+function Test-DisplaySetMatch {
+    param($Patterns, $Connected)
+
+    $want = @(@($Patterns) | Where-Object { $_ })
+    $have = @(@($Connected) | Where-Object { $_ })
+    if ($want.Count -eq 0) { return $false }
+    if ($want.Count -ne $have.Count) { return $false }
+
+    # Each display may answer for one pattern only: two patterns that both match one monitor, with
+    # another monitor unmatched, is not the desk the rule describes.
+    $taken = New-Object System.Collections.ArrayList
+    foreach ($pat in $want) {
+        $hit = $null
+        foreach ($m in $have) {
+            if ($taken -contains $m) { continue }
+            if (Test-DisplayNameMatch -Pattern ([string]$pat) -Label ([string]$m.Label) -ShortId ([string]$m.ShortId)) { $hit = $m; break }
+        }
+        if (-not $hit) { return $false }
+        [void]$taken.Add($hit)
+    }
+    return $true
 }
 
 # The decision over all the rules at once. $OwnedIndex is the number of the rule that holds the
@@ -5364,7 +5609,10 @@ function Get-RuleSignature {
     if (-not $Rule) { return '' }
     # Tab-joined: a tab cannot occur in a mode key or a process name, so no pair of different rules can
     # collide by the separator landing inside a field.
+    # The displays are one field here, joined by a bar: a display name cannot hold a tab either, and
+    # the bar keeps two rules about different desks from reading as one.
     return (@([string]$Rule.when, [string]$Rule.process, [int]$Rule.minutes,
+              (@(@($Rule.displays) | ForEach-Object { [string]$_ }) -join '|'),
               [string]$Rule.mode, [string]$Rule.back) -join "`t")
 }
 
@@ -5448,9 +5696,14 @@ function Format-RuleReason {
     param($Rule)
 
     switch ([string]$Rule.when) {
-        'process' { return ('{0} is running' -f [string]$Rule.process) }
-        'idle'    { return ('idle for {0} min' -f [int]$Rule.minutes) }
-        default   { return [string]$Rule.when }
+        'process'  { return ('{0} is running' -f [string]$Rule.process) }
+        'idle'     { return ('idle for {0} min' -f [int]$Rule.minutes) }
+        'displays' {
+            $names = @(@($Rule.displays) | ForEach-Object { [string]$_ } | Where-Object { $_ })
+            if ($names.Count -eq 1) { return ('{0} is the only display' -f $names[0]) }
+            return (($names -join ', ') + ' are connected')
+        }
+        default    { return [string]$Rule.when }
     }
 }
 
@@ -5613,7 +5866,7 @@ function Format-Duration {
 # --- how long until the displays go dark ------------------------------------
 # Windows' own setting, on the page where the desk is arranged: it is the same question as
 # "which displays are on", and looking for it in the Control Panel in the middle of setting up
-# a desk is a detour. It is NOT in settings.json - this is the system's state, and ScreenDeck
+# a desk is a detour. It is NOT in settings.json - this is the system's state, and DeskModes
 # only shows it and writes it back.
 #
 # "From the mains" only. A desktop has no battery, and a laptop with different answers for the
@@ -5809,7 +6062,7 @@ function Invoke-PowerAction {
 # --- run at startup ---------------------------------------------------------
 
 function Get-StartupShortcutPath {
-    return Join-Path ([Environment]::GetFolderPath('Startup')) 'ScreenDeck.lnk'
+    return Join-Path ([Environment]::GetFolderPath('Startup')) 'DeskModes.lnk'
 }
 
 function Test-RunAtStartup {
@@ -5835,7 +6088,7 @@ function Set-RunAtStartup {
     if (Test-Path $icon) { $sc.IconLocation = $icon + ',0' }
     else { $sc.IconLocation = (Join-Path $env:SystemRoot 'System32\DisplaySwitch.exe') + ',0' }
     $sc.WindowStyle = 7
-    $sc.Description = 'ScreenDeck - display switcher in the notification area'
+    $sc.Description = 'DeskModes - display switcher in the notification area'
     $sc.Save()
     Write-DisplayLog 'startup: enabled'
 }

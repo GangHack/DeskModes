@@ -48,7 +48,7 @@ Test-Case 'levels: junk in the settings is ignored, not guessed at' {
 }
 
 # --- the monitor's picture preset --------------------------------------------
-# Reader, FPS, sRGB - what the monitor's own menu calls them. ScreenDeck never learns the NAMES:
+# Reader, FPS, sRGB - what the monitor's own menu calls them. DeskModes never learns the NAMES:
 # probed on this desk on 2026-09-03, the LG UltraGear calls both 6 and 45 "Gamer 1" and they look
 # different. What is remembered is the number the monitor is holding, and the register it answered
 # on - monitors disagree about that too (0xDC by the standard, 0x15 on both LGs here).

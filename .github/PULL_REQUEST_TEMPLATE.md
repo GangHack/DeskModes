@@ -14,7 +14,7 @@
 
 ## House rules
 
-The full set is in [AGENTS.md](https://github.com/GangHack/ScreenDeck/blob/main/AGENTS.md); these are the ones people trip over:
+The full set is in [AGENTS.md](https://github.com/GangHack/DeskModes/blob/main/AGENTS.md); these are the ones people trip over:
 
 - [ ] Comments in Russian, interface and log in English — neither translated
 - [ ] Every `.ps1` is UTF-8 **with BOM** and CRLF, and starts with `#Requires -Version 5.1` if it is run directly

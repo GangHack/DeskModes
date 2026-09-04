@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    ScreenDeck: the tray icon that switches the displays on your desk.
+    DeskModes: the tray icon that switches the displays on your desk.
 
 .DESCRIPTION
     Runs until you pick Exit. Right-click the icon for a menu with the current
@@ -93,11 +93,11 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$script:AppName = 'ScreenDeck'
+$script:AppName = 'DeskModes'
 
 # One instance: otherwise only the first would claim the shortcuts, and the second would
 # hang there as a useless icon.
-$script:AppMutex = New-Object System.Threading.Mutex($false, 'Local\ScreenDeckTray')
+$script:AppMutex = New-Object System.Threading.Mutex($false, 'Local\DeskModesTray')
 if (-not $script:AppMutex.WaitOne(0)) {
     [System.Windows.Forms.MessageBox]::Show(
         "$script:AppName is already running - look for its icon in the notification area.",
@@ -283,9 +283,15 @@ function Invoke-RulesCheck {
         $processes = @(Get-Process -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName })
     }
 
+    # The connected displays out of the cache, never a fresh query: this runs every fifteen seconds,
+    # and the cache was refreshed by the very event a plug or unplug raises.
+    $connected = @(Get-CachedState | Where-Object { $_ -and -not $_.Disconnected } |
+                   ForEach-Object { [pscustomobject]@{ Label = [string]$_.Label; ShortId = [string]$_.ShortId } })
+
     $facts = [pscustomobject]@{
         Processes   = $processes
         IdleSeconds = $(try { [NativeActivity]::IdleSeconds() } catch { 0 })
+        Connected   = $connected
     }
 
     $decision = Get-RuleDecision -Rules $rules -Facts $facts -CurrentMode (Get-CurrentModeKey) `
@@ -307,7 +313,7 @@ function Invoke-RulesCheck {
             if ($script:LastSwitch.Outcome -eq 'busy') {
                 # Not an answer at all, but "ask again in a moment" — and an ordinary one here: a rule
                 # fires on the very events the refresh-rate watchdog wakes on, and that one holds
-                # Local\ScreenDeckSwitch for about a second afterwards. Owning a desk we never took cost
+                # Local\DeskModesSwitch for about a second afterwards. Owning a desk we never took cost
                 # the rule its whole turn, so we claim nothing and the next tick fires the rule again.
                 Reset-RuleOwnership
             }
@@ -471,7 +477,7 @@ $menu.add_Opened({
 
 function Show-Balloon {
     # Always — for answering an explicit action by a person. Notifications turned off mute
-    # Info, and "About ScreenDeck" went silent because of it: the menu item is clicked and
+    # Info, and "About DeskModes" went silent because of it: the menu item is clicked and
     # nothing happens. A click must always answer; background messages need not.
     param([string]$Title, [string]$Text, [string]$Kind = 'Info', [switch]$Always)
     # Through the function, not $script:Settings: see Get-ActiveSettings. One way of reading the settings
@@ -505,12 +511,22 @@ $script:LastSwitch = New-SwitchFailure -ModeKey '' -Message 'no switch in this r
 
 # How many times an automatic path asks again after a switch that did not go through. The tray's timer
 # ticks every fifteen seconds, so four attempts is about a minute: long enough for a display that is
-# still waking, or for the refresh-rate watchdog to let go of Local\ScreenDeckSwitch, and short enough
+# still waking, or for the refresh-rate watchdog to let go of Local\DeskModesSwitch, and short enough
 # that a refusal which will not come right is not a warning balloon every fifteen seconds until bedtime.
 $script:AutoRetryLimit = 4
 
 function Invoke-Mode {
     param([string]$Key, [switch]$Auto, [switch]$Silent)
+
+    # "back" is a name for whichever mode was left last, resolved here and nowhere later: the switch
+    # itself only knows modes. Nothing left yet is an answer, not a failure - the desk has not moved.
+    if ($Key -eq $script:BackHotkeyName) {
+        $Key = [string](Get-PreviousModeKey)
+        if (-not $Key) {
+            Show-Balloon 'Nothing to go back to' 'No mode has been left yet in this folder.' 'Warning'
+            return
+        }
+    }
 
     # Only a person's press counts as "a mode was already chosen by hand". The startup restore reads this
     # to stand down, and an automatic switch inside its 1500 ms window — a monitor finishing its wake-up,
@@ -697,7 +713,7 @@ function Invoke-ReapplyMode {
     # Kept in hand until the switch reports back, though. Invoke-Mode answers a busy mutex with
     # 'busy' and a monitor that never woke with 'partial' — neither leaves the desk assembled, and
     # both are ordinary here: the game exiting is itself a configuration change, so the
-    # refresh-rate watchdog is holding Local\ScreenDeckSwitch for about a second exactly when this
+    # refresh-rate watchdog is holding Local\DeskModesSwitch for about a second exactly when this
     # runs. Dropping the intent there left the desk drifted for good, because nothing re-arms it
     # short of the next hotplug.
     $pending = [pscustomobject]@{ Key = $Key; Reason = $Reason; Tries = ($tries + 1) }
@@ -1165,6 +1181,17 @@ $menu.add_Opening({
             $line.Image = Get-StatusDot -Kind $dot -Scale $scale
             [void]$menu.Items.Add($line)
         }
+        # The rows above name the displays; this shows which is which. Only when something is on -
+        # a badge needs a screen to lie on.
+        if (@($state | Where-Object { $_.Active }).Count -gt 0) {
+            $whichItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Which is which...'
+            $whichItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
+            $whichItem.add_Click({
+                try { Show-DisplayBadges -State (Get-CachedState) }
+                catch { Write-DisplayLog "tray: could not show the badges - $($_.Exception.Message)" }
+            })
+            [void]$menu.Items.Add($whichItem)
+        }
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     }
 
@@ -1196,6 +1223,26 @@ $menu.add_Opening({
 
         $item.add_Click({ Invoke-Mode $this.Tag }.GetNewClosure())
         [void]$menu.Items.Add($item)
+    }
+
+    # Back to the mode before this one. Named, so the item says where it goes; greyed when that
+    # mode's displays are not all here, the way the list above greys such a mode. Absent until a
+    # mode has been left at all.
+    $previousKey = [string](Get-PreviousModeKey)
+    if ($previousKey) {
+        $previous = @($modes | Where-Object { $_.Key -eq $previousKey })
+        $backItem = New-Object System.Windows.Forms.ToolStripMenuItem
+        $backItem.Text = 'Back to ' + $(if ($previous.Count -gt 0) { $previous[0].Title } else { Get-ModeTitleFromKey $previousKey })
+        $backItem.Tag = $script:BackHotkeyName
+        $backItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
+        $backCombo = (Get-ActiveSettings).hotkeys[$script:BackHotkeyName]
+        if ($backCombo) { $backItem.ShortcutKeyDisplayString = $backCombo }
+        if ($previous.Count -eq 0 -or -not $previous[0].Available) {
+            $backItem.Enabled = $false
+            $backItem.Text += '   (not connected)'
+        }
+        $backItem.add_Click({ Invoke-Mode $this.Tag }.GetNewClosure())
+        [void]$menu.Items.Add($backItem)
     }
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
