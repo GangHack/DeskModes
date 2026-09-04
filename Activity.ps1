@@ -79,9 +79,9 @@ function ConvertTo-ActivityDay {
     foreach ($field in 'active', 'switches', 'longest') {
         if ($null -ne $Raw.$field) { $day[$field] = [int]$Raw.$field }
     }
-    foreach ($field in 'first', 'last') {
-        if ($Raw.$field) { $day[$field] = [string]$Raw.$field }
-    }
+    # A file written before 2026-09-04 also carries "first" and "last" - the clock time of
+    # the day's first and last activity. Nothing reads them any more (see Get-UsualDay), so
+    # they are not carried over, and the first save of that day drops them.
     return $day
 }
 
@@ -90,8 +90,6 @@ function New-ActivityDay {
         active   = 0            # seconds at the computer (idle excluded)
         switches = 0            # mode switches
         longest  = 0            # the longest unbroken stretch, in seconds
-        first    = ''           # when they sat down, HH:mm
-        last     = ''           # when they last did anything
         modes    = [ordered]@{} # mode key -> seconds
         apps     = [ordered]@{} # process name -> seconds
         displays = [ordered]@{} # monitor name -> seconds
@@ -110,7 +108,7 @@ function Get-ActivityDay {
 # A pure function: add a stretch to a day. Everything that knows the shape of the pot
 # is gathered here — which is why it is tested without a single monitor.
 function Add-ActivitySpan {
-    param($Day, [string]$Process, [string]$Display, [string]$Mode, [int]$Seconds, [string]$Time = '', [int]$Hour = -1)
+    param($Day, [string]$Process, [string]$Display, [string]$Mode, [int]$Seconds, [int]$Hour = -1)
 
     if ($Seconds -le 0) { return }
 
@@ -125,10 +123,6 @@ function Add-ActivitySpan {
     }
     if ($Display) { $Day.displays[$Display] = [int]$Day.displays[$Display] + $Seconds }
     if ($Mode)    { $Day.modes[$Mode] = [int]$Day.modes[$Mode] + $Seconds }
-    if ($Time) {
-        if (-not $Day.first) { $Day.first = $Time }
-        $Day.last = $Time
-    }
 }
 
 function Save-ActivityStore {
@@ -205,7 +199,7 @@ function Add-ActivitySample {
 
     $day = Get-ActivityDay -Store (Get-ActivityStore) -Date (Format-DisplayStamp $now 'yyyy-MM-dd')
     Add-ActivitySpan -Day $day -Process ([string]$sample.Process) -Display $display -Mode $Mode `
-                     -Seconds $seconds -Time (Format-DisplayStamp $now 'HH:mm') -Hour $now.Hour
+                     -Seconds $seconds -Hour $now.Hour
 
     # The longest unbroken stretch. Counted on the fly so the file need not hold a
     # stream of events: the current stretch's length is "now minus where it started".
@@ -239,7 +233,7 @@ function Get-ActivityReport {
         From = ''; To = ''; DaysRecorded = 0
         Active = 0; Switches = 0; Longest = 0
         Apps = @(); Displays = @(); Modes = @(); Pairs = @(); Hours = @()
-        BusiestHour = -1; AverageDay = 0; AverageStart = ''; AverageEnd = ''
+        BusiestHour = -1; AverageDay = 0; UsualStart = ''; UsualEnd = ''
         BestDay = ''; BestDayActive = 0; Streak = 0
     }
     if (-not $Store -or -not $Store.days) { return $report }
@@ -253,7 +247,6 @@ function Get-ActivityReport {
     if ($dates.Count -eq 0) { return $report }
 
     $apps = @{}; $displays = @{}; $modes = @{}; $pairs = @{}; $hours = @{}
-    $starts = @(); $ends = @()
 
     foreach ($date in $dates) {
         $day = $Store.days[$date]
@@ -265,9 +258,6 @@ function Get-ActivityReport {
             $report.BestDayActive = [int]$day.active
             $report.BestDay = [string]$date
         }
-        if ($day.first) { $starts += [string]$day.first }
-        if ($day.last)  { $ends += [string]$day.last }
-
         foreach ($pair in @{ apps = $apps; displays = $displays; modes = $modes; pairs = $pairs; hours = $hours }.GetEnumerator()) {
             $section = $day[$pair.Key]
             if (-not $section) { continue }
@@ -299,8 +289,10 @@ function Get-ActivityReport {
     }
     $report.Hours = @($rows)
 
-    $report.AverageStart = Get-AverageClock $starts
-    $report.AverageEnd = Get-AverageClock $ends
+    # After the histogram, because that is what it is read off (see Get-UsualDay).
+    $usual = @(Get-UsualDay -Hours $report.Hours)
+    $report.UsualStart = $usual[0]
+    $report.UsualEnd = $usual[1]
     $report.Streak = Get-ActivityStreak -Dates $dates -Today $Today
 
     return $report
@@ -342,19 +334,54 @@ function ConvertTo-ModeTitleRows {
     return @($out)
 }
 
-# The average hour of arrival and of leaving: "08:42". HH:mm strings are added in minutes.
-function Get-AverageClock {
-    param($Times)
+# When the day begins and ends - "10:00", "04:00" - read off the hour histogram and not
+# out of the days' own stamps of first and last activity. Midnight cuts through a day that
+# runs past it: the calendar date it lands on gets its first activity written down at 00:00,
+# a minute nobody sat down at, and the average over such dates put the start of this desk's
+# day at 02:30 for somebody who sits down at eleven (measured 2026-09-04). The histogram has
+# no such seam - it is a circle - so the day is what is left of the circle once the longest
+# quiet stretch is cut out of it, and midnight is nothing special on it.
+#
+# The price is the hour: 09:00 rather than 09:07. That is the honest precision of a bucket
+# an hour wide, and the card is called "usual day" rather than "sat down at".
+function Get-UsualDay {
+    param($Hours)
 
-    $list = @($Times | Where-Object { $_ -match '^\d{1,2}:\d{2}$' })
-    if ($list.Count -eq 0) { return '' }
-    $sum = 0
-    foreach ($t in $list) {
-        $parts = $t -split ':'
-        $sum += [int]$parts[0] * 60 + [int]$parts[1]
+    # An hour counts as part of the day when it holds at least a twentieth of the busiest
+    # one. Without a floor a single sample at five in the morning - one night, one year ago -
+    # would stretch the day to dawn for good.
+    $peak = 0
+    foreach ($row in @($Hours)) { if ([int]$row.Seconds -gt $peak) { $peak = [int]$row.Seconds } }
+    if ($peak -le 0) { return @('', '') }
+    $floor = $peak / 20
+
+    $busy = New-Object 'bool[]' 24
+    $count = 0
+    foreach ($row in @($Hours)) {
+        $h = [int]$row.Name
+        if ($h -lt 0 -or $h -gt 23) { continue }
+        if ([int]$row.Seconds -ge $floor) { $busy[$h] = $true; $count++ }
     }
-    $avg = [int]($sum / $list.Count)
-    return '{0:00}:{1:00}' -f [int][math]::Floor($avg / 60), ($avg % 60)
+    # Somebody at the computer in all twenty-four hours has no day to name, and neither has
+    # an empty diary. Both leave the card showing a dash rather than a made-up pair of hours.
+    if ($count -eq 0 -or $count -eq 24) { return @('', '') }
+
+    # The longest quiet stretch is looked for round the clock rather than along it: a night
+    # owl's quiet hours lie across midnight, and along a flat 0..23 that one stretch reads
+    # as two short ones.
+    $best = 0; $bestAt = -1
+    for ($start = 0; $start -lt 24; $start++) {
+        if ($busy[$start]) { continue }
+        if (-not $busy[($start + 23) % 24]) { continue }   # not where a stretch begins
+        $len = 0
+        while (-not $busy[($start + $len) % 24]) { $len++ }
+        if ($len -gt $best) { $best = $len; $bestAt = $start }
+    }
+    if ($bestAt -lt 0) { return @('', '') }
+
+    # The day starts where the quiet ends and ends where the quiet begins, so the last busy
+    # hour is counted whole: busy until 03 reads as a day that ends at 04:00.
+    return @(('{0:00}:00' -f (($bestAt + $best) % 24)), ('{0:00}:00' -f $bestAt))
 }
 
 # How many days in a row, counting back from today, the computer was used. A gap of one
@@ -404,7 +431,7 @@ function Format-ActivityReport {
     $out += ('  at the computer   {0}   ({1} a day on average)' -f (Format-ActivitySpan $Report.Active), (Format-ActivitySpan $Report.AverageDay))
     $out += ('  longest session   {0}' -f (Format-ActivitySpan $Report.Longest))
     $out += ('  mode switches     {0}' -f $Report.Switches)
-    if ($Report.AverageStart) { $out += ('  usual day         {0} .. {1}' -f $Report.AverageStart, $Report.AverageEnd) }
+    if ($Report.UsualStart) { $out += ('  usual day         {0} .. {1}' -f $Report.UsualStart, $Report.UsualEnd) }
     if ($Report.BusiestHour -ge 0) { $out += ('  busiest hour      {0:00}:00' -f $Report.BusiestHour) }
     if ($Report.BestDay) { $out += ('  longest day       {0}   {1}' -f $Report.BestDay, (Format-ActivitySpan $Report.BestDayActive)) }
     $out += ('  days in a row     {0}' -f $Report.Streak)
@@ -500,7 +527,7 @@ function New-ActivityHtml {
         @{ K = 'a day on average'; V = (Format-ActivitySpan $Report.AverageDay) }
         @{ K = 'longest session'; V = (Format-ActivitySpan $Report.Longest) }
         @{ K = 'mode switches'; V = [string]$Report.Switches }
-        @{ K = 'usual day'; V = $(if ($Report.AverageStart) { $Report.AverageStart + ' .. ' + $Report.AverageEnd } else { '-' }) }
+        @{ K = 'usual day'; V = $(if ($Report.UsualStart) { $Report.UsualStart + ' .. ' + $Report.UsualEnd } else { '-' }) }
         @{ K = 'days in a row'; V = [string]$Report.Streak }
     )
     $cards = ''

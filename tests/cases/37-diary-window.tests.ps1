@@ -188,7 +188,7 @@ Test-Case 'diary page: a section stops at five rows, and says so out of one plac
     $day = Get-ActivityDay -Store $store -Date (Format-DisplayStamp $script:StatsToday 'yyyy-MM-dd')
     foreach ($app in @('a', 'b', 'c', 'd', 'e', 'f', 'g')) {
         Add-ActivitySpan -Day $day -Process $app -Display 'LG ULTRAFINE' -Mode 'all' `
-                         -Seconds 600 -Time '10:00' -Hour 10
+                         -Seconds 600 -Hour 10
     }
     $ui = New-DiaryUi -Days 1 -Store $store
     try {

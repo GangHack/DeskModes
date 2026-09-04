@@ -134,7 +134,7 @@ in the tray menu — that line is the right thing to paste into a bug report.
 - **A row is two floors now**: the name, the time and the share on top, the bar across the
   bottom. In the old 880-point window all four shared one line, and the name was the one that
   gave way - "chrome on LG ULTRA..." was already cut off there. Nothing is trimmed any more.
-- The six figures are **three by two** rather than six across, so "09:40-23:15" has room to be
+- The six figures are **three by two** rather than six across, so "10:00-04:00" has room to be
   itself; and what the diary does not record is said once, on the **Behavior** page, instead of
   twice.
 
@@ -233,6 +233,23 @@ in the tray menu — that line is the right thing to paste into a bug report.
   keyed to a mode now *moves* to the new key instead of being cleared and rewritten from the
   edit — a setting the edit did not mention kept its value everywhere else in the window, and
   a rename was the one place that meant "throw it away".
+- **The wheel scrolls the page it is pointed at instead of changing a dropdown's pick.** WPF
+  lets a closed dropdown take the wheel for stepping through its own options, so scrolling the
+  mode editor down towards the commands — with the cursor over the box you had just chosen
+  "One level for all" in — quietly turned it into "Per monitor", and nothing on screen said so.
+  A dropdown now hands the turn back to the page; with its list open the wheel walks the list,
+  which is what it is there for.
+- **"Usual day" says when your day runs, and midnight does not cut it in two.** It used to be
+  the average of the days' first and last activity, and a session that runs past midnight leaves
+  the next date's first activity at 00:00 — a minute nobody sat down at. Averaged in, those put
+  the start of the day at 02:30 for somebody who sits down at eleven. It is now read off the
+  histogram of hours, which is a circle and has no midnight seam: the day is the clock with the
+  longest quiet stretch cut out of it, to the hour — "10:00-04:00". An hour counts as part of
+  the day once it holds a twentieth of the busiest one, so one stray night does not stretch
+  everything to dawn for good.
+- The diary no longer writes down the clock time of the first and last thing you did on a day —
+  nothing reads it any more, and a file that holds less about a person is the better file. The
+  two values disappear from `activity.json` the next time each day is saved.
 
 ### The diary has a window
 

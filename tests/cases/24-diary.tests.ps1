@@ -13,9 +13,9 @@ function New-TestDiary {
         # for days that are not in the pot (see Format-DisplayStamp).
         $date = Format-DisplayStamp ([datetime]'2026-08-21').AddDays(-$offset) 'yyyy-MM-dd'
         $day = Get-ActivityDay -Store $store -Date $date
-        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'combo:Work' -Seconds 3600 -Time '09:00' -Hour 9
-        Add-ActivitySpan -Day $day -Process 'Code' -Display 'LG ULTRAFINE' -Mode 'combo:Work' -Seconds 5400 -Time '13:00' -Hour 13
-        Add-ActivitySpan -Day $day -Process 'cs2' -Display 'XG27AQDMGR' -Mode 'solo:XG27AQDMGR' -Seconds 1800 -Time '21:00' -Hour 21
+        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'combo:Work' -Seconds 3600 -Hour 9
+        Add-ActivitySpan -Day $day -Process 'Code' -Display 'LG ULTRAFINE' -Mode 'combo:Work' -Seconds 5400 -Hour 13
+        Add-ActivitySpan -Day $day -Process 'cs2' -Display 'XG27AQDMGR' -Mode 'solo:XG27AQDMGR' -Seconds 1800 -Hour 21
         $day.switches = 7
         $day.longest = 4200
     }
@@ -24,30 +24,29 @@ function New-TestDiary {
 
 Test-Case 'diary: a span lands in every bucket at once' {
     $day = New-ActivityDay
-    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'all' -Seconds 60 -Time '10:15' -Hour 10
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'LG ULTRAGEAR' -Mode 'all' -Seconds 60 -Hour 10
     Assert-Equal 60 $day.active 'time at the computer'
     Assert-Equal 60 $day.apps['chrome'] 'the app'
     Assert-Equal 60 $day.displays['LG ULTRAGEAR'] 'the display'
     Assert-Equal 60 $day.modes['all'] 'the mode'
     Assert-Equal 60 $day.pairs['chrome|LG ULTRAGEAR'] 'and the pair of app and display'
     Assert-Equal 60 $day.hours['10'] 'the hour of the day'
-    Assert-Equal '10:15' $day.first 'when the day started'
 }
 
-Test-Case 'diary: spans add up, and the first time stays the first' {
+Test-Case 'diary: spans add up, hour by hour' {
     $day = New-ActivityDay
-    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 60 -Time '09:00' -Hour 9
-    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 30 -Time '17:40' -Hour 17
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 60 -Hour 9
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 30 -Hour 17
     Assert-Equal 90 $day.apps['chrome'] 'summed'
-    Assert-Equal '09:00' $day.first 'the morning'
-    Assert-Equal '17:40' $day.last 'and the evening'
+    Assert-Equal 60 $day.hours['09'] 'the morning'
+    Assert-Equal 30 $day.hours['17'] 'and the evening'
 }
 
 Test-Case 'diary: an empty span changes nothing' {
     $day = New-ActivityDay
-    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 0 -Time '09:00' -Hour 9
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 0 -Hour 9
     Assert-Equal 0 $day.active 'nothing counted'
-    Assert-Equal '' $day.first 'and the day has not started'
+    Assert-Equal 0 $day.hours.Count 'and the day has not started'
 }
 
 Test-Case 'diary: a window on no known display still counts as time' {
@@ -84,10 +83,50 @@ Test-Case 'diary: the busiest hour is the tallest bar, and all 24 are there' {
     Assert-Equal 100 (@($rep.Hours | Where-Object { $_.Name -eq '13' })[0].Share) 'the tallest bar is full height'
 }
 
-Test-Case 'diary: the usual day is the average of its ends' {
+Test-Case 'diary: the usual day is the clock with the quiet hours cut out' {
     $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
-    Assert-Equal '09:00' $rep.AverageStart 'sat down'
-    Assert-Equal '21:00' $rep.AverageEnd 'got up'
+    Assert-Equal '09:00' $rep.UsualStart 'the first busy hour'
+    Assert-Equal '22:00' $rep.UsualEnd 'and the last one, counted whole'
+}
+
+Test-Case 'diary: a day that runs past midnight is not cut in two' {
+    # What put the start of the day at 02:30 for somebody who sits down at eleven: the
+    # calendar date a session crosses into starts at 00:00, and averaging those stamps
+    # was arithmetic over a seam. Round the clock there is no seam - the quiet stretch
+    # here is 05..09, so the day reads 10:00 .. 05:00 and not 00:00 .. anything.
+    $store = [ordered]@{ days = [ordered]@{} }
+    $day = Get-ActivityDay -Store $store -Date '2026-08-21'
+    foreach ($hour in @(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4)) {
+        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 3600 -Hour $hour
+    }
+    $rep = Get-ActivityReport -Store $store -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal '10:00' $rep.UsualStart 'the day begins where the quiet ends'
+    Assert-Equal '05:00' $rep.UsualEnd 'and ends where it begins again'
+}
+
+Test-Case 'diary: one stray hour does not stretch the day to dawn' {
+    # A twentieth of the busiest hour is the floor. One sample at five in the morning is
+    # under it, and the day still ends in the evening.
+    $store = [ordered]@{ days = [ordered]@{} }
+    $day = Get-ActivityDay -Store $store -Date '2026-08-21'
+    foreach ($hour in 9..17) {
+        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 3600 -Hour $hour
+    }
+    Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 20 -Hour 5
+    $rep = Get-ActivityReport -Store $store -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal '09:00' $rep.UsualStart 'the morning it really is'
+    Assert-Equal '18:00' $rep.UsualEnd 'and the evening'
+}
+
+Test-Case 'diary: a clock with no quiet hour at all names no day' {
+    $store = [ordered]@{ days = [ordered]@{} }
+    $day = Get-ActivityDay -Store $store -Date '2026-08-21'
+    foreach ($hour in 0..23) {
+        Add-ActivitySpan -Day $day -Process 'chrome' -Display 'A' -Mode 'all' -Seconds 3600 -Hour $hour
+    }
+    $rep = Get-ActivityReport -Store $store -Days 30 -Today ([datetime]'2026-08-21')
+    Assert-Equal '' $rep.UsualStart 'a day round the clock is no day'
+    Assert-Equal '' $rep.UsualEnd 'and the card shows a dash'
 }
 
 Test-Case 'diary: days in a row stop at the first gap' {

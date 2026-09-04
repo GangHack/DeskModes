@@ -116,12 +116,12 @@ function New-FakeDiary {
     $store = [ordered]@{ days = [ordered]@{} }
     $today = (Get-Date).Date
     $work = @(
-        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 10; Seconds = 7200; Time = '09:40' }
-        @{ App = 'chrome';  Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 12; Seconds = 3600; Time = '12:10' }
-        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 15; Seconds = 5400; Time = '15:05' }
-        @{ App = 'Teams';   Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 17; Seconds = 1800; Time = '17:20' }
-        @{ App = 'cs2';     Display = 'XG27AQDMGR';   Mode = 'solo:XG27AQDMGR'; Hour = 21; Seconds = 4200; Time = '21:30' }
-        @{ App = 'spotify'; Display = 'LG ULTRAGEAR'; Mode = 'all'; Hour = 23; Seconds = 900; Time = '23:15' }
+        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 10; Seconds = 7200 }
+        @{ App = 'chrome';  Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 12; Seconds = 3600 }
+        @{ App = 'Code';    Display = 'LG ULTRAFINE'; Mode = 'combo:Work'; Hour = 15; Seconds = 5400 }
+        @{ App = 'Teams';   Display = 'LG ULTRAGEAR'; Mode = 'combo:Work'; Hour = 17; Seconds = 1800 }
+        @{ App = 'cs2';     Display = 'XG27AQDMGR';   Mode = 'solo:XG27AQDMGR'; Hour = 21; Seconds = 4200 }
+        @{ App = 'spotify'; Display = 'LG ULTRAGEAR'; Mode = 'all'; Hour = 23; Seconds = 900 }
     )
     foreach ($offset in 0..9) {
         # The key is assembled by the same function the code uses: on a calendar other than the
@@ -134,7 +134,7 @@ function New-FakeDiary {
             # about whether the drawing works.
             $seconds = [int]([int]$span.Seconds * (1.0 - 0.05 * ($offset % 4)))
             Add-ActivitySpan -Day $day -Process $span.App -Display $span.Display -Mode $span.Mode `
-                             -Seconds $seconds -Time ([string]$span.Time) -Hour ([int]$span.Hour)
+                             -Seconds $seconds -Hour ([int]$span.Hour)
         }
         $day.switches = 6 + ($offset % 3)
         $day.longest = 9000

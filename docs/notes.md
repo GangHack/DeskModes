@@ -2681,3 +2681,72 @@ and is plainly wrong once a monitor that is off the bus has a line too. That ren
 inside the embedded C# and so changes its SHA, which means one `native-*.dll` rebuild on the next
 start, once. Worth it: the name of a section is how somebody reading the renderer finds what it
 draws.
+
+## The wheel, and the day that began at half past two (2026-09-05)
+
+Two complaints from the same evening, and neither is about display switching.
+
+### A dropdown was quietly changing its own answer
+
+The mode editor's **Brightness** section offers three shapes — leave it alone, one level for all,
+a level per monitor — and the same for contrast. Somebody picked one, scrolled the page down
+towards the commands, and arrived with a different one picked. Nothing said so: a shut dropdown
+looks the same whatever is inside it.
+
+That is WPF's own `ComboBox.OnMouseWheel`. With the list shut it treats a turn of the wheel as
+`SelectNext` / `SelectPrev` and marks it handled, so the page it stands on never sees the turn.
+Nine boxes here sit on a page that scrolls, and the two that were noticed are simply the two
+somebody had just clicked — the box takes the wheel whenever the cursor is over it.
+
+The guard is five lines and it hangs on the *tunnelling* Preview, which reaches the box before
+WPF's own handler can act: with the list shut the turn is marked handled and raised again on the
+box's parent, where it bubbles to the `ScrollViewer` and scrolls. With the list OPEN it is left
+alone — walking a long list of processes is exactly what the wheel is for there.
+
+Where it is registered matters more than what it does. Not on the two boxes that were reported,
+and not on the nine that exist: on every `ComboBox` of every window, found by walking the logical
+tree in `Convert-UiXaml` — the one funnel all four markups pass through. The logical tree is what
+XAML fills in at parse time, so this works on a window nobody has shown yet, which is the state
+every test and `render-preview.ps1` is in. A tenth box added to any of those markups is guarded
+without anybody having read this file, and a test counts `<ComboBox` in each markup and asserts
+the walk finds that many — so a box hidden inside a template, where the logical walk would not
+reach it, fails a test instead of losing somebody's setting.
+
+The other branch is untestable from here on purpose: WPF coerces `IsDropDownOpen` back to false on
+a control that was never loaded, so a window nobody showed has no open list to turn a wheel over.
+The test says so where the case would have been.
+
+### "usual day  02:30-23:44"
+
+The card was the average of every day's first and last activity. On this desk it read half past
+two to a quarter to midnight, and neither hour is one anybody has ever sat down or got up at.
+
+The diary's day is the calendar date, and the person's day is not. Fourteen of sixteen dates in
+`activity.json` have `first = 00:00` — not a minute anybody sat down at, but the minute a session
+already in progress crossed into a new date. Averaged with the three dates that do start in the
+morning, those pulled the answer to 02:30. The end is the same lie the other way round: `23:59`
+on every date that ran on into the next.
+
+There is no fixing the average. What is stored per date is one `first` and one `last`, and one
+calendar date holds fragments of two different personal days — the tail of last night and all of
+today. Re-bucketing the days around a four-o'clock boundary would be the honest model, and it
+needs a stream of samples the file deliberately does not keep.
+
+The histogram of hours does not have the problem. It is a circle, midnight is nothing special on
+it, and the desk's shape is plain in it: nothing at all between 04:00 and 09:00, everything else
+busy. So the day is the clock with the longest quiet stretch cut out of it — `Get-UsualDay`, which
+looks for that stretch ROUND the clock rather than along it, because a night owl's quiet hours lie
+across midnight and along a flat 0..23 they read as two short stretches instead of one long one.
+It answers `10:00 .. 04:00` here.
+
+Two decisions inside it:
+
+- **An hour joins the day at a twentieth of the busiest one.** Without a floor, one sample at five
+  in the morning — one night, a year ago — stretches everybody's day to dawn and never stops.
+- **The price is the hour, not the minute.** `10:00`, never `10:07`. That is the honest precision
+  of a bucket an hour wide, and the card is called "usual day" rather than "sat down at".
+
+`first` and `last` are gone from the file with the average that read them. Nothing else looked at
+them, and a diary that holds less about a person is the better diary — that is the file's whole
+argument for existing at all. Days written before today keep their two values until each is next
+saved; `ConvertTo-ActivityDay` stopped carrying them over, so the first save drops them.

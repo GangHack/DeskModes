@@ -223,3 +223,78 @@ Test-Case 'dialog: a save leaves the rules the tray is living with alone' {
     }
     finally { $ui.Window.Close() }
 }
+
+
+# --- the wheel over a drop-down ---------------------------------------------
+# The turn of the wheel a ComboBox used to take for itself. Raised by hand rather than by a
+# mouse: the Preview is what the guard hangs on, and RaiseEvent reaches it on a window that
+# was never shown.
+function Send-WheelTurn {
+    param($Element, [int]$Delta = -120)
+
+    $turn = New-Object System.Windows.Input.MouseWheelEventArgs(
+        [System.Windows.Input.Mouse]::PrimaryDevice, 0, $Delta)
+    $turn.RoutedEvent = [System.Windows.UIElement]::PreviewMouseWheelEvent
+    $Element.RaiseEvent($turn)
+    return [bool]$turn.Handled
+}
+
+# The other branch - a list that is OPEN keeps the wheel for walking itself - cannot be
+# reached from here: WPF coerces IsDropDownOpen back to false on a control that was never
+# loaded, so a window nobody showed has no open list to turn the wheel over.
+# The page the box stands on: the wheel is only given back if this is what it reaches.
+function Get-UiScrollHost {
+    param($Element)
+
+    $node = $Element
+    while ($node -and $node -isnot [System.Windows.Controls.ScrollViewer]) { $node = $node.Parent }
+    return $node
+}
+
+Test-Case 'dialog: a shut drop-down hands the wheel to the page instead of changing the pick' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $box = $ui.SleepBox
+        $was = [int]$box.SelectedIndex
+
+        # The count lives on the ScrollViewer's own Tag: a handler that closed over a counter
+        # of ours would not see it (see the note on .GetNewClosure() in SettingsDialog.ps1),
+        # and the sender is the one thing a flat block does get.
+        $page = Get-UiScrollHost -Element $box
+        Assert-True ($null -ne $page) 'the box stands on a page that scrolls'
+        $page.Tag = 0
+        # handledEventsToo: the page marks the turn handled the moment it scrolls, and this
+        # has to count the turn either way.
+        $page.AddHandler([System.Windows.UIElement]::MouseWheelEvent,
+            [System.Windows.Input.MouseWheelEventHandler]{ param($sender, $e) $sender.Tag = [int]$sender.Tag + 1 },
+            $true)
+
+        Assert-True (Send-WheelTurn -Element $box) 'the box took the turn off WPF'
+        Assert-Equal $was ([int]$box.SelectedIndex) 'and the pick is the one that was made'
+        Assert-Equal 1 ([int]$page.Tag) 'while the page got the turn to scroll with'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: every drop-down of every window is guarded, not just the ones remembered' {
+    # The count comes out of the markup itself: a box added to any of the four windows later
+    # is guarded by the walk in Convert-UiXaml, and this is what says the walk still reaches it.
+    foreach ($markup in @(
+        @{ Name = 'settings';    Xaml = $script:SettingsWindowXaml },
+        @{ Name = 'mode editor'; Xaml = $script:ModeEditorXaml },
+        @{ Name = 'rule editor'; Xaml = $script:RuleEditorXaml },
+        @{ Name = 'timer';       Xaml = $script:TimerWindowXaml })) {
+
+        $declared = @([regex]::Matches([string]$markup.Xaml, '<ComboBox ')).Count
+        $win = Convert-UiXaml -Xaml ([string]$markup.Xaml) -Palette (Get-UiPalette -Dark $false)
+        try {
+            $found = @(Get-UiDropDowns -Root $win)
+            Assert-Equal $declared $found.Count ('every box of the ' + $markup.Name + ' window was found')
+            foreach ($box in $found) {
+                Assert-True (Send-WheelTurn -Element $box) ('a box of the ' + $markup.Name + ' window is guarded')
+            }
+        }
+        finally { $win.Close() }
+    }
+}

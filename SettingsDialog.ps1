@@ -1562,7 +1562,57 @@ function Convert-UiXaml {
     foreach ($key in $Palette.Keys) {
         $text = $text.Replace('%%' + $key + '%%', [string]$Palette[$key])
     }
-    return [System.Windows.Markup.XamlReader]::Parse($text)
+    $root = [System.Windows.Markup.XamlReader]::Parse($text)
+    Register-WheelPassThrough -Root $root
+    return $root
+}
+
+# --- the wheel over a closed drop-down --------------------------------------
+# WPF's ComboBox steps its own selection on a turn of the wheel whenever its list is shut,
+# and every box here sits on a page that scrolls. So the wheel, with the cursor over a box
+# somebody had just picked from, silently changed the pick instead of scrolling the page -
+# silently, because a shut box looks the same whatever is inside it. Somebody scrolling the
+# mode editor down to the hooks would arrive with "one level for all" turned into
+# "per monitor", and nothing on screen said so.
+#
+# So the box hands the wheel back to the page: the tunnelling Preview reaches the box before
+# WPF's own handler gets to act on it, and the same turn is raised again on the box's parent,
+# where it bubbles up to the ScrollViewer and scrolls. With the list open the wheel is left
+# alone - walking a long list is exactly what it is for there.
+function Register-WheelPassThrough {
+    param($Root)
+
+    foreach ($box in @(Get-UiDropDowns -Root $Root)) {
+        $box.add_PreviewMouseWheel({
+            param($sender, $e)
+            if ($sender.IsDropDownOpen) { return }
+            $parent = $sender.Parent
+            if (-not $parent) { return }
+            $e.Handled = $true
+            $again = New-Object System.Windows.Input.MouseWheelEventArgs(
+                $e.MouseDevice, $e.Timestamp, $e.Delta)
+            $again.RoutedEvent = [System.Windows.UIElement]::MouseWheelEvent
+            $parent.RaiseEvent($again)
+        })
+    }
+}
+
+# Every ComboBox in a window that has never been shown. The visual tree is not built until
+# it is, so this walks the logical one - which is what XAML fills in at parse time. A window
+# is parsed once, so the walk is paid once and covers a box added to any of the four
+# markups later without anybody having to remember this file.
+function Get-UiDropDowns {
+    param($Root)
+
+    $found = @()
+    foreach ($child in @([System.Windows.LogicalTreeHelper]::GetChildren($Root))) {
+        # A TextBlock's logical children include its text, which is a string and has no
+        # children of its own to ask about.
+        if ($child -isnot [System.Windows.DependencyObject]) { continue }
+        if ($child -is [System.Windows.Controls.ComboBox]) { $found += $child; continue }
+        $found += @(Get-UiDropDowns -Root $child)
+    }
+    return @($found)
 }
 
 # --- event handlers: why there is no .GetNewClosure() -----------------------
@@ -6028,7 +6078,7 @@ function Update-StatsView {
         @{ V = (Format-ActivitySpan $report.AverageDay); K = 'a day on average' }
         @{ V = (Format-ActivitySpan $report.Longest);    K = 'longest session' }
         @{ V = [string]$report.Switches;                 K = 'mode switches' }
-        @{ V = $(if ($report.AverageStart) { '{0}-{1}' -f $report.AverageStart, $report.AverageEnd } else { '-' })
+        @{ V = $(if ($report.UsualStart) { '{0}-{1}' -f $report.UsualStart, $report.UsualEnd } else { '-' })
            K = 'usual day' }
         @{ V = [string]$report.Streak;                   K = 'days in a row' })) {
         [void]$Ui.CardsPanel.Children.Add(
