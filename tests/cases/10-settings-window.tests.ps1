@@ -831,7 +831,7 @@ Test-Case 'dialog: asking what would be saved does not write "rejected save" int
     finally { $ui.Window.Close() }
 }
 
-# --- the way-back shortcut and the desk as Windows has it --------------------
+# --- the way-back shortcut and the desk copied from Windows ------------------
 
 Test-Case 'dialog: the way-back shortcut is set on the Behavior page and saved beside the modes' {
     $settings = Get-DefaultSettings
@@ -870,7 +870,7 @@ Test-Case 'dialog: the mode list never grows a row for the way back' {
     Assert-Equal 0 @($modes | Where-Object { $_.Kind -eq 'orphan' }).Count 'no orphan for it'
 }
 
-Test-Case 'desk: as Windows has it orders the cards by position and stars the taskbar display' {
+Test-Case 'desk: copy from Windows orders the cards by position and stars the taskbar display' {
     $state = @(
         (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')

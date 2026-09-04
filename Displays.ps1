@@ -468,11 +468,38 @@ $menu.ImageScalingSize = New-Object System.Drawing.Size 16, 16
 $menu.Padding = New-Object System.Windows.Forms.Padding 4, 6, 4, 6
 $tray.ContextMenuStrip = $menu
 
+# A tray menu is dismissed by a click ELSEWHERE through one route only: WM_ACTIVATEAPP, which
+# Windows sends when our process stops being the foreground application. NotifyIcon asks to
+# become that one — SetForegroundWindow on its own hidden window — before it shows the menu,
+# and Windows is free to refuse: the foreground belongs to whoever the person was last typing
+# into. On a refusal the menu is drawn while nothing of ours is active, no deactivation ever
+# arrives, and the menu stands there until it is clicked. That is the "the menu will not close"
+# report, and it leaves no other trace: nothing throws and the next open usually works.
+#
+# So an open that finds somebody else holding the foreground writes down who. One line, on the
+# anomaly only — the healthy case is our own process and says nothing.
+function Write-MenuForegroundNote {
+    try {
+        $fg = [NativeForeground]::GetForegroundWindow()
+        if ($fg -eq [IntPtr]::Zero) {
+            Write-DisplayLog 'menu: opened with no foreground window at all - a click outside may not close it'
+            return
+        }
+        $owner = [uint32]0
+        [void][NativeWindows]::GetWindowThreadProcessId($fg, [ref]$owner)
+        if ($owner -eq $PID) { return }
+        $who = $(try { (Get-Process -Id $owner -ErrorAction Stop).ProcessName } catch { "pid $owner" })
+        Write-DisplayLog ("menu: opened while {0} holds the foreground - a click outside may not close it" -f $who)
+    }
+    catch { }   # a note about the menu must never be the reason the menu itself fails
+}
+
 # Only DWM can round the corners of the menu window (and only on Windows 11; on 10 the
 # call silently does nothing). A handle exists only for an open menu — which is why this
 # is here rather than at creation.
 $menu.add_Opened({
     try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }   # not Windows 11 — the corners stay square
+    Write-MenuForegroundNote
 })
 
 function Show-Balloon {

@@ -903,15 +903,15 @@ $script:SettingsWindowXaml = @'
                                        Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
                         </StackPanel>
                         <!-- Two commands in the page's head, like Add a combination on the next
-                             page. "As Windows has it" takes the order and the taskbar off the desk
+                             page. "Copy from Windows" takes the order and the taskbar off the desk
                              as it stands this second, which on a first run is the whole set-up in
                              one click; "Which is which" puts a badge on every display for a moment,
                              because three cards that all say LG tell nobody which LG. -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                             <Button x:Name="IdentifyBtn" Style="{StaticResource Btn}" Content="Which is which"
                                     ToolTip="Show each display's name on it for a moment."/>
-                            <Button x:Name="ReadDeskBtn" Style="{StaticResource Btn}" Content="As Windows has it" Margin="8,0,0,0"
-                                    ToolTip="Order the cards the way the displays stand in Windows right now, and star the one that has the taskbar."/>
+                            <Button x:Name="ReadDeskBtn" Style="{StaticResource Btn}" Content="Copy from Windows" Margin="8,0,0,0"
+                                    ToolTip="Copies the arrangement Windows holds right now, right or wrong, and stars the display that has the taskbar. Handy when you have arranged the displays in Windows settings already."/>
                         </StackPanel>
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
@@ -2981,7 +2981,7 @@ function Get-DeskReadOrder {
     }
 }
 
-# "As Windows has it": the cards take the order Windows holds and the star goes to the display that
+# "Copy from Windows": the cards take the order Windows holds and the star goes to the display that
 # has the taskbar now. On a desk that has never been arranged this is the whole of the set-up; on one
 # that has, it is a way back to what the eye can see after an experiment went wrong. Nothing is saved
 # here - the footer knows the window changed, and Save writes it like any other edit.

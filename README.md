@@ -88,9 +88,10 @@ it can be resized; where it stood and which page you left it on come back with i
 **Your desk** is the picture above. The display cards are drawn to the size of the panels
 themselves — read out of each monitor's EDID, not guessed from its resolution — so the row is
 the layout rather than a picture of it, and the table under it says what each display reports
-about itself. Two buttons stand in the page's head: **As Windows has it** puts the cards in the
-order Windows holds right now and stars the display that has the taskbar — on a first run, that
-is the set-up; **Which is which** shows each display's name on it for a moment.
+about itself. Two buttons stand in the page's head: **Copy from Windows** puts the cards in the
+order Windows holds right now and stars the display that has the taskbar — right or wrong, so it
+is for the desk you have already arranged in Windows settings, where it makes the first run one
+click; **Which is which** shows each display's name on it for a moment.
 
 A display you have switched off at its own button is still there, marked `not connected`. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them

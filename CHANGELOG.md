@@ -38,7 +38,7 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ### The desk sets itself up
 
-- **As Windows has it**, on Your desk: the cards take the order Windows holds this second and the
+- **Copy from Windows**, on Your desk: the cards take the order Windows holds this second and the
   star goes to the display that has the taskbar now. On a first run that is the whole set-up in one
   click; later it is the way back to what the eye can see.
 - **A new combination opens on the displays that are on**, with the current taskbar display chosen.
