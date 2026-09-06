@@ -580,6 +580,7 @@ Test-Case 'switch: KeepMode restores saved geometry with the live mode and keeps
     Assert-Equal 120 $script:SwDesk[0].Hz 'a manual repeat All preserves the live complete desk'
     Assert-Equal $beforeRepeat @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the repeat does not rebuild it'
     Assert-Equal 120 $script:SwStore.Snapshots[$allKey].Displays[0].Hz 'that explicit repeat promotes the successful live desk'
+    Assert-Null $script:SwStore.ProtectedSnapshot 'the manual adoption clears the one-shot automatic protection'
 }
 
 Test-Case 'switch: automatic reapply restores and retains the durable KeepMode protection' {
@@ -602,6 +603,70 @@ Test-Case 'switch: automatic reapply restores and retains the durable KeepMode p
     Assert-Equal 120 $script:SwDesk[0].Hz 'the applied KeepMode rate is restored'
     Assert-Equal 75 $script:SwStore.Snapshots[$allKey].Displays[0].Hz 'the one-shot repair still does not rewrite the canonical desk'
     Assert-Equal 120 $script:SwStore.ProtectedSnapshot.Displays[0].Hz 'the durable protection survives automatic reapply'
+}
+
+Test-Case 'switch: failed automatic KeepMode repairs retain their durable target across retries' {
+    # Use the production serializer in this orchestrator case. Every switch reads the file again, so the
+    # second attempt cannot accidentally inherit an object that survived only in this PowerShell process.
+    $script:RetryRealReadDesktopStore = ${function:Read-DesktopSnapshotStore}
+    $script:RetryRealWriteDesktopStore = ${function:Write-DesktopSnapshotStore}
+    . $script:SwFakes
+    function Read-DesktopSnapshotStore { & $script:RetryRealReadDesktopStore }
+    function Write-DesktopSnapshotStore { param($Store) & $script:RetryRealWriteDesktopStore -Store $Store }
+    function Test-FullscreenApp { return $false }
+
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwDesk[0].Hz = 75; $script:SwDesk[0].RateNum = 75; $script:SwDesk[0].RateDen = 1
+    $allKey = Get-DesktopSetKey -DevicePaths @($script:SwDesk | ForEach-Object { $_.Id })
+    $oldStoreFile = $script:DesktopSnapshotsFile
+    $script:DesktopSnapshotsFile = Join-Path $script:TestDir 'retry-desktop-layouts.json'
+    try {
+        [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
+        $script:SwDesk[0].Hz = 120; $script:SwDesk[0].RateNum = 120000; $script:SwDesk[0].RateDen = 1000
+        [void](Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet)
+
+        foreach ($attempt in 1, 2) {
+            # Simulate the driver dropping the active panel to 60 Hz, then accepting the requested mode
+            # while returning a wrong rotation. The failed verification must leave 120 Hz as the durable
+            # automatic target even though this display set is now pending and unsafe.
+            $script:SwDesk[0].Hz = 60; $script:SwDesk[0].RateNum = 60; $script:SwDesk[0].RateDen = 1
+            $script:SwVerifyMismatch = $true
+            $failed = Switch-DisplayMode -ModeKey 'all' -Automatic -Quiet
+            $roundTrip = Read-DesktopSnapshotStore
+
+            Assert-Equal 'partial' $failed.Outcome "failed automatic attempt $attempt stays partial"
+            Assert-Equal 120 $script:SwFullTargets[0].Hz "attempt $attempt still requests the protected rate"
+            Assert-Equal 120000 $script:SwFullTargets[0].RateNum "attempt $attempt requests its exact numerator"
+            Assert-Equal 1000 $script:SwFullTargets[0].RateDen "attempt $attempt requests its exact denominator"
+            Assert-Equal 120 $roundTrip.ProtectedSnapshot.Displays[0].Hz "attempt $attempt keeps that rate after a disk round trip"
+            Assert-Equal 120000 $roundTrip.ProtectedSnapshot.Displays[0].RateNum `
+                "attempt $attempt keeps the exact numerator after a disk round trip"
+            Assert-Equal 1000 $roundTrip.ProtectedSnapshot.Displays[0].RateDen `
+                "attempt $attempt keeps the exact denominator after a disk round trip"
+            Assert-Equal $allKey $roundTrip.PendingKey "attempt $attempt remains pending"
+            Assert-True $roundTrip.UnsafeKeys.ContainsKey($allKey) "attempt $attempt remains guarded"
+
+            $script:SwCalls = @()
+            $script:LastRestore = [datetime]::MinValue
+            [void](Restore-BestModes -DebounceMs 0)
+            Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'best:*' }).Count `
+                "the watchdog does not write between attempt $attempt and its retry"
+        }
+
+        $script:SwVerifyMismatch = $false
+        $recovered = Switch-DisplayMode -ModeKey 'all' -Automatic -Quiet
+        $complete = Read-DesktopSnapshotStore
+        Assert-True $recovered.Ok 'a later automatic retry can complete'
+        Assert-Equal 120 $script:SwDesk[0].Hz 'the retry restores the protected rate instead of the canonical baseline'
+        Assert-Equal 75 $complete.Snapshots[$allKey].Displays[0].Hz 'the canonical baseline was never substituted during retries'
+        Assert-Equal 120 $complete.ProtectedSnapshot.Displays[0].Hz 'the verified automatic target remains protected'
+        Assert-Equal '' $complete.PendingKey 'successful verification clears pending state'
+        Assert-True (-not $complete.UnsafeKeys.ContainsKey($allKey)) 'successful verification clears the guard'
+    }
+    finally {
+        $script:DesktopSnapshotsFile = $oldStoreFile
+    }
 }
 
 Test-Case 'switch: KeepMode refuses a live size that overlaps saved sleeping geometry' {

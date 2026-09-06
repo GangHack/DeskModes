@@ -5376,8 +5376,10 @@ function Switch-DisplayMode {
         $currentSnapshot = New-DesktopSnapshot -State $monitors
         $destinationSnapshot = $desktopStore.Snapshots[$destinationKey]
         $hadDestinationSnapshot = ($null -ne $destinationSnapshot)
+        # Unsafe describes what Windows is showing now, not the last target that was fully verified.
+        # Automatic retries must keep asking for that trusted protected snapshot after a failed attempt
+        # marks this set unsafe; the pending guard keeps the watchdog from touching it between attempts.
         $usingProtectedSnapshot = ($Automatic -and $desktopStore.ProtectedKey -eq $destinationKey -and
-            -not $desktopStore.UnsafeKeys.ContainsKey($destinationKey) -and
             $desktopStore.ProtectedSnapshot -and $desktopStore.ProtectedSnapshot.Key -eq $destinationKey)
         if ($usingProtectedSnapshot) { $destinationSnapshot = $desktopStore.ProtectedSnapshot }
         $storeDirty = $false
@@ -5452,8 +5454,10 @@ function Switch-DisplayMode {
             if ($willChangeDesktop) {
                 $desktopStore.PendingKey = $destinationKey
                 $desktopStore.UnsafeKeys[$destinationKey] = $true
-                $desktopStore.ProtectedKey = ''
-                $desktopStore.ProtectedSnapshot = $null
+                if (-not $usingProtectedSnapshot) {
+                    $desktopStore.ProtectedKey = ''
+                    $desktopStore.ProtectedSnapshot = $null
+                }
                 $storeDirty = $true
             }
             if ($storeDirty) {
