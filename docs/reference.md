@@ -516,8 +516,12 @@ same report in the console.
 .\Set-Display.ps1 ULTRAGEAR     one display, by part of its name
 ```
 
-`-PrimaryMatch <name>` overrides the taskbar display for this call, `-KeepMode` leaves
-refresh rates alone, and `-DryRun` prints what would happen without touching anything.
+`-PrimaryMatch <name>` overrides the taskbar display for this call. `-KeepMode` retains
+the resolution and exact refresh rate of displays that are already active; a sleeping
+display uses its saved mode when one is available. During exact restoration, a live mode
+that conflicts with the saved arrangement or orientation is refused before applying it.
+The verified result is also protected from the watchdog and automatic reapply.
+`-DryRun` prints what would happen without touching anything.
 Exit codes: `0` switched, `1` failed, `2` skipped because another switch was in flight.
 
 `status` prints `Current` and `Best` side by side — if they differ, that display is not at
@@ -604,8 +608,14 @@ Exact restoration uses `desktop-layouts.json`, keyed by the physical display set
 source coordinates, rotation and the driver's refresh fraction. It supplies that geometry
 in one CCD request and verifies the returned desktop. A refusal is reported instead of
 retrying with omitted Hz or replacing the saved orientation with a best-mode guess. The
-watchdog respects the restored modes. The snapshot is separate from the legacy best-mode
+watchdog respects the restored modes and leaves unverified destinations alone. A failed
+restore also cannot overwrite the last good window positions on the next departure.
+The snapshot is separate from the legacy best-mode
 cache in `display-modes.json`.
+
+A first subset uses one complete source desktop, preferring the current trusted Windows
+arrangement. Separate solo snapshots cannot establish where those displays belong together.
+Repeating All manually preserves the live desk, including a mode retained with `-KeepMode`.
 
 For a set with no complete known geometry, the fallback repair steps remain. After applying
 the set, the tool checks

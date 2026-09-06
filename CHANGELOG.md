@@ -46,6 +46,22 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 - Copy diagnostics from About or run diagnostics.cmd: a version/display snapshot without settings,
   hook commands, full device paths or diary data. Nothing is sent automatically.
 
+### Audit corrections
+
+- Keep the last good window positions after a failed desktop restoration, and leave pending
+  or unsafe display sets untouched by the refresh watchdog.
+- Distinguish CCD sources across video adapters and refuse incomplete display requests.
+  Derive a new subset from one coherent desktop snapshot, never unrelated solo coordinates.
+- Honor `-KeepMode` during exact restoration and protect its applied modes from the watchdog.
+  Report failed layout verification instead of accepting the wrong arrangement as success.
+- Preserve a rule's original return mode after a partial switch, and match overlapping
+  connected-display patterns independently of their order.
+- Save the selected interface language and preserve Monitor-ID-based HDR and picture settings
+  when a mode editor is saved. A startup shortcut failure no longer strands committed settings
+  outside the running tray.
+- End diary sessions across long sampling gaps and disabled recording instead of counting
+  the intervening hours as continuous work.
+
 ### Release verification
 
 - Syntax, BOM/CRLF, PSScriptAnalyzer, translation consistency and isolated behavior tests.
