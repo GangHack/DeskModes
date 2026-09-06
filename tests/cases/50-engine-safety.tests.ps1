@@ -150,3 +150,11 @@ Test-Case 'rule match: overlapping names find a unique assignment in either patt
     Assert-True (Test-DisplaySetMatch -Patterns @('LG', 'ULTRAGEAR') -Connected $connected) 'the broad pattern can move to the other display'
     Assert-True (Test-DisplaySetMatch -Patterns @('ULTRAGEAR', 'LG') -Connected $connected) 'pattern order does not change the result'
 }
+
+Test-Case 'native boundary: incomplete CCD and unsettled layout requests never report success' {
+    $fixture = Join-Path (Split-Path $PSScriptRoot -Parent) 'native-engine-fixture.ps1'
+    $output = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fixture 2>&1)
+
+    Assert-Equal 0 $LASTEXITCODE 'the isolated fake-native process passed'
+    Assert-True (($output -join "`n") -like '*native engine fixture passed*') 'the boundary assertions all ran'
+}
