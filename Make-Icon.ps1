@@ -8,10 +8,10 @@
     Writes a real multi-size .ico (PNG inside, the Vista+ format) plus a preview
     sheet showing every size on a light and a dark background.
 
-    Each size is drawn separately rather than scaled from one: at 16-20 px the
-    second monitor turns to mush, so there it is left out and the silhouette stays
-    readable. System.Drawing cannot save a multi-size .ico, so the header and the
-    directory are assembled by hand.
+    Each size is drawn separately rather than scaled from one, so that the stroke
+    widths and the ring can be tuned per size and the smallest stays readable.
+    System.Drawing cannot save a multi-size .ico, so the header and the directory
+    are assembled by hand.
 
 .PARAMETER IcoPath
     Where to write the icon. Defaults to app.ico beside the scripts - the file the
@@ -69,7 +69,10 @@ function New-IconBitmap {
     $g.FillPath($grad, $tile)
     $rw = [single][Math]::Max(1.0, $s * 0.03)
     $ring = New-RoundedPath ($rw / 2) ($rw / 2) ($s - $rw) ($s - $rw) ($s * 0.22 - $rw / 2)
-    $ringPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(40, 255, 255, 255)), $rw
+    # At tray size the tile is a few dark pixels on a dark taskbar and the ring is all that
+    # says where it ends, so there it is twice as bright as on the big sizes.
+    $ringAlpha = if ($Size -le 20) { 80 } else { 40 }
+    $ringPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb($ringAlpha, 255, 255, 255)), $rw
     $g.DrawPath($ringPen, $ring)
     $ring.Dispose(); $ringPen.Dispose()
 
@@ -79,20 +82,18 @@ function New-IconBitmap {
     # The second monitor as a hint behind the first: a switch between displays, which is
     # the whole program in one picture. The FRONT monitor, stand included, sits at the
     # tile's centre: the eye takes the white shape for the picture and reads the icon as
-    # lopsided when that shape is off-centre, however balanced the bounding box - and at
-    # 16-20 px, where the second monitor turns to mush and is left out, the same coordinates
-    # leave the lone monitor centred rather than stranded on the left.
-    $twoScreens = $Size -ge 24
-    if ($twoScreens) {
-        $back = New-RoundedPath ($s * 0.46) ($s * 0.14) ($s * 0.38) ($s * 0.28) ($s * 0.05)
-        $g.FillPath($dim, $back)
-        $back.Dispose()
-    }
+    # lopsided when that shape is off-centre, however balanced the bounding box. The back
+    # monitor is drawn at every size, 16 px included: the tray shows the 16 and the taskbar
+    # button the 24, side by side on one screen, and a picture that changes between them
+    # reads as two different programs.
+    $back = New-RoundedPath ($s * 0.46) ($s * 0.14) ($s * 0.38) ($s * 0.28) ($s * 0.05)
+    $g.FillPath($dim, $back)
+    $back.Dispose()
 
     # the front monitor, with a gap in the tile's colour so it stands off the back one
     $sep = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 24, 24, 28)), ([single][Math]::Max(1.0, $s * 0.06))
     $scr = New-RoundedPath ($s * 0.25) ($s * 0.26) ($s * 0.50) ($s * 0.36) ($s * 0.06)
-    if ($twoScreens) { $g.DrawPath($sep, $scr) }
+    $g.DrawPath($sep, $scr)
     $g.FillPath($lit, $scr)
     $scr.Dispose(); $sep.Dispose()
 

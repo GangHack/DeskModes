@@ -27,8 +27,9 @@ left behind.
 
 `System.Drawing` cannot save a real multi-size `.ico` (PNG inside, the Vista+ format), so
 `Make-Icon.ps1` assembles the header and the directory by hand. Every size is drawn separately
-rather than scaled from one: at 16-20 px the second monitor turned to mush, so only one screen
-is left there. In the tray the size is asked of the system
+rather than scaled from one, so the ring and the strokes can be tuned per size. The same two
+monitors are drawn at every size, 16 px included: the tray shows the 16 and the taskbar button
+the 24 side by side, and a picture that changed between them read as two programs. In the tray the size is asked of the system
 (`SystemInformation.SmallIconSize`) — at 150% scale that is no longer 16 px.
 
 **The icon's tile is opaque**, and that is deliberate: a white glyph with no backing disappears
