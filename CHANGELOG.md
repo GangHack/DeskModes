@@ -9,6 +9,13 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
 
+### A quieter icon
+
+- **The tray icon is graphite and white now**, not blue: two monitors, the front one lit and the
+  one behind it dim. It sits with the system's own tray glyphs on a light taskbar and a dark one
+  alike. The tray picks it up on the next start, and the shortcuts point at the same file, so they
+  follow - though Explorer may keep showing the old picture until its icon cache lets go.
+
 ### The program is called DeskModes
 
 - The name on the window, in the tray, in the log and on the startup shortcut. Nothing has been

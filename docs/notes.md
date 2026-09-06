@@ -32,7 +32,11 @@ is left there. In the tray the size is asked of the system
 (`SystemInformation.SmallIconSize`) — at 150% scale that is no longer 16 px.
 
 **The icon's tile is opaque**, and that is deliberate: a white glyph with no backing disappears
-on a light taskbar, and a dark one on a dark taskbar.
+on a light taskbar, and a dark one on a dark taskbar. Since 2026-09-06 the tile is graphite
+rather than blue, so the icon sits with the system's own monochrome tray glyphs; the gradient
+keeps it from reading as a flat black square, and a faint ring separates it from a dark taskbar.
+The picture is two monitors, the front one lit and the one behind it dim — a switch between
+displays.
 
 The Start-menu shortcut keeps **its own copy** of the path to the icon. Move the tool's folder
 and the icon will vanish and turn into a blank sheet — the path in the shortcut stays the old

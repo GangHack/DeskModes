@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    Draws the DeskModes icon: white monitors on a blue tile.
+    Draws the DeskModes icon: two monitors on a graphite tile, the back one dim.
 
 .DESCRIPTION
     Writes a real multi-size .ico (PNG inside, the Vista+ format) plus a preview
@@ -50,46 +50,56 @@ function New-IconBitmap {
     $bmp = New-Object System.Drawing.Bitmap $Size, $Size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
 
     $s = [single]$Size
-    # the tile, with its gradient
+    # The tile is graphite rather than a colour so the icon sits with the system's own
+    # monochrome tray glyphs instead of shouting among them, and it is opaque on purpose:
+    # a white glyph with no backing vanishes on a light taskbar. The gradient is what keeps
+    # it from reading as a flat black square, the faint ring is what separates it from a
+    # dark taskbar.
     $tile = New-RoundedPath 0 0 $s $s ($s * 0.22)
     $rect = New-Object System.Drawing.RectangleF 0, 0, $s, $s
     $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
         $rect,
-        [System.Drawing.Color]::FromArgb(255, 96, 156, 255),
-        [System.Drawing.Color]::FromArgb(255, 28, 88, 214),
-        [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal)
+        [System.Drawing.Color]::FromArgb(255, 58, 58, 64),
+        [System.Drawing.Color]::FromArgb(255, 24, 24, 28),
+        [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
     $g.FillPath($grad, $tile)
+    $rw = [single][Math]::Max(1.0, $s * 0.03)
+    $ring = New-RoundedPath ($rw / 2) ($rw / 2) ($s - $rw) ($s - $rw) ($s * 0.22 - $rw / 2)
+    $ringPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(40, 255, 255, 255)), $rw
+    $g.DrawPath($ringPen, $ring)
+    $ring.Dispose(); $ringPen.Dispose()
 
-    $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::White)
-    $hint  = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(150, 255, 255, 255))
-    # an outline in the tile's own colour — it separates the front monitor from the back one
-    $sep = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 46, 104, 224)), ([single]([Math]::Max(1.0, $s * 0.055)))
+    $lit = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::White)
+    $dim = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(130, 255, 255, 255))
 
-    # The second monitor as a hint only. At 16-20 px it turns to mush, so there only
-    # one screen is left — that way the silhouette reads.
+    # The second monitor as a hint behind the first: a switch between displays, which is
+    # the whole program in one picture. At 16-20 px it turns to mush, so there only one
+    # screen is left and the silhouette reads.
     $twoScreens = $Size -ge 24
     if ($twoScreens) {
-        $back = New-RoundedPath ($s*0.52) ($s*0.13) ($s*0.35) ($s*0.28) ($s*0.05)
-        $g.FillPath($hint, $back)
+        $back = New-RoundedPath ($s * 0.40) ($s * 0.18) ($s * 0.42) ($s * 0.30) ($s * 0.05)
+        $g.FillPath($dim, $back)
         $back.Dispose()
     }
 
-    # the front monitor
-    $scr = New-RoundedPath ($s*0.13) ($s*0.24) ($s*0.58) ($s*0.38) ($s*0.06)
+    # the front monitor, with a gap in the tile's colour so it stands off the back one
+    $sep = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 24, 24, 28)), ([single][Math]::Max(1.0, $s * 0.06))
+    $scr = New-RoundedPath ($s * 0.16) ($s * 0.30) ($s * 0.50) ($s * 0.36) ($s * 0.06)
     if ($twoScreens) { $g.DrawPath($sep, $scr) }
-    $g.FillPath($white, $scr)
-    $scr.Dispose()
+    $g.FillPath($lit, $scr)
+    $scr.Dispose(); $sep.Dispose()
 
     # the stand and its foot
-    $g.FillRectangle($white, ($s*0.375), ($s*0.62), ($s*0.10), ($s*0.09))
-    $base = New-RoundedPath ($s*0.26) ($s*0.70) ($s*0.34) ($s*0.08) ($s*0.035)
-    $g.FillPath($white, $base)
+    $g.FillRectangle($lit, ($s * 0.37), ($s * 0.66), ($s * 0.08), ($s * 0.08))
+    $base = New-RoundedPath ($s * 0.27) ($s * 0.73) ($s * 0.28) ($s * 0.07) ($s * 0.035)
+    $g.FillPath($lit, $base)
     $base.Dispose()
 
-    $tile.Dispose(); $grad.Dispose(); $white.Dispose(); $hint.Dispose(); $sep.Dispose(); $g.Dispose()
+    $tile.Dispose(); $grad.Dispose(); $lit.Dispose(); $dim.Dispose(); $g.Dispose()
     return $bmp
 }
 
