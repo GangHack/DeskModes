@@ -148,8 +148,11 @@
     'editor.usualRules'           = 'Con las reglas de siempre'
     'editor.tickFirst'            = 'Marca primero una pantalla.'
     'editor.needName'             = 'Ponle nombre a la combinación: será su entrada en el menú.'
+    'editor.nameTaken'            = 'Ya existe una combinación llamada «{0}».'
     'editor.needDisplay'          = 'Marca al menos una pantalla.'
     'editor.taskbarMember'        = 'La pantalla con la barra de tareas tiene que estar entre las marcadas.'
+    'editor.hotkeyTaken'          = '{0} ya activa «{1}». Cada combinación de teclas solo puede activar un modo.'
+    'settings.hotkeyDuplicate'    = '{0} está asignado dos veces. Cada combinación de teclas solo puede realizar una acción.'
 
     'rule.heading'                = 'Regla'
     'rule.hint'                   = 'Mientras se cumple la condición, el escritorio se queda en ese modo. Cambia a mano y la regla suelta hasta que la condición vuelva a darse.'

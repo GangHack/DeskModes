@@ -4316,13 +4316,14 @@ function Add-ComboMemberChecks {
     }
 
     $checks = @()
+    $notConnected = '   (' + (Get-Text -Key 'display.notConnected') + ')'
     foreach ($m in $Displays) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $Window.FindResource('Check')
         # The same wording a pattern with no monitor behind it gets below, and the same one the
         # tray menu and the mode list use: one phrase for one fact.
         $displayTitle = Get-DisplayTitle -Label ([string]$m.Label)
-        $cb.Content = $(if ($m.Disconnected) { $displayTitle + '   (not connected)' } else { $displayTitle })
+        $cb.Content = $(if ($m.Disconnected) { $displayTitle + $notConnected } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
             if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
@@ -4338,7 +4339,7 @@ function Add-ComboMemberChecks {
         if ($matched) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $Window.FindResource('Check')
-        $cb.Content = ([string]$pat + '   (not connected)')
+        $cb.Content = ([string]$pat + $notConnected)
         $cb.Tag = [string]$pat
         $cb.IsChecked = $true
         [void]$membersPanel.Children.Add($cb)
@@ -4350,12 +4351,23 @@ function Add-ComboMemberChecks {
         $item = New-Object System.Windows.Controls.ComboBoxItem
         $item.Content = [string]$cb.Content
         $item.Tag = [string]$cb.Tag
+        # Tag identifies the visible member for checkbox validation; DataContext is the selector
+        # that settings.json keeps. They differ when a supported ShortId selected this display.
+        $item.DataContext = [string]$cb.Tag
         [void]$primaryBox.Items.Add($item)
     }
     $primaryBox.SelectedIndex = 0
     if ($Combo -and $Combo.Primary) {
         foreach ($item in @($primaryBox.Items | Select-Object -Skip 1)) {
-            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$item.Tag) -ShortId '') {
+            $shortId = ''
+            foreach ($display in $Displays) {
+                if ([string]$display.Label -eq [string]$item.Tag) {
+                    $shortId = [string]$display.ShortId
+                    break
+                }
+            }
+            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$item.Tag) -ShortId $shortId) {
+                $item.DataContext = [string]$Combo.Primary
                 $primaryBox.SelectedItem = $item
                 break
             }
@@ -4982,12 +4994,14 @@ function Read-ModeFromUi {
     if ($hk) {
         $selfKey = Get-EditorModeKey -Editor $Editor
         foreach ($key in @($Editor.Hotkeys.Keys)) {
-            if ([string]$key -eq $selfKey) { continue }
+            # During a rename both keys are ours: the destination names the result, while ModeKey
+            # still owns every setting shown in the editor until Set-UiMode moves them together.
+            if ([string]$key -eq $selfKey -or [string]$key -eq [string]$Editor.ModeKey) { continue }
             $other = ConvertFrom-HotkeyString ([string]$Editor.Hotkeys[$key])
             if (-not $other -or $other.Text -ne $hk) { continue }
             return [pscustomobject]@{
                 Ok = $false; Mode = $null
-                Problem = "$hk already drives '$(Get-ModeTitleFromKey ([string]$key))'. Each combination of keys can only drive one mode."
+                Problem = Get-Text -Key 'editor.hotkeyTaken' -Values @($hk, (Get-ModeTitleFromKey ([string]$key)))
             }
         }
     }
@@ -5020,15 +5034,20 @@ function Read-ModeFromUi {
     $name = $Editor.NameBox.Text.Trim()
     $chosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
     $prim = ''
-    if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem.Tag }
+    $primMember = ''
+    if ($Editor.PrimaryBox.SelectedIndex -gt 0) {
+        $primMember = [string]$Editor.PrimaryBox.SelectedItem.Tag
+        $prim = [string]$Editor.PrimaryBox.SelectedItem.DataContext
+        if (-not $prim) { $prim = $primMember }
+    }
 
     $problem = ''
     if (-not $name) { $problem = Get-Text -Key 'editor.needName' }
     elseif (@($Editor.TakenNames | Where-Object { $_ -and $_ -ieq $name }).Count -gt 0) {
-        $problem = "A combination called '$name' already exists."
+        $problem = Get-Text -Key 'editor.nameTaken' -Values @($name)
     }
     elseif ($chosen.Count -eq 0) { $problem = Get-Text -Key 'editor.needDisplay' }
-    elseif ($prim -and $chosen -notcontains $prim) {
+    elseif ($primMember -and $chosen -notcontains $primMember) {
         $problem = Get-Text -Key 'editor.taskbarMember'
     }
     if ($problem) { return [pscustomobject]@{ Ok = $false; Mode = $null; Problem = $problem } }
@@ -5298,7 +5317,7 @@ function Update-ModesPanel {
         $textStack.Margin = New-Object System.Windows.Thickness 0, 0, 8, 0
         $title = New-UiTextBlock -Text $mode.Title -Style 'RowTitle' -Window $win
         if (-not $mode.Available -and $mode.Kind -ne 'orphan') {
-            $title.Text = [string]$mode.Title + '   (not connected)'
+            $title.Text = [string]$mode.Title + '   (' + (Get-Text -Key 'display.notConnected') + ')'
             $title.Foreground = $win.FindResource('DimBrush')
         }
         if ($mode.Kind -eq 'orphan') { $title.Foreground = $win.FindResource('DimBrush') }
@@ -5794,12 +5813,13 @@ function Add-RuleDisplayChecks {
     $panel = $Window.FindName('DisplaysChecks')
     $checks = @()
     $patterns = @(@($Patterns) | ForEach-Object { [string]$_ } | Where-Object { $_ })
+    $notConnected = '   (' + (Get-Text -Key 'display.notConnected') + ')'
 
     foreach ($m in @($Displays | Where-Object { $_ })) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $Window.FindResource('Check')
         $displayTitle = Get-DisplayTitle -Label ([string]$m.Label)
-        $cb.Content = $(if ($m.Disconnected) { $displayTitle + '   (not connected)' } else { $displayTitle })
+        $cb.Content = $(if ($m.Disconnected) { $displayTitle + $notConnected } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
             if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
@@ -5815,7 +5835,7 @@ function Add-RuleDisplayChecks {
         if ($matched) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $Window.FindResource('Check')
-        $cb.Content = ($pat + '   (not connected)')
+        $cb.Content = ($pat + $notConnected)
         $cb.Tag = $pat
         $cb.IsChecked = $true
         [void]$panel.Children.Add($cb)
@@ -5990,7 +6010,7 @@ function Read-SettingsFromUi {
             }
             return [pscustomobject]@{
                 Ok = $false; Settings = $null
-                Problem = "$($parsed.Text) is assigned twice. Each combination of keys can only drive one mode."
+                Problem = Get-Text -Key 'settings.hotkeyDuplicate' -Values @($parsed.Text)
             }
         }
         $seen[$parsed.Text] = $key
@@ -6006,7 +6026,7 @@ function Read-SettingsFromUi {
             }
             return [pscustomobject]@{
                 Ok = $false; Settings = $null
-                Problem = "$($backParsed.Text) is assigned twice. Each combination of keys can only drive one mode."
+                Problem = Get-Text -Key 'settings.hotkeyDuplicate' -Values @($backParsed.Text)
             }
         }
         $newHotkeys[$script:BackHotkeyName] = $backParsed.Text

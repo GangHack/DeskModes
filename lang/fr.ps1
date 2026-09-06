@@ -148,8 +148,11 @@
     'editor.usualRules'           = 'Selon les règles habituelles'
     'editor.tickFirst'            = 'Cochez d''abord un écran.'
     'editor.needName'             = 'Donnez un nom à la combinaison : il devient son entrée de menu.'
+    'editor.nameTaken'            = 'Une combinaison nommée « {0} » existe déjà.'
     'editor.needDisplay'          = 'Cochez au moins un écran.'
     'editor.taskbarMember'        = 'L''écran qui porte la barre des tâches doit être parmi les écrans cochés.'
+    'editor.hotkeyTaken'          = '{0} active déjà « {1} ». Chaque combinaison de touches ne peut activer qu''un seul mode.'
+    'settings.hotkeyDuplicate'    = '{0} est attribué deux fois. Chaque combinaison de touches ne peut effectuer qu''une seule action.'
 
     'rule.heading'                = 'Règle'
     'rule.hint'                   = 'Tant que la condition tient, le bureau reste dans ce mode. Basculez à la main et la règle lâche prise jusqu''à ce que la condition revienne.'

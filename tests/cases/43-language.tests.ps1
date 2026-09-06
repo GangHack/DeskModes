@@ -210,6 +210,52 @@ Test-Case 'language: changing the drop-down survives the full form read and mark
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'language: disconnected rows and editor validation follow Russian' {
+    Invoke-InLanguage 'ru' {
+        $state = @(
+            (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+            (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf' $false $true)
+        )
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        $combo = [pscustomobject]@{ Name = 'Work'; Patterns = @('GSM5BB3', 'GSM5CBC'); Primary = '' }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state -TakenNames @('Office') `
+                                   -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
+        try {
+            Assert-True ([string]$ed.Checks[1].Content -match 'не подключ') 'the disconnected display is translated'
+            Assert-True ([string]$ed.Checks[1].Content -notmatch 'not connected') 'no English suffix remains'
+
+            $ed.NameBox.Text = 'Office'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True ($got.Problem -match 'уже существует') 'the duplicate name is translated'
+
+            $ed.NameBox.Text = 'Studio'
+            $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True ($got.Problem -match 'уже переключает') 'the shortcut conflict is translated'
+        }
+        finally { $ed.Window.Close() }
+    }
+}
+
+Test-Case 'language: duplicate shortcut validation follows Russian including Back' {
+    Invoke-InLanguage 'ru' {
+        $settings = New-TestSettings
+        $ui = New-DialogUi -Settings $settings
+        try {
+            $ui.Hotkeys['all'] = 'Ctrl+Alt+F5'
+            $ui.Hotkeys['solo:LG ULTRAGEAR'] = 'Ctrl+Alt+F5'
+            $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+            Assert-True ($got.Problem -match 'назначено дважды') 'two modes report the conflict in Russian'
+
+            $ui.Hotkeys.Remove('solo:LG ULTRAGEAR')
+            $ui.BackHotkeyBox.Text = 'Ctrl+Alt+F5'
+            $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+            Assert-True ($got.Problem -match 'назначено дважды') 'Back reports the conflict in Russian too'
+        }
+        finally { $ui.Window.Close() }
+    }
+}
+
 Test-Case 'language: the setting travels through settings.json and back' {
     $file = Join-Path $script:TestDir 'settings.json'
     '{ "language": "uk" }' | Set-Content -Path $file -Encoding UTF8

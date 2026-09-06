@@ -149,8 +149,11 @@
     'editor.usualRules'           = 'Nach den üblichen Regeln'
     'editor.tickFirst'            = 'Haken Sie zuerst einen Monitor an.'
     'editor.needName'             = 'Geben Sie der Kombination einen Namen — er wird ihr Menüeintrag.'
+    'editor.nameTaken'            = 'Eine Kombination namens „{0}“ ist bereits vorhanden.'
     'editor.needDisplay'          = 'Haken Sie mindestens einen Monitor an.'
     'editor.taskbarMember'        = 'Der Monitor mit der Taskleiste muss einer der angehakten sein.'
+    'editor.hotkeyTaken'          = '{0} schaltet bereits auf „{1}“ um. Jede Tastenkombination kann nur einen Modus aufrufen.'
+    'settings.hotkeyDuplicate'    = '{0} ist doppelt belegt. Jede Tastenkombination kann nur eine Aktion ausführen.'
 
     'rule.heading'                = 'Regel'
     'rule.hint'                   = 'Solange die Bedingung gilt, bleibt der Schreibtisch in diesem Modus. Schalten Sie von Hand um, lässt die Regel los, bis die Bedingung wieder eintritt.'

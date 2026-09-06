@@ -253,6 +253,22 @@ Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shor
     finally { $ed.Window.Close() }
 }
 
+Test-Case 'dialog: a ShortId taskbar choice survives opening and saving a combination' {
+    $combo = [pscustomobject]@{
+        Name = 'Work'; Patterns = @('GSM5BB3', 'GSM5CBC'); Primary = 'GSM5CBC'
+    }
+    $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+    $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $script:DlgState -TakenNames @() -Dark $false
+    try {
+        Assert-Equal 'LG ULTRAFINE' ([string]$ed.PrimaryBox.SelectedItem.Tag) 'the ShortId resolves to its display'
+
+        $got = Read-ModeFromUi -Editor $ed
+        Assert-True $got.Ok 'the unchanged combination is accepted'
+        Assert-Equal 'GSM5CBC' ([string]$got.Mode.Primary) 'the supported selector remains the saved value'
+    }
+    finally { $ed.Window.Close() }
+}
+
 Test-Case 'dialog: the editor shows no-shortcut for rubbish instead of pretending it is one' {
     $mode = [pscustomobject]@{ Key = 'all'; Title = 'All displays'; Kind = 'all'; Available = $true }
     $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -TakenNames @() `
@@ -466,6 +482,32 @@ Test-Case 'dialog: a mode keeping its own shortcut is not a conflict with itself
             $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
             $got = Read-ModeFromUi -Editor $ed
             Assert-True (-not $got.Ok) "another mode's binding is refused"
+        }
+        finally { $ed.Window.Close() }
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: renaming a combination keeps its own shortcut and still rejects another mode' {
+    $settings = Get-DefaultSettings
+    $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
+    $settings.combos['Work'] = [ordered]@{ displays = @('ULTRAGEAR'); primary = '' }
+    $settings.hotkeys['combo:Work'] = 'Ctrl+Alt+F9'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = [pscustomobject]@{ Key = 'combo:Work'; Title = 'Work'; Kind = 'combo'; Available = $true }
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $ui.Combos[0] -State $ui.State `
+                                   -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
+                                   -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
+        try {
+            $ed.NameBox.Text = 'Office'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Ok 'the old key is still this editor while the name changes'
+            Assert-Equal 'Ctrl+Alt+F9' $got.Mode.Hotkey 'its shortcut is retained'
+
+            $ed.HotkeyBox.Text = 'Ctrl+Alt+F5'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-True (-not $got.Ok) "another mode's shortcut remains a conflict"
         }
         finally { $ed.Window.Close() }
     }
