@@ -58,6 +58,50 @@ Test-Case 'diary: a window on no known display still counts as time' {
     Assert-Equal 0 $day.pairs.Count 'but there is no pair to record'
 }
 
+Test-Case 'diary: a long sampling gap starts a new session' {
+    $oldStore = $script:ActivityStore
+    $oldDirty = $script:ActivityDirty
+    $oldStart = $script:ActivityRunStart
+    $oldLast = $script:ActivityRunLast
+    try {
+        $script:ActivityStore = [ordered]@{ days = [ordered]@{} }
+        $script:ActivityRunStart = $null
+        $script:ActivityRunLast = $null
+        # The clock is under script scope so the sampled function cannot shadow it with its own locals.
+        $script:DiarySampleNow = [datetime]'2026-09-06T09:00:00'
+        function Get-Date {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped clock fake exercises an eight-hour sampling gap without waiting or changing the system clock.')]
+            param()
+            return $script:DiarySampleNow
+        }
+        $sample = [pscustomobject]@{ Process = 'editor'; Device = 'DISPLAY1' }
+        $map = @{ DISPLAY1 = 'Panel' }
+        Add-ActivitySample -Sample $sample -DisplayMap $map -Mode 'all'
+        $script:DiarySampleNow = $script:DiarySampleNow.AddSeconds(30)
+        Add-ActivitySample -Sample $sample -DisplayMap $map -Mode 'all'
+        $day = $script:ActivityStore.days['2026-09-06']
+        Assert-Equal 40 $day.active 'a short timer delay still counts the observed interval'
+        Assert-Equal 30 $day.longest 'the continuous session reaches the delayed sample'
+
+        $script:DiarySampleNow = [datetime]'2026-09-06T17:00:00'
+        Add-ActivitySample -Sample $sample -DisplayMap $map -Mode 'all'
+        Assert-Equal 50 $day.active 'the first sample after sleep counts one step'
+        Assert-Equal 30 $day.longest 'sleep does not inflate the longest session'
+        Assert-Equal $script:DiarySampleNow $script:ActivityRunStart 'the returning sample begins a new session'
+
+        $script:DiarySampleNow = $script:DiarySampleNow.AddSeconds(10)
+        Add-ActivitySample -Sample $sample -DisplayMap $map -Mode 'all'
+        Assert-Equal 60 $day.active 'ordinary sampling resumes after the break'
+        Assert-Equal 30 $day.longest 'the previous longer session is retained'
+    }
+    finally {
+        $script:ActivityStore = $oldStore
+        $script:ActivityDirty = $oldDirty
+        $script:ActivityRunStart = $oldStart
+        $script:ActivityRunLast = $oldLast
+    }
+}
+
 Test-Case 'diary: the report adds the days up' {
     $rep = Get-ActivityReport -Store (New-TestDiary) -Days 30 -Today ([datetime]'2026-08-21')
     Assert-Equal 4 $rep.DaysRecorded 'four days'

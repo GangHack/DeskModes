@@ -180,8 +180,8 @@ function Add-ActivitySample {
 
     # How much time has passed since the last sample — by the clock, not by the timer's
     # step: the tray timer can be late (the system was busy, the computer slept). But the
-    # gap cannot be trusted whole either, so it is capped at three steps: a minute the
-    # computer slept through must not be credited to whatever app happened to be on screen.
+    # gap cannot be trusted whole either: more than three steps without a sample ends the
+    # session. Otherwise a night's sleep becomes the longest continuous work of the day.
     #
     # The first sample after a break is exactly one step: how long the person had been
     # sitting there before it, we do not know, and there is nothing to invent here.
@@ -189,7 +189,10 @@ function Add-ActivitySample {
     if ($script:ActivityRunLast) {
         $gap = [int]($now - $script:ActivityRunLast).TotalSeconds
         if ($gap -le 0) { return }
-        $seconds = [math]::Min($gap, $IntervalSeconds * 3)
+        if ($gap -gt $IntervalSeconds * 3) {
+            $script:ActivityRunStart = $null
+        }
+        else { $seconds = $gap }
     }
 
     $display = ''
