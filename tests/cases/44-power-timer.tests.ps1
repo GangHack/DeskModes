@@ -54,17 +54,21 @@ Test-Case 'power timer: an overdue first tick grants the promised cancellation m
     Assert-Equal 0 $script:PowerTickerStops 'the ticker keeps the cancellation window alive'
 }
 
-Test-Case 'power timer: an on-time final-minute warning keeps the original deadline' {
+Test-Case 'power timer: a first final-minute warning grants a whole minute without repeating' {
     $script:PowerEvents = New-Object System.Collections.ArrayList
     $script:PowerTickerStops = 0
     $script:PowerTicker = New-FakePowerTicker
+    $script:PowerWarningAt = $null
     $script:PowerDeadline = (Get-Date).AddSeconds(30)
-    $original = $script:PowerDeadline
     $script:PowerWarned = $false
     $script:PowerAction = 'sleep'
 
     function Update-TrayText { }
-    function Show-Balloon { param($Title, $Text, $Kind) [void]$script:PowerEvents.Add('warning') }
+    function Show-Balloon {
+        param($Title, $Text, $Kind)
+        $script:PowerWarningAt = Get-Date
+        [void]$script:PowerEvents.Add('warning')
+    }
     function Invoke-PowerAction { param($Action) [void]$script:PowerEvents.Add('POWER ' + $Action) }
     function Write-DisplayLog { param($Text) }
     function Get-PowerRemaining {
@@ -73,8 +77,14 @@ Test-Case 'power timer: an on-time final-minute warning keeps the original deadl
 
     Invoke-FakePowerTick
 
-    Assert-Equal @('warning') @($script:PowerEvents) 'the ordinary warning is shown'
-    Assert-Equal $original $script:PowerDeadline 'its scheduled action time does not move'
+    $grace = ($script:PowerDeadline - $script:PowerWarningAt).TotalSeconds
+    Assert-True ($grace -ge 59.9 -and $grace -le 60.1) 'the warning starts a whole cancellation minute'
+    $warnedDeadline = $script:PowerDeadline
+
+    Invoke-FakePowerTick
+
+    Assert-Equal @('warning') @($script:PowerEvents) 'the warning appears only once'
+    Assert-Equal $warnedDeadline $script:PowerDeadline 'later ticks do not extend the grace period'
 }
 
 Test-Case 'power timer: a warned timer acts when its cancellation minute expires' {
