@@ -1032,6 +1032,7 @@ function New-DesktopSnapshotStore {
         ProtectedKey      = ''
         ProtectedSnapshot = $null
         PendingKey        = ''
+        PendingSourceKey  = ''
         UnsafeKeys        = @{}
     }
 }
@@ -1086,6 +1087,7 @@ function Read-DesktopSnapshotStore {
             }
         }
         $store.PendingKey = [string]$raw.pendingKey
+        $store.PendingSourceKey = [string]$raw.pendingSourceKey
         if ($store.PendingKey) { $store.UnsafeKeys[$store.PendingKey] = $true }
         foreach ($key in @($raw.unsafeKeys)) {
             if ([string]$key) { $store.UnsafeKeys[[string]$key] = $true }
@@ -1137,6 +1139,7 @@ function Write-DesktopSnapshotStore {
         version = 2; protectedKey = [string]$Store.ProtectedKey
         protectedSnapshot = $protected
         pendingKey = [string]$Store.PendingKey
+        pendingSourceKey = [string]$Store.PendingSourceKey
         unsafeKeys = @($Store.UnsafeKeys.Keys | Sort-Object)
         snapshots = @($saved)
     }
@@ -1332,7 +1335,9 @@ function Save-CurrentDesktopSnapshot {
         if (-not $snapshot) { return $false }
         $store = Read-DesktopSnapshotStore
         $store.Snapshots[$snapshot.Key] = $snapshot
-        if ($store.PendingKey -eq $snapshot.Key) { $store.PendingKey = '' }
+        # Explicit adoption resolves the current desk even when a failed request named another set.
+        $store.PendingKey = ''
+        $store.PendingSourceKey = ''
         [void]$store.UnsafeKeys.Remove($snapshot.Key)
         $store.ProtectedKey = $snapshot.Key
         $store.ProtectedSnapshot = $null
@@ -5205,8 +5210,8 @@ function Invoke-SwitchTail {
     param(
         $Settings,
         [Parameter(Mandatory)][string]$ModeKey,
-        # The topology really did change AND window snapshots are on. On a repeat press of the
-        # shortcut we do not touch the windows at all.
+        # Enabled snapshots restore after a topology change or recovery of an unverified desktop.
+        # A repeat press on an already verified desk still leaves the windows alone.
         [bool]$RestoreWindows,
         [string[]]$WantedIds = @(),
         # The monitors that brightness can be set on: the output name is already known, and a second
@@ -5327,6 +5332,9 @@ function Switch-DisplayMode {
     # summary would have lied about "Still on:".
     $refused = @()
     $doWindows = $false
+    $switchPrepared = $false
+    $desktopVerified = $false
+    $verifiedRecoverySnapshot = $null
 
     try {
         Write-DisplayLog "--- start mode=$ModeKey primaryMatch='$PrimaryMatch' keepMode=$KeepMode dryRun=$DryRun"
@@ -5383,6 +5391,27 @@ function Switch-DisplayMode {
             $desktopStore.ProtectedSnapshot -and $desktopStore.ProtectedSnapshot.Key -eq $destinationKey)
         if ($usingProtectedSnapshot) { $destinationSnapshot = $desktopStore.ProtectedSnapshot }
         $storeDirty = $false
+        if ($desktopStore.PendingKey -and $currentSnapshot) {
+            # A crash can leave any subset active, not just the requested destination. Only the
+            # explicitly recorded source may be recognized as an unchanged pre-apply desktop; an
+            # unrelated subset can coincidentally match an old snapshot while its windows were moved.
+            $pendingSource = $desktopStore.Snapshots[[string]$desktopStore.PendingSourceKey]
+            if ($desktopStore.ProtectedKey -eq $desktopStore.PendingSourceKey -and
+                $desktopStore.ProtectedSnapshot -and
+                $desktopStore.ProtectedSnapshot.Key -eq $desktopStore.PendingSourceKey) {
+                $pendingSource = $desktopStore.ProtectedSnapshot
+            }
+            $unchangedSource = ($currentSnapshot.Key -ne $desktopStore.PendingKey -and
+                $currentSnapshot.Key -eq $desktopStore.PendingSourceKey -and $pendingSource -and
+                -not $desktopStore.UnsafeKeys.ContainsKey($currentSnapshot.Key) -and
+                (Test-DesktopSnapshotMatch -Snapshot $pendingSource -State $monitors))
+            if ($unchangedSource) {
+                $desktopStore.PendingKey = ''
+                $desktopStore.PendingSourceKey = ''
+            }
+            else { $desktopStore.UnsafeKeys[$currentSnapshot.Key] = $true }
+            $storeDirty = $true
+        }
         $currentSnapshotTrusted = ($currentSnapshot -and
             $desktopStore.PendingKey -ne $currentSnapshot.Key -and
             -not $desktopStore.UnsafeKeys.ContainsKey($currentSnapshot.Key))
@@ -5444,6 +5473,11 @@ function Switch-DisplayMode {
         }
         $exactAlready = ($restorePlan -and $currentSnapshot -and
                          (Test-DesktopSnapshotMatch -Snapshot $restorePlan.Expected -State $monitors))
+        # Geometry can settle after a failed call while its displaced windows still need recovery.
+        # Decide restoration independently of whether this attempt needs another physical apply.
+        $doWindows = ((-not $sameTopology -or -not $currentSnapshotTrusted) -and
+            (Test-Path Function:\Save-WindowLayout) -and (Test-Path Function:\Restore-WindowLayout) -and
+            ($null -eq $settings.restoreWindows -or $settings.restoreWindows))
 
         if (-not $DryRun) {
             $willChangeDesktop = (-not $exactAlready)
@@ -5453,17 +5487,17 @@ function Switch-DisplayMode {
             }
             if ($willChangeDesktop) {
                 $desktopStore.PendingKey = $destinationKey
+                $desktopStore.PendingSourceKey = $(if ($currentSnapshotTrusted) { $currentSnapshot.Key } else { '' })
                 $desktopStore.UnsafeKeys[$destinationKey] = $true
-                if (-not $usingProtectedSnapshot) {
-                    $desktopStore.ProtectedKey = ''
-                    $desktopStore.ProtectedSnapshot = $null
-                }
+                # The requested destination is not verified yet. Keep the prior protection so an
+                # outright refusal cannot hand its unchanged source back to BestMode.
                 $storeDirty = $true
             }
             if ($storeDirty) {
                 try { Write-DesktopSnapshotStore -Store $desktopStore }
                 catch { throw (New-DisplayRefusal -Key 'switch.snapshotWriteFailed') }
             }
+            $switchPrepared = $willChangeDesktop
         }
         & $notePhase $phases 'state'
 
@@ -5497,11 +5531,8 @@ function Switch-DisplayMode {
                 # dot-source; core has to work without it too, so we check for their presence rather than
                 # calling blind.
                 #
-                # Only when the topology really changes: on a repeat press the windows did not move
-                # anywhere, and walking the windows while reading process paths costs tens of
-                # milliseconds.
-                $doWindows = (-not $sameTopology -and (Test-Path Function:\Save-WindowLayout) -and
-                              ($null -eq $settings.restoreWindows -or $settings.restoreWindows))
+                # A verified repeat is still a no-op; an unverified same-set retry restores windows
+                # without capturing the displaced observation as their new baseline.
                 if ($doWindows) {
                     # A failed exact destination is not a new source of truth. Its windows may already
                     # have been squeezed onto the wrong geometry, so leaving it must not overwrite the
@@ -5661,6 +5692,7 @@ function Switch-DisplayMode {
                             -State @(Get-DisplayState)
                         $exactReverted = $reverted
                         if ($exactReverted -and $sourceKey) {
+                            $verifiedRecoverySnapshot = $sourcePlan.Expected
                             [void]$desktopStore.UnsafeKeys.Remove($sourceKey)
                             try { Write-DesktopSnapshotStore -Store $desktopStore }
                             catch { Write-DisplayLog "warn: could not mark the previous physical desktop verified - $($_.Exception.Message)" }
@@ -5691,13 +5723,17 @@ function Switch-DisplayMode {
                     $desktopStore.Snapshots[$destinationKey] = $verifiedSnapshot
                 }
                 $desktopStore.PendingKey = ''
+                $desktopStore.PendingSourceKey = ''
                 [void]$desktopStore.UnsafeKeys.Remove($destinationKey)
                 $desktopStore.ProtectedKey = $destinationKey
                 $desktopStore.ProtectedSnapshot = $(if ($KeepMode -or $usingProtectedSnapshot) {
                                                           $verifiedSnapshot
                                                       }
                                                       else { $null })
-                try { Write-DesktopSnapshotStore -Store $desktopStore }
+                try {
+                    Write-DesktopSnapshotStore -Store $desktopStore
+                    $desktopVerified = $true
+                }
                 catch {
                     Write-DisplayLog "warn: the restored physical desktop could not be marked complete - $($_.Exception.Message)"
                     $restoreFailed = $true
@@ -5751,8 +5787,38 @@ function Switch-DisplayMode {
         throw
     }
     finally {
-        $mutex.ReleaseMutex()
-        $mutex.Dispose()
+        try {
+            if ($switchPrepared -and -not $desktopVerified) {
+                try {
+                    $observed = @(Get-DisplayState)
+                    $observedKey = Get-DesktopSetKey -DevicePaths @($observed | Where-Object { $_.Active } | ForEach-Object { $_.Id })
+                    $safeSource = $(if ($verifiedRecoverySnapshot) { $verifiedRecoverySnapshot }
+                                    elseif ($currentSnapshotTrusted) { $currentSnapshot } else { $null })
+                    if ($safeSource -and $observedKey -ne $destinationKey -and
+                        (Test-DesktopSnapshotMatch -Snapshot $safeSource -State $observed)) {
+                        # A refused apply or verified rollback leaves no unresolved physical change.
+                        # Release pending so the source watchdog can still repair later Windows drift.
+                        $desktopStore.PendingKey = ''
+                        $desktopStore.PendingSourceKey = ''
+                        [void]$desktopStore.UnsafeKeys.Remove($observedKey)
+                        if ($desktopStore.ProtectedKey -ne $observedKey -or $verifiedRecoverySnapshot) {
+                            $desktopStore.ProtectedKey = $observedKey
+                            $desktopStore.ProtectedSnapshot = $safeSource
+                        }
+                    }
+                    else {
+                        $desktopStore.PendingKey = $destinationKey
+                        if ($observedKey) { $desktopStore.UnsafeKeys[$observedKey] = $true }
+                    }
+                    Write-DesktopSnapshotStore -Store $desktopStore
+                }
+                catch { Write-DisplayLog "warn: could not preserve the failed desktop observation - $($_.Exception.Message)" }
+            }
+        }
+        finally {
+            $mutex.ReleaseMutex()
+            $mutex.Dispose()
+        }
     }
 }
 
@@ -5918,7 +5984,7 @@ function Restore-BestModes {
         # Pending or previously failed exact geometry is neither a baseline nor permission to fall back
         # to BestMode. A repair here can mutate the destination between retries and make verification
         # impossible on the next switch.
-        if ($snapshotStore.PendingKey -eq $activeKey -or $snapshotStore.UnsafeKeys.ContainsKey($activeKey)) {
+        if ($snapshotStore.PendingKey -or $snapshotStore.UnsafeKeys.ContainsKey($activeKey)) {
             Write-DisplayLog 'watch: active physical desktop is unverified - postponing mode repair'
             return @()
         }
