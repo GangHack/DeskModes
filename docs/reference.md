@@ -9,8 +9,8 @@ Turn the displays on your desk on and off in named sets, with one hotkey.
 
 `Ctrl+Alt+F1` — only the 4K panel. `Ctrl+Alt+F3` — both work displays. `Ctrl+Alt+F5` —
 everything. The displays you did not ask for go to standby; the ones you did come up in
-their best mode, arranged in the physical order you gave them, with the taskbar on the
-display you chose.
+their remembered Windows configuration, with their positions, orientation and taskbar
+placement preserved. Explicit per-mode choices can override the primary display.
 
 No installer, no service, no dependencies — a folder of PowerShell scripts talking to the
 Windows display API. Disable startup and exit the tray before deleting the folder.
@@ -26,10 +26,10 @@ Every one of these exists because the naive version broke on a real desk:
 - **Any combination you can name.** "Movie night" is the 4K panel plus the TV with the
   taskbar moved to the TV — one display can be part of any number of combinations, each
   with its own menu entry, hotkey and taskbar placement.
-- **Keeps the arrangement.** Windows re-orders displays whenever a monitor comes back, so
-  the cursor leaves the left screen to the right. You state the physical order once; every
-  switch rebuilds it, vertically centred so the cursor can cross between panels of
-  different heights.
+- **Keeps the arrangement.** Before changing sets, DeskModes records the physical displays,
+  their X/Y positions, orientation, resolution, exact refresh rates and primary. Returning
+  to that set restores its snapshot; repeating All preserves the live desktop. Explicit
+  arrow editing can instead request a vertically centred left-to-right row.
 - **Keeps the taskbar put.** "Primary" in Windows is not a flag, it is whoever sits at
   (0, 0) — so the whole layout is shifted to put your chosen display there.
 - **Restores refresh rates.** Windows silently drops a display to a lower rate after a
@@ -90,13 +90,14 @@ Everything is set up in one window: a pane on the left, a page on the right, **S
 **Cancel** underneath. It follows the system theme — dark, light and your accent colour — and
 it can be resized; where it stood and which page you left it on come back with it.
 
-**Your desk** is the picture above. The display cards are drawn to the size of the panels
-themselves — read out of each monitor's EDID, not guessed from its resolution — so the row is
-the layout rather than a picture of it, and the table under it says what each display reports
-about itself. Two buttons stand in the page's head: **Copy from Windows** puts the cards in the
-order Windows holds right now and stars the display that has the taskbar — right or wrong, so it
-is for the desk you have already arranged in Windows settings, where it makes the first run one
-click; **Which is which** shows each display's name on it for a moment.
+**Your desk** separates the Windows layout from explicit switching choices. The live diagram
+uses Windows coordinates and display dimensions, including portrait orientation and Y offsets;
+its star identifies the current primary. The switching row lets you deliberately change order
+or choose a different taskbar display. An unrelated Save preserves the existing choices.
+**Use Windows layout** reads the current arrangement, adopts it as the complete desktop
+snapshot and clears row/primary overrides. **Which is which** shows each display's concise
+name on its physical screen. Identical panels keep distinct titles and exact internal bindings.
+Left-click the tray icon to open Settings, or right-click for its switching menu.
 
 A display you have switched off at its own button is still there, marked `not connected`. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them
@@ -251,10 +252,12 @@ Written by the Settings window, and safe to edit by hand. See
 | Key | What it is |
 | --- | --- |
 | `hotkeys` | mode key → keys, e.g. `"combo:Work": "Ctrl+Alt+F3"`. One entry is not a mode: `"back"` is the shortcut that returns to the mode you left |
-| `layout` | display names left to right, as they physically stand on your desk |
-| `primary` | which display gets the taskbar, when it is among those switched on |
+| `layout` | display names for an explicitly configured left-to-right row |
+| `layoutOverride` | apply that row instead of saved Windows coordinates; set by arrow editing, cleared by Use Windows layout |
+| `primary` | which display gets the taskbar when `primaryOverride` is enabled and it is among those switched on |
+| `primaryOverride` | use the explicitly selected taskbar display; absent legacy values do not override a captured desktop |
 | `combos` | combination name → `{ "displays": [...], "primary": "..." }`; a bare array works too |
-| `maximizeRefresh` | restore each display to its highest refresh rate |
+| `maximizeRefresh` | restore the highest refresh rate when no protected desktop snapshot applies; an exact saved mode takes precedence |
 | `notifications` | show a balloon after switching |
 | `restoreWindows` | remember and restore window positions per display set |
 | `restoreLastMode` | re-apply the last chosen mode after the computer starts |
@@ -597,18 +600,15 @@ displays, then move them, then fix the refresh rate) means the cursor stalls and
 forward, screens blink twice over, and every open window gets told the display changed
 three times.
 
-Two details make the single call possible. The refresh rate has to be passed as the exact
-fraction the driver uses — 144 Hz is `143999/1000` here, and asking for `144/1` gets the
-whole request rejected — so each display's real mode is remembered in `display-modes.json`
-after every switch, which is also where the rate for a *sleeping* display comes from. And
-because a single call has to name coordinates for every display, this road is only taken
-when `layout` in the settings says what the order is — or when the mode lights a single
-display, which stands at the coordinate origin whatever anybody wrote. Without either, the
-old three-step path runs, which moves only the primary and leaves the rest where they are.
-The taskbar is placed on both roads: "primary" being a place rather than a flag, that is one
-call, and it is made whether or not there is an order to arrange the rest by.
+Exact restoration uses `desktop-layouts.json`, keyed by the physical display set, with
+source coordinates, rotation and the driver's refresh fraction. It supplies that geometry
+in one CCD request and verifies the returned desktop. A refusal is reported instead of
+retrying with omitted Hz or replacing the saved orientation with a best-mode guess. The
+watchdog respects the restored modes. The snapshot is separate from the legacy best-mode
+cache in `display-modes.json`.
 
-The three steps are still there as repair: after the single call the tool checks the set,
+For a set with no complete known geometry, the fallback repair steps remain. After applying
+the set, the tool checks
 the arrangement and each mode, and fixes whatever did not take (a display that refuses a
 rate, for instance). When everything landed, those checks find nothing to do and cost
 nothing. Doing it in one call also removes the ordering problem the three steps had: the
@@ -681,7 +681,7 @@ break the "nothing is installed on your system" promise.
 | `Displays.cmd`, `all.cmd`, `work.cmd`, `game.cmd`, `status.cmd`, `diagnostics.cmd` | one-line wrappers so the tray and the common modes are double-clickable |
 | `settings.example.json` | a `settings.json` with every key filled in, to copy from |
 | `last-run.log` | the log; rotates past 1 MB |
-| `settings.json`, `window-state.json`, `last-mode.json`, `display-modes.json`, `known-displays.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
+| `settings.json`, `window-state.json`, `last-mode.json`, `desktop-layouts.json`, `display-modes.json`, `known-displays.json`, `activity.json`, `stats.html`, `native-*.dll` | created as needed, safe to delete |
 
 The release ZIP holds the program only — the scripts, the launchers and the README. The
 tests, the gates, the screenshots and the engineering notes live in the repository,

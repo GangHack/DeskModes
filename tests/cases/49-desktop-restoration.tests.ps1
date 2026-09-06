@@ -166,5 +166,5 @@ Test-Case 'watchdog: a restored physical mode wins over maximize refresh' {
 Test-Case 'verdict: an exact desktop mismatch is never success' {
     $v = Format-SwitchResult -Summary @('SAMSUNG 1080x1920 @ 75 Hz') -RestoreFailed $true
     Assert-True (-not $v.Ok) 'the mismatch makes the switch partial'
-    Assert-True ($v.Text -like '*verdict.restore*') 'the restoration-specific reason is included'
+    Assert-True ($v.Text.Contains((Get-Text -Key 'verdict.restore'))) 'the restoration-specific reason is included'
 }

@@ -11,6 +11,10 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 
 ### Display modes
 
+- Preserve an already active All displays desktop; capture and restore physical monitor X/Y,
+  primary, orientation (including flipped portrait), resolution and exact refresh rates.
+  A refused restoration cannot silently replace the saved desktop with a damaged result.
+
 - Named combinations, a mode for each display and an all-displays mode, available through
   tray menu, global hotkeys and CLI. Configure everything in the Settings window.
 - Display membership, arrangement, primary display and exact driver refresh fractions applied
@@ -30,7 +34,11 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 
 ### Interface and support
 
-- Resizable WPF Settings and system-themed tray menu. First-run Settings, Copy from Windows,
+- Left-click the tray icon to open Settings; right-click retains the switching menu.
+- Your desk shows live Windows geometry and primary separately from explicit row editing.
+  Identical displays have concise distinct titles without changing their saved identities.
+
+- Resizable WPF Settings and system-themed tray menu. First-run Settings, Use Windows layout,
   display-identification badges, keyboard shortcuts and per-mode editors.
 - English, Russian, Ukrainian, Spanish, French and German. Logs and command-line output stay English.
 - Settings saved through complete file replacement with a previous-good backup and recovery.

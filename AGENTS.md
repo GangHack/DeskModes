@@ -170,17 +170,17 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   what `display-modes.json` caches, and why that file exists.
 - **One `SetDisplayConfig` per switch, not three.** Each transition freezes input and
   blinks the screens. `Set-CcdFullConfig` sets the whole desk — set, positions, primary,
-  resolutions and rates — in one call; the three-step path below it is the fallback for
-  when that call is refused. It needs the display order out of the settings and refuses
-  without it — except for a single display, whose place is the origin whatever anybody wrote.
-- **`Set-CcdLayout` is the only thing that moves the primary display,** and it is called on
-  every switch — not only when `layout` says what the order is. "Primary" in Windows is a
-  place (0, 0) rather than a flag: `Set-CcdTopology` cannot move it and `Set-CcdFullConfig`
-  refuses the whole job without an order, so an `if` around this call takes the taskbar away
-  from every desk whose owner has never opened the Settings window. That `if` was there until
-  2026-09-01; see the review at the end of `docs/notes.md`. With no order the call moves
-  nobody and only anchors the primary, and when that one is at (0, 0) already it applies
-  nothing and costs a single query.
+  resolutions and rates — in one call. Exact snapshot restoration supplies every coordinate
+  and never drops Hz on refusal. Without an exact snapshot, the generated-layout path needs
+  a configured order (except for a single display) and may use the fallback repair steps.
+- **An exact desktop snapshot takes precedence over a generated row.** `desktop-layouts.json`
+  records physical identities, X/Y, rotation, resolution, exact refresh fractions and primary per
+  active display set. Its capture and writes share `Local\DeskModesSwitch` with switching and the
+  watchdog. A pending destination is not a new baseline until verified or explicitly adopted.
+  Do not follow exact restoration with `Set-CcdLayout` or best-mode repair: either can undo it.
+  `Set-CcdLayout` still anchors an explicitly chosen primary on the fallback path. Legacy `layout`
+  and `primary` values alone do not prove an intentional override; the Settings UI records that
+  intent separately. Repeating All preserves the live desk unless an explicit override is requested.
 - **`.GetNewClosure()` is banned in WPF and WinForms handlers.** Inside a closure,
   `$script:X` resolves to nothing: the Settings window got `$null` and died on
   `.Contains()`, and the menu silently showed no shortcuts. Put logic in functions
@@ -311,7 +311,8 @@ held up by two things, and a new test must not break either:
   It has to be before: log rotation and type compilation write to it during load, and
   reassigning `$script:LogFile` afterwards is too late.
 - `$script:SettingsFile`, `$script:WindowStateFile`, `$script:LastModeFile`,
-  `$script:ModeCacheFile`, `$script:KnownDisplaysFile` and `$script:ActivityFile` all point into
+  `$script:ModeCacheFile`, `$script:DesktopSnapshotsFile`, `$script:KnownDisplaysFile` and
+  `$script:ActivityFile` all point into
   one temp directory, which is removed at the end.
 
 To add a case, drop a `Test-Case` block into the matching file under `tests/cases/`.
@@ -355,7 +356,7 @@ value of this project, and no fake reproduces them.
   `Test-RunAtStartup` checks the executable, arguments and working directory. After a move,
   enable startup again in Settings to rebuild the shortcut; pinned shortcuts remain external.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
-  `display-modes.json`, `known-displays.json`, `window-state.json`, `ui-state.json`,
+  `display-modes.json`, `desktop-layouts.json`, `known-displays.json`, `window-state.json`, `ui-state.json`,
   `activity.json`, `stats.html`, `settings.json.bak`, `settings.json.*.tmp` and `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
   `DeskModes-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
   three out of what is already committed. The screenshots under `docs/images/` are the

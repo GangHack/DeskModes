@@ -296,7 +296,7 @@ Test-Case 'switch: a baseline write failure refuses before the desk or hooks cha
     $failed = ''
     try { [void](Switch-DisplayMode -ModeKey 'all' -Quiet) } catch { $failed = $_.Exception.Message }
 
-    Assert-True ($failed -like '*snapshotWriteFailed*') 'the safe refusal reaches the caller'
+    Assert-True ($failed.Contains((Get-Text -Key 'switch.snapshotWriteFailed'))) 'the safe refusal reaches the caller'
     Assert-Equal 0 $script:SwCalls.Count 'nothing external ran after persistence failed'
 }
 
@@ -455,7 +455,7 @@ Test-Case 'switch: a saved desktop that does not verify is not reported as succe
     $r = Switch-DisplayMode -ModeKey 'all' -Quiet
 
     Assert-True (-not $r.Ok) 'a silent success on mismatched physical state is not allowed'
-    Assert-True ($r.Message -like '*verdict.restore*') 'the exact-restore failure reaches the verdict'
+    Assert-True ($r.Message.Contains((Get-Text -Key 'verdict.restore'))) 'the exact-restore failure reaches the verdict'
     # A person's choice is remembered even so: they asked for this mode specifically.
     Assert-True ($script:SwCalls -contains 'lastMode') 'and the choice is still remembered'
     Assert-Equal 'all' $script:SwSavedMode 'as the mode he asked for'

@@ -6,7 +6,7 @@
 **Switch the displays on your desk in named sets, with one hotkey.**
 
 Make a Work mode for two screens, a Game mode for one, and a Movie mode for the TV.
-DeskModes turns on the selected displays, restores their arrangement and refresh rates,
+DeskModes turns on the selected displays, remembers their Windows arrangement and refresh rates,
 and puts the taskbar where you chose. Switch from the tray, a shortcut or the command line.
 
 Windows 10/11 · Windows PowerShell 5.1 · No installer or service · No required downloads at runtime
@@ -26,8 +26,9 @@ use a source checkout; a version number in the application is not a published re
    user account. Keep the whole `DeskModes` folder together; do not run from inside the ZIP.
    A source checkout works too: `git clone https://github.com/GangHack/DeskModes.git`.
 2. Double-click **Displays.cmd**. The tray icon appears and Settings opens on the first run.
+   Left-click the tray icon to reopen Settings; right-click it for the switching menu.
    If Windows shows a warning, review the source and publisher before choosing to run it.
-3. On **Your desk**, use **Copy from Windows** if the current arrangement is correct,
+3. On **Your desk**, use **Use Windows layout** if the current arrangement is correct,
    or arrange the cards and choose the taskbar display. In **Modes**, add a combination,
    select its displays and set a hotkey. Press **Save**.
 4. Switch using the tray menu or your hotkey. Enable **Start with Windows** in Behavior
@@ -39,8 +40,9 @@ The `.cmd` launchers choose Windows PowerShell 5.1 even if your terminal uses Po
 
 ## What comes with a mode
 
-- The selected displays, their left-to-right order and the primary display.
-- Refresh-rate restoration and window positions per display set.
+- The selected displays and their saved Windows positions, orientation, resolution, refresh rate
+  and primary display. Repeating All displays preserves the current desktop.
+- Window positions per display set and optional explicit arrangement overrides.
 - Optional brightness, contrast, remembered picture preset, HDR and playback device.
 - Optional commands before/after switching and rules for processes, idle time or connected displays.
 - **Back to the previous mode**, plus recovery of the previous display set if none of the
@@ -56,8 +58,9 @@ when you copy and send them yourself.
   PowerShell 7 is refused. Managed devices may enforce a policy that prevents scripts running.
 - Keep the folder writable: settings, backups and the locally compiled API cache live beside
   the scripts. The program does not install a service or change your global execution policy.
-- Arrangement is a **left-to-right row**, vertically centred. Arbitrary stacked monitor layouts
-  are not preserved by a configured row; check this before using Copy from Windows.
+- Desktop snapshots remember the arrangement observed before a switch. Start with a correct
+  Windows layout: the program cannot reconstruct positions lost before a snapshot existed.
+  Explicit row editing remains available when you want an automatically centred row.
 - DDC/CI, picture presets, HDR and wake-up time depend on the display, cable, dock and driver.
   The controls are optional. No monitor-capabilities-string probing is performed.
 - Identical models use a connection fingerprint to distinguish instances. A different port

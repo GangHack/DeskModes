@@ -9,8 +9,8 @@ The application reports 1.0.0. Its CHANGELOG heading intentionally has no releas
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\check.ps1 -RequireAnalyzer`
 
 The local Windows PowerShell 5.1 run passes syntax, BOM/CRLF, PSScriptAnalyzer 1.25.0,
-translation keys and the regression suite. Every supported interface language has all
-291 English keys. Tests redirect machine files and shadow hardware calls; no physical
+translation keys and the regression suite. Every supported interface language covers
+the complete English key set. Tests redirect machine files and shadow hardware calls; no physical
 display switching is part of this result. The analyzer is a development tool, not a
 runtime dependency.
 
@@ -19,6 +19,12 @@ exact combination membership, refusal of ambiguous primary/CLI choices, unambigu
 mode-reference migration with and without hotkeys, damaged-settings recovery, locked-file
 save failure, stale startup shortcut targets, packaging failure and diagnostic privacy.
 A missing friendly monitor name must not leak its device path through the diagnostic model field.
+
+Desktop restoration regressions cover exact positions, flipped rotation, rational refresh rates,
+same-set preservation, first subset derivation, failed restores and repeated-failure rollback.
+The current Windows arrangement is shown separately from explicit switching customization.
+English and Russian offscreen previews verify the portrait geometry, primary marker and full
+duplicate-panel captions. These tests do not establish a successful real driver round-trip.
 
 English screenshots are refreshed in `docs/images/`. Nine offscreen WPF windows were
 rendered for English, Russian, German and French. Desk and About pages were inspected for
@@ -38,6 +44,7 @@ public reports.
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
+| Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Earlier test archive reproduced destructive layout and rotation changes; fixed candidate needs hardware retest |
 | Two identical panels | Save distinct hotkeys and a one-panel combination. Reconnect in a different enumeration order; remove either panel. The remaining one keeps its key and never substitutes for the absent selection. | Pending |
 | Laptop and external display | Repeat with lid open/closed, sleep/wake and reconnect. Record the configured Windows lid action; use a visible recovery path. | Pending |
 | Dock / multiple GPUs | Record exact adapters, dock, ports and driver; test unplug/replug and wake. | Pending; experimental |
@@ -99,5 +106,4 @@ sends anything. Logs are separate and can include paths and hook commands.
 Ship the reliable named-set workflow, recovery, documentation and diagnostic path first.
 Keep optional rules, hardware controls and diary discoverable in their existing pages;
 there is no need for a new installer, service, mandatory analytics or account system.
-Arbitrary stacked monitor arrangements, automatic updates and broad hardware claims are
-separate work. A short list of tested setups is more useful than an unsupported compatibility promise.
+Automatic updates and broad hardware claims are separate work. A short list of tested setups is more useful than an unsupported compatibility promise.
