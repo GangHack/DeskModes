@@ -100,3 +100,15 @@ Test-Case 'watchdog: a KeepMode protection snapshot survives disk and prevents a
     Assert-Equal 120 $back.ProtectedSnapshot.Displays[0].Hz 'a separate process reads the applied protection'
     Assert-Equal 0 $script:WatchWrites.Count 'the canonical 75 Hz baseline does not undo KeepMode'
 }
+
+Test-Case 'full config: duplicate requested paths are refused before an attempt can mutate Windows' {
+    $script:FullCalls = 0
+    function Invoke-CcdFullConfigAttempt { param($Targets, $PrimaryPath, $Order, [switch]$WithHz, [switch]$Exact) $script:FullCalls++; return $true }
+    $targets = @(
+        [pscustomobject]@{ DevicePath = 'path-a'; Label = 'A'; Width = 1920; Height = 1080; Hz = 60; RateNum = 60; RateDen = 1; Rotation = 1; X = 0; Y = 0 }
+        [pscustomobject]@{ DevicePath = 'path-a'; Label = 'A again'; Width = 1920; Height = 1080; Hz = 60; RateNum = 60; RateDen = 1; Rotation = 1; X = 1920; Y = 0 }
+    )
+
+    Assert-True (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'path-a' -Exact)) 'an incomplete unique set is rejected'
+    Assert-Equal 0 $script:FullCalls 'the lower apply layer was never reached'
+}

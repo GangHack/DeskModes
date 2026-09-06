@@ -3319,7 +3319,12 @@ function Get-CcdPathChoice {
             if ($paths[$i].targetInfo.targetAvailable -eq 0) { continue }
             $dp = Get-CcdPathDevice $paths[$i]
             if (-not $dp -or -not $want.ContainsKey($dp) -or $covered.ContainsKey($dp)) { continue }
-            $sid = '' + $paths[$i].sourceInfo.id
+            # A source id is local to one adapter. Source 0 on two graphics adapters names two
+            # independent sources, so both halves of the LUID are part of the key.
+            $sid = [string]::Format([cultureinfo]::InvariantCulture, '{0}:{1}:{2}',
+                [uint32]$paths[$i].sourceInfo.adapterId.Low,
+                [int32]$paths[$i].sourceInfo.adapterId.High,
+                [uint32]$paths[$i].sourceInfo.id)
             if ($usedSources.ContainsKey($sid)) { continue }
             $usedSources[$sid] = $true
             $covered[$dp] = $true
@@ -3331,6 +3336,7 @@ function Get-CcdPathChoice {
     $missing = @($want.Keys | Where-Object { -not $covered.ContainsKey($_) })
     if ($missing.Count -gt 0) {
         Write-DisplayLog ("ccd: no usable path for {0} display(s)" -f $missing.Count)
+        return $null
     }
     if ($chosen.Count -eq 0) { return $null }
 
@@ -3413,7 +3419,11 @@ function Set-CcdFullConfig {
 
     $list = @($Targets)
     if ($list.Count -eq 0) { return $false }
+    $targetPaths = @{}
     foreach ($t in $list) {
+        $path = [string]$t.DevicePath
+        if (-not $path -or $targetPaths.ContainsKey($path)) { return $false }
+        $targetPaths[$path] = $true
         if ([int]$t.Width -le 0 -or [int]$t.Height -le 0) { return $false }
         if ($Exact -and ([int]$t.RateNum -le 0 -or [int]$t.RateDen -le 0 -or
                          [int]$t.Rotation -lt 1 -or [int]$t.Rotation -gt 4)) { return $false }
@@ -3477,6 +3487,9 @@ function Invoke-CcdFullConfigAttempt {
 
     $choice = Get-CcdPathChoice -DevicePaths @($byPath.Keys)
     if (-not $choice) { return $false }
+    # Get-CcdPathChoice refuses an incomplete set itself. Keep the same invariant here because this is
+    # the last boundary before SetDisplayConfig and the choice is a plain object supplied by a caller.
+    if (@($choice.Chosen).Count -ne $byPath.Count) { return $false }
 
     $paths = $choice.Paths
     $chosen = $choice.Chosen
