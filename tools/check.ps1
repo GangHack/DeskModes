@@ -3,12 +3,13 @@
 <#
     tools\check.ps1 — one command for the question "have I broken anything?".
 
-    Four gates, a non-zero exit on any failure:
+    Five gates, a non-zero exit on any failure:
 
         1. parse      — every .ps1 and .psd1 parses at all;
         2. encoding   — the .ps1 files have a BOM, and there is no lone LF anywhere;
         3. analyzer   — PSScriptAnalyzer, if it is present on the system;
-        4. tests      — tests\run-tests.ps1.
+        4. language   — every requested key exists in English, with no unknown translation keys;
+        5. tests      — tests\run-tests.ps1.
 
     The first gate exists precisely because no test dot-sources render-preview.ps1 or
     Make-Icon.ps1: a typo in them lives until somebody runs them by hand.

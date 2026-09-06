@@ -339,14 +339,28 @@ function Save-DamagedSettingsCopy {
 
 # The contents of settings.json, parsed out of JSON, or $null — the file is absent or damaged.
 function Read-SettingsFile {
-    if (-not (Test-Path $script:SettingsFile)) { return $null }
-    try {
-        return (Get-Content $script:SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+    if (Test-Path -LiteralPath $script:SettingsFile) {
+        try {
+            $raw = Get-Content -LiteralPath $script:SettingsFile -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+            if ($raw -isnot [pscustomobject]) { throw 'Settings must be a JSON object.' }
+            return $raw
+        }
+        catch { Save-DamagedSettingsCopy -Reason $_.Exception.Message }
     }
-    catch {
-        Save-DamagedSettingsCopy -Reason $_.Exception.Message
-        return $null
+    # The backup is a complete prior save, not the damaged bytes kept for diagnosis. Recovery
+    # remains usable even in a read-only folder: failure to repair the primary is not fatal.
+    $backup = $script:SettingsFile + '.bak'
+    if (Test-Path -LiteralPath $backup) {
+        try {
+            $raw = Get-Content -LiteralPath $backup -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+            if ($raw -isnot [pscustomobject]) { throw 'Settings backup must be a JSON object.' }
+            [void](Save-DisplaySettings -Settings $raw)
+            Write-DisplayLog 'settings: recovered the previous complete settings from settings.json.bak'
+            return $raw
+        }
+        catch { Write-DisplayLog 'warn: the settings backup could not be recovered' }
     }
+    return $null
 }
 
 # The settings: the defaults, with whatever was found in the file laid over them.
@@ -446,18 +460,32 @@ function Get-DisplaySettings {
 function Save-DisplaySettings {
     param($Settings)
 
+    $temporary = $script:SettingsFile + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
     try {
-        # -ErrorAction Stop for the same reason as in Write-DisplayLog: a refusal from Set-Content is a
-        # NON-terminating error, and without this the catch below would not see it — and the line about
-        # saving would go to the log after a write that never happened.
-        $Settings | ConvertTo-Json -Depth 5 |
-            Set-Content -Path $script:SettingsFile -Encoding UTF8 -ErrorAction Stop
+        # Serialize and finish writing beside the destination before replacing it. A crash or
+        # a concurrent reader can no longer observe half a JSON document as the active settings.
+        $json = $Settings | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText($temporary, $json + "`r`n", (New-Object System.Text.UTF8Encoding $true))
+        if (Test-Path -LiteralPath $script:SettingsFile) {
+            $backup = $null
+            try {
+                $previous = Get-Content -LiteralPath $script:SettingsFile -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+                if ($previous -is [pscustomobject]) { $backup = $script:SettingsFile + '.bak' }
+            }
+            catch { } # A damaged primary must not overwrite the last good backup during recovery.
+            if ($backup) { [System.IO.File]::Replace($temporary, $script:SettingsFile, $backup) }
+            else { [System.IO.File]::Replace($temporary, $script:SettingsFile, [NullString]::Value) }
+        }
+        else { [System.IO.File]::Move($temporary, $script:SettingsFile) }
         Write-DisplayLog 'settings: saved'
         return $true
     }
     catch {
         Write-DisplayLog "warn: could not save the settings - $($_.Exception.Message)"
         return $false
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue }
     }
 }
 
@@ -3176,7 +3204,7 @@ function Get-LayoutPositions {
         for ($k = 0; $k -lt $Order.Count; $k++) {
             $o = $Order[$k]
             if (-not $o) { continue }
-            if ($s.Label -like ('*' + $o + '*') -or $o -like ('*' + $s.Label + '*')) { $rank = $k; break }
+            if (Test-DisplayNameMatch -Pattern $o -Label $s.Label -ShortId '') { $rank = $k; break }
         }
         $ranked += [pscustomobject]@{
             DevicePath = $s.DevicePath
@@ -3300,6 +3328,7 @@ function Invoke-CcdLayoutAttempt {
         return (New-LayoutResult -Ok $false -Changed $false)
     }
 
+    Set-DisplayIdentity -State $screens -Known (Get-KnownDisplays)
     if ($Order.Count -gt 0) {
         $want = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
         foreach ($s in $screens) {
@@ -3751,13 +3780,59 @@ function Set-BestModeFor {
 #
 # One rule for everywhere a person names a monitor in words: layout, primary, a combo's membership. Two
 # definitions would drift apart on the very first non-standard name.
+# Duplicate panels keep a connection fingerprint in their label. Enumeration ordinals would send
+# a saved shortcut to the other panel after hotplug. Model remains the manufacturer's name.
+function Set-DisplayIdentity {
+    param($State, $Known = $null)
+
+    $counts = @{}
+    foreach ($m in @($State)) {
+        $model = [string]$m.Model
+        if (-not $model) { $model = [string]$m.Label }
+        $counts[$model] = 1 + [int]$counts[$model]
+    }
+    foreach ($m in @($State)) {
+        if (-not $m) { continue }
+        $deviceId = [string]$m.Id
+        if (-not $deviceId) { $deviceId = [string]$m.DevicePath }
+        if (-not $deviceId) { continue }
+        if ([string]$m.Label -match ' \{[a-f0-9]{16}\}$') { continue }
+        $remembered = $null
+        if ($Known) {
+            $remembered = @($Known.Values | Where-Object {
+                $_.Id -eq $deviceId -and $_.Label -match ' \{[a-f0-9]{16}\}$'
+            }) | Select-Object -First 1
+        }
+        if ($remembered) { $m.Label = [string]$remembered.Label; continue }
+        $model = [string]$m.Model
+        if (-not $model) { $model = [string]$m.Label }
+        $knownTwin = $false
+        if ($Known) {
+            $knownTwin = @($Known.Values | Where-Object {
+                $_.Model -eq $model -and $_.Label -match ' \{[a-f0-9]{16}\}$'
+            }).Count -gt 0
+        }
+        if ($counts[$model] -lt 2 -and -not $knownTwin) { continue }
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($deviceId.ToLowerInvariant())
+            $suffix = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').Substring(0, 16).ToLowerInvariant()
+        }
+        finally { $sha.Dispose() }
+        $m.Label = $model + ' {' + $suffix + '}'
+    }
+}
+
 function Test-DisplayNameMatch {
     param([string]$Pattern, [string]$Label, [string]$ShortId)
 
     if (-not $Pattern) { return $false }
+    # An absent instance must not fall back to its model and select its connected twin.
+    if ($Pattern -match ' \{[a-f0-9]{16}\}$') { return $Pattern -eq $Label }
     foreach ($name in $Label, $ShortId) {
         if (-not $name) { continue }
-        if ($name -like ('*' + $Pattern + '*') -or $Pattern -like ('*' + $name + '*')) { return $true }
+        if ($name.IndexOf($Pattern, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $Pattern.IndexOf($name, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
     }
     return $false
 }
@@ -3790,7 +3865,7 @@ function Get-DisplayState {
 
     $primaryOutput = Get-PrimaryOutput
 
-    foreach ($t in $targets) {
+    $state = @(foreach ($t in $targets) {
         $label = $t.Label
         if (-not $label) { $label = $t.ShortId }
         if (-not $label) { $label = $t.DevicePath }
@@ -3820,7 +3895,9 @@ function Get-DisplayState {
             Hz           = $(if ($cur) { $cur.Hz } else { 0 })
             BestMode     = $best
         }
-    }
+    })
+    Set-DisplayIdentity -State $state -Known (Get-KnownDisplays)
+    return $state
 }
 
 # --- the monitors this desk has ever had ------------------------------------
@@ -3838,18 +3915,12 @@ function Get-DisplayState {
 # length of one run — it names a monitor at the instant it drops off the bus, when asking the
 # system is already too late; this is that index written down, so it survives a restart.
 #
-# Keyed by the monitor's NAME, and that key is the whole reason this is a file of ours rather
-# than a read of HKLM\SYSTEM\CurrentControlSet\Enum\DISPLAY, where Windows already keeps the
-# EDID of everything ever plugged in. That branch is a graveyard: this machine still has
-# GSM5BB4 and GSM5CBB in it — the short IDs the two LGs carried before the cables were moved —
-# plus a GSM5CBC from the iGPU. Offering that would mean two "LG ULTRAGEAR" to choose between,
-# one of which cannot be switched on. A name survives a cable being moved, and it is what
-# settings.json calls a display by: layout, primary, a combo's members and a solo mode's key are
-# all this one string. Two monitors of one model share a name and so share a record — the state
-# tells them apart by short ID and by an ordinal, and a roster cannot: it is being asked about
-# one that is not there to be counted.
+# Records use the selected label: plain model names for unique panels, a connection fingerprint
+# for identical ones. This keeps both twins when one leaves the bus without importing stale
+# monitors from the registry. A changed port on an identical panel requires selecting it again;
+# silently transferring its settings to another instance would switch the wrong screen.
 #
-# Only the interface reads it. Switch-DisplayMode goes to Get-DisplayState and sees the desk as
+# Only the interface adds absent records. Get-DisplayState reads labels but sees the desk as
 # Windows has it, so a remembered monitor's mode comes out Available = $false and asking for it
 # fails in the same words it did before ("That display is not connected right now").
 
@@ -3879,6 +3950,7 @@ function Get-KnownDisplays {
             if ($seen -is [datetime]) { $seen = Format-DisplayStamp -When $seen -Pattern 'yyyy-MM-dd' }
             $out[[string]$p.Name] = [pscustomobject]@{
                 Label   = [string]$p.Name
+                Model   = $(if ($v.model) { [string]$v.model } else { [string]$p.Name })
                 ShortId = [string]$v.short
                 Id      = [string]$v.id
                 Native  = $(if ($w -gt 0 -and $h -gt 0) { [pscustomobject]@{ Width = $w; Height = $h } } else { $null })
@@ -3903,6 +3975,7 @@ function Format-KnownDisplays {
     foreach ($name in @($Known.Keys | Sort-Object)) {
         $k = $Known[$name]
         $flat[[string]$name] = [ordered]@{
+            model = [string]$k.Model
             short = [string]$k.ShortId
             id    = [string]$k.Id
             w     = $(if ($k.Native) { [int]$k.Native.Width } else { 0 })
@@ -3929,14 +4002,20 @@ function Update-KnownDisplays {
 
     $known = Get-KnownDisplays
     $was = Format-KnownDisplays $known
+    Set-DisplayIdentity -State $State -Known $known
     $today = Format-DisplayStamp -Pattern 'yyyy-MM-dd'
 
     $live = @()
     foreach ($m in @($State)) {
         if (-not $m -or -not $m.Label) { continue }
         $live += [string]$m.Label
+        # Promotion to an instance label must not leave a third ghost card for the same target.
+        foreach ($old in @($known.Keys)) {
+            if ($old -ne $m.Label -and $known[$old].Id -eq $m.Id) { $known.Remove($old) }
+        }
         $known[[string]$m.Label] = [pscustomobject]@{
             Label   = [string]$m.Label
+            Model   = [string]$m.Model
             ShortId = [string]$m.ShortId
             Id      = [string]$m.Id
             Native  = $m.Native
@@ -3982,15 +4061,16 @@ function Get-DeskDisplays {
     param($State)
 
     $out = @(@($State) | Where-Object { $_ })
-    $live = @($out | ForEach-Object { [string]$_.Label })
     $known = Get-KnownDisplays
+    Set-DisplayIdentity -State $out -Known $known
+    $live = @($out | ForEach-Object { [string]$_.Label })
     foreach ($name in @($known.Keys)) {
         if ($live -contains [string]$name) { continue }
         $k = $known[$name]
         $out += [pscustomobject]@{
             Output       = ''
             Label        = [string]$k.Label
-            Model        = [string]$k.Label
+            Model        = [string]$k.Model
             ShortId      = [string]$k.ShortId
             Native       = $k.Native
             Id           = [string]$k.Id
@@ -4009,8 +4089,7 @@ function Get-DeskDisplays {
 # --- modes ------------------------------------------------------------------
 # The modes are built out of the current state rather than from a hard-coded list: every monitor
 # gets a solo mode of its own by itself, the moment it is connected. A mode's key is stable (the
-# short Monitor ID), so the shortcut bindings survive a cable being moved and the output numbers
-# changing.
+# selected label), so output numbering never assigns a shortcut to another panel.
 
 function Get-DisplayModes {
     # $Settings is needed for the combos' sake only. The disk is NEVER read here: the tray menu calls
@@ -4025,27 +4104,9 @@ function Get-DisplayModes {
     if ($null -eq $State) { $State = @(Get-DisplayState) }
     $modes = @()
 
-    # A solo mode's key goes by the monitor's name rather than by the short Monitor ID. The short ID
-    # is stable only for a "monitor + input" pair: a monitor on DP and on HDMI has different EDIDs,
-    # and the code in them differs. After the cables were moved around, the ULTRAGEAR became
-    # GSM5BB4 -> GSM5BB3 and the ULTRAFINE GSM5CBB -> GSM5CBC, and the Ctrl+Alt+F1/F2 bindings
-    # pointed at nothing. A name does not change with the input. Two identical models are told apart
-    # by the short ID, and if that matches too (identical monitors on identical inputs — the short ID
-    # is the model, not the instance), then by an ordinal number: without the third rung a pair of
-    # twins would get ONE key for two solo modes, and "switch on only this one" lit both.
-    $dupes = @($State | Group-Object Label | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
-    $twins = @($State | Group-Object { $_.Label + '|' + $_.ShortId } | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
-    $seen = @{}
+    Set-DisplayIdentity -State $State
     foreach ($m in $State) {
         $name = $m.Label
-        if ($dupes -contains $m.Label) { $name = $m.Label + ' ' + $m.ShortId }
-
-        $pair = $m.Label + '|' + $m.ShortId
-        if ($twins -contains $pair) {
-            if (-not $seen.ContainsKey($pair)) { $seen[$pair] = 0 }
-            $seen[$pair]++
-            $name = $name + ' #' + $seen[$pair]
-        }
 
         $modes += [pscustomobject]@{
             Key       = 'solo:' + $name
@@ -4055,8 +4116,8 @@ function Get-DisplayModes {
             Kind      = 'solo'
             Label     = $m.Label
             ShortId   = $m.ShortId
-            # The full Monitor ID is unique to an instance. It never reaches the settings (it changes
-            # with the port) — it is only for choosing members.
+            # Only a live device path can select hardware; a label fingerprint never adds a target
+            # that Windows has stopped reporting.
             Id        = $m.Id
             Primary   = $null
             Available = (-not $m.Disconnected)
@@ -4132,55 +4193,87 @@ function Get-ModeTitleFromKey {
 function Update-HotkeyKeys {
     param($Settings, $State)
 
-    if (-not $Settings -or -not $Settings.hotkeys) { return $false }
+    if (-not $Settings) { return $false }
 
-    $modes = @(Get-DisplayModes $State)
+    # A mode can own brightness, commands or a rule without owning a shortcut. Collect every
+    # reference before renaming anything, or tray-only preferences would be orphaned on upgrade.
+    $fields = @('hotkeys', 'audio', 'hooks', 'brightness', 'contrast', 'picture', 'hdr')
+    $references = [ordered]@{}
+    foreach ($field in $fields) {
+        $dict = $Settings[$field]
+        if (-not $dict) { continue }
+        foreach ($key in @($dict.Keys)) { $references[[string]$key] = $true }
+    }
+    foreach ($rule in @($Settings.rules)) {
+        if (-not $rule) { continue }
+        foreach ($field in @('mode', 'back')) {
+            if ($rule[$field]) { $references[[string]$rule[$field]] = $true }
+        }
+    }
+    if ($Settings.reapply -and $Settings.reapply.onPlug) {
+        $references[[string]$Settings.reapply.onPlug] = $true
+    }
+    if ($references.Count -eq 0) { return $false }
+
+    $modes = @(Get-DisplayModes -State $State)
     $live = @($modes | ForEach-Object { $_.Key })
     $changed = $false
 
-    foreach ($old in @($Settings.hotkeys.Keys)) {
+    foreach ($old in @($references.Keys)) {
         if ($old -notlike 'solo:*') { continue }
         if ($live -contains $old) { continue }
 
         $id = $old.Substring(5)
-        $hit = $modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $id } | Select-Object -First 1
+        # Instance keys cannot migrate by model: the matching model may be the other panel.
+        if ($id -match ' \{[a-f0-9]{16}\}$| #\d+$') { continue }
+        $candidates = @($modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $id -and $_.Label -notmatch ' \{[a-f0-9]{16}\}$' })
+        $hit = $null
+        if ($candidates.Count -eq 1) { $hit = $candidates[0] }
+        if (-not $hit) {
+            $candidates = @($State | Where-Object { $id -eq ($_.Model + ' ' + $_.ShortId) })
+            if ($candidates.Count -eq 1) {
+                $hit = $modes | Where-Object { $_.Kind -eq 'solo' -and $_.Id -eq $candidates[0].Id } | Select-Object -First 1
+            }
+        }
 
         # A monitor's name can change too — from the full "ROG STRIX XG27AQDMGR" to the short
         # "XG27AQDMGR", for instance. One is contained in the other, and that is enough to recognise
         # the monitor and carry the binding over.
         if (-not $hit) {
-            $hit = $modes | Where-Object {
-                $_.Kind -eq 'solo' -and $_.Label -and
-                ($id -like ('*' + $_.Label + '*') -or $_.Label -like ('*' + $id + '*'))
-            } | Select-Object -First 1
+            $candidates = @($modes | Where-Object {
+                $_.Kind -eq 'solo' -and $_.Label -notmatch ' \{[a-f0-9]{16}\}$' -and
+                (Test-DisplayNameMatch -Pattern $id -Label $_.Label -ShortId '')
+            })
+            if ($candidates.Count -eq 1) { $hit = $candidates[0] }
         }
         if (-not $hit) { continue }
-        # The new key is already taken by another combo — we do not overwrite it silently.
-        if ($Settings.hotkeys.Contains($hit.Key)) { continue }
-
-        $combo = $Settings.hotkeys[$old]
-        $Settings.hotkeys.Remove($old)
-        $Settings.hotkeys[$hit.Key] = $combo
-        Write-DisplayLog "settings: moved $combo from '$old' to '$($hit.Key)'"
-        $changed = $true
-
-        # Everything tied to the same mode moves along with the shortcut: audio, commands, brightness,
-        # contrast. Otherwise after a cable was moved the shortcut would work while the brightness no
-        # longer applied to it — and two halves of one setting would have drifted apart.
-        foreach ($field in 'audio', 'hooks', 'brightness', 'contrast', 'picture', 'hdr') {
+        # A chosen target value wins within its own map. Its conflict must not block unrelated
+        # preferences or rules, and the old conflicting value stays available for manual editing.
+        $migrated = $false
+        foreach ($field in $fields) {
             $dict = $Settings[$field]
             if (-not $dict -or -not $dict.Contains($old)) { continue }
             if ($dict.Contains($hit.Key)) { continue }
             $dict[$hit.Key] = $dict[$old]
             $dict.Remove($old)
+            $migrated = $true
         }
-        foreach ($r in @($Settings.rules)) {
-            foreach ($field in 'mode', 'back') {
-                if ([string]$r[$field] -eq $old) { $r[$field] = [string]$hit.Key }
+        foreach ($rule in @($Settings.rules)) {
+            if (-not $rule) { continue }
+            foreach ($field in @('mode', 'back')) {
+                if ([string]$rule[$field] -eq $old) {
+                    $rule[$field] = [string]$hit.Key
+                    $migrated = $true
+                }
             }
         }
         if ($Settings.reapply -and [string]$Settings.reapply.onPlug -eq $old) {
             $Settings.reapply.onPlug = [string]$hit.Key
+            $migrated = $true
+        }
+        if ($migrated) {
+            Write-DisplayLog "settings: moved mode references from '$old' to '$($hit.Key)'"
+            $changed = $true
         }
     }
     return $changed
@@ -4458,18 +4551,19 @@ function Select-PrimaryDisplay {
     $wanted = @($Wanted)
 
     if ($PrimaryMatch) {
-        $hit = $wanted | Where-Object { $_.Label -match [regex]::Escape($PrimaryMatch) } | Select-Object -First 1
+        $hit = @($wanted | Where-Object { $_.Label -match [regex]::Escape($PrimaryMatch) })
+        if ($hit.Count -gt 1) { throw ("-PrimaryMatch '$PrimaryMatch' matches several displays. Use the full instance label.") }
         if (-not $hit) {
             $where = $(if ($ModeTitle) { "in '$ModeTitle'" } else { 'that are being turned on' })
             throw "-PrimaryMatch '$PrimaryMatch' matched none of the displays $where."
         }
-        return $hit
+        return $hit[0]
     }
 
     foreach ($soft in @($ModePrimary, $SettingsPrimary)) {
         if (-not $soft) { continue }
-        $hit = $wanted | Where-Object { $_.Label -like ('*' + $soft + '*') } | Select-Object -First 1
-        if ($hit) { return $hit }
+        $hit = @($wanted | Where-Object { Test-DisplayNameMatch -Pattern $soft -Label $_.Label -ShortId $_.ShortId })
+        if ($hit.Count -eq 1) { return $hit[0] }
     }
 
     $hit = $wanted | Where-Object { $_.Primary } | Select-Object -First 1
@@ -4477,7 +4571,7 @@ function Select-PrimaryDisplay {
 
     $order = @($Layout)
     for ($k = $order.Count - 1; $k -ge 0; $k--) {
-        $hit = $wanted | Where-Object { $_.Label -like ('*' + $order[$k] + '*') } | Select-Object -First 1
+        $hit = $wanted | Where-Object { Test-DisplayNameMatch -Pattern $order[$k] -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1
         if ($hit) { return $hit }
     }
 
@@ -5497,7 +5591,7 @@ function ConvertTo-PictureSetting {
     param($Value)
 
     if ($Value -is [System.Collections.IDictionary] -or
-        ($Value -and $Value.PSObject -and $Value.PSObject.Properties['Keys'] -eq $null -and
+        ($Value -and $Value.PSObject -and $null -eq $Value.PSObject.Properties['Keys'] -and
          $Value -isnot [string] -and $Value -isnot [int] -and $Value.PSObject.Properties.Count -gt 0)) {
         # A mode's entry: a map of "a piece of a name" -> "register:number".
         $one = [ordered]@{}
@@ -6310,7 +6404,27 @@ function Get-StartupShortcutPath {
 }
 
 function Test-RunAtStartup {
-    return (Test-Path (Get-StartupShortcutPath))
+    $path = Get-StartupShortcutPath
+    if (-not (Test-Path -LiteralPath $path)) { return $false }
+    $shell = $null; $shortcut = $null
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($path)
+        $target = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $script:ToolRoot 'Displays.ps1')
+        # Existence alone leaves the toggle enabled after a portable folder is moved. The next
+        # Save with the toggle enabled rebuilds the shortcut using the current location.
+        return ($shortcut.TargetPath -eq $target -and $shortcut.Arguments -eq $arguments -and
+                $shortcut.WorkingDirectory -eq $script:ToolRoot)
+    }
+    catch { return $false }
+    finally {
+        foreach ($com in @($shortcut, $shell)) {
+            if ($null -ne $com -and [System.Runtime.InteropServices.Marshal]::IsComObject($com)) {
+                [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($com)
+            }
+        }
+    }
 }
 
 function Set-RunAtStartup {

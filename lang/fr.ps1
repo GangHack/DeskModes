@@ -81,7 +81,10 @@
     'diary.apps'                  = 'Applications'
     'diary.appOnDisplay'          = 'Application par écran'
 
-    'about.folder'                = 'Le dossier est le programme : supprimez-le et il ne reste rien.'
+    'about.diagnostics'               = 'Diagnostic'
+    'about.diagnostics.hint'          = 'État des écrans à l''ouverture des paramètres : versions et modes, sans paramètres ni journal de bord.'
+    'about.diagnostics.copy'          = 'Copier le diagnostic'
+    'about.folder'                    = 'Application portable. Désactivez le démarrage avec Windows et quittez le programme avant de supprimer le dossier.'
 
     'common.copy'                 = 'Copier'
 

@@ -1363,6 +1363,18 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.diagnostics%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.diagnostics.hint%%"/>
+                                        </StackPanel>
+                                        <Button x:Name="DiagnosticsBtn" Grid.Column="1" Style="{StaticResource Btn}"
+                                                Content="%%T:about.diagnostics.copy%%" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
                                             <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.where%%"/>
                                             <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.where.hint%%"/>
                                         </StackPanel>
@@ -2386,6 +2398,7 @@ function New-SettingsWindow {
         VersionText       = $win.FindName('VersionText')
         VersionHost       = $win.FindName('VersionHost')
         CopyVersionBtn    = $win.FindName('CopyVersionBtn')
+        DiagnosticsBtn    = $win.FindName('DiagnosticsBtn')
         SupportCard       = $win.FindName('SupportCard')
         DonateBtn         = $win.FindName('DonateBtn')
         DonateHint        = $win.FindName('DonateHint')
@@ -2601,6 +2614,15 @@ function New-SettingsWindow {
     $ui.CopyVersionBtn.add_Click({
         try { [System.Windows.Clipboard]::SetText((Get-VersionLine)) }
         catch { Write-DisplayLog "settings dialog: could not copy the version - $($_.Exception.Message)" }
+    })
+
+    $ui.DiagnosticsBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        try {
+            [System.Windows.Clipboard]::SetText((Format-DisplayDiagnostics -State $ui.State))
+        }
+        catch { Write-DisplayLog "settings dialog: could not copy diagnostics - $($_.Exception.Message)" }
     })
 
     # Save validates the input BEFORE closing: the old window used to close on a duplicate key
@@ -4556,6 +4578,8 @@ function New-ModeEditorWindow {
     )
 
     Initialize-WpfRuntime
+    Set-DisplayIdentity -State $State
+
     $palette = Get-UiPalette -Dark $Dark
     $win = Convert-UiXaml -Xaml $script:ModeEditorXaml -Palette $palette
     Register-WindowTheme -Window $win -Dark $Dark

@@ -82,7 +82,10 @@
     'diary.apps'                  = 'Programme'
     'diary.appOnDisplay'          = 'Programm je Monitor'
 
-    'about.folder'                = 'Der Ordner ist das Programm: Löschen Sie ihn, und es bleibt nichts zurück.'
+    'about.diagnostics'               = 'Diagnose'
+    'about.diagnostics.hint'          = 'Bildschirmstatus beim Öffnen der Einstellungen: Versionen und Anzeigemodi, ohne Einstellungen oder Tagebuch.'
+    'about.diagnostics.copy'          = 'Diagnose kopieren'
+    'about.folder'                    = 'Portable Anwendung. Vor dem Löschen des Ordners den Autostart deaktivieren und das Programm beenden.'
 
     'common.copy'                 = 'Kopieren'
 

@@ -85,7 +85,10 @@
     'diary.apps'                  = 'Apps'
     'diary.appOnDisplay'          = 'App on display'
 
-    'about.folder'                = 'The folder is the program: delete it, and nothing is left behind.'
+    'about.diagnostics'               = 'Diagnostic summary'
+    'about.diagnostics.hint'          = 'Display snapshot from when Settings opened. Includes versions and display modes; excludes settings and the diary.'
+    'about.diagnostics.copy'          = 'Copy diagnostics'
+    'about.folder'                    = 'Portable scripts. Disable Start with Windows and exit before deleting the folder.'
 
     'common.copy'                 = 'Copy'
 

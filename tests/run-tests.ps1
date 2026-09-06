@@ -51,6 +51,7 @@ $env:DESKMODES_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 # (cases/11-cli-mode-key.tests.ps1).
 
 . (Join-Path $root 'DisplayCore.ps1')
+. (Join-Path $root 'Diagnostics.ps1')
 . (Join-Path $root 'WindowLayout.ps1')
 . (Join-Path $root 'Activity.ps1')
 . (Join-Path $root 'SettingsDialog.ps1')

@@ -22,6 +22,7 @@
     These names report instead of switching:
       status      what the system shows right now (read-only, the default)
       modes       every mode key with its shortcut
+      diagnostics a shareable JSON snapshot without settings, paths, hooks or diary
       brightness  which displays answer over DDC/CI, at what level, and on which
                   picture preset
       hdr         which displays can do HDR, and whether it is on right now
@@ -70,6 +71,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
+. (Join-Path $PSScriptRoot 'Diagnostics.ps1')
 . (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 
@@ -92,11 +94,14 @@ function Resolve-ModeKey {
     if ($hit) { return $hit }
 
     # the short Monitor ID
-    $hit = $Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $Text } | Select-Object -First 1
-    if ($hit) { return $hit }
+    $hit = @($Modes | Where-Object { $_.Kind -eq 'solo' -and $_.ShortId -eq $Text })
+    if ($hit.Count -eq 1) { return $hit[0] }
+    if ($hit.Count -gt 1) {
+        throw ("'$Text' matches several modes: " + (($hit | ForEach-Object { $_.Key }) -join ', '))
+    }
 
     # part of a monitor's name
-    $hit = @($Modes | Where-Object { $_.Title -match [regex]::Escape($Text) })
+    $hit = @($Modes | Where-Object { $_.Kind -eq 'solo' -and (Test-DisplayNameMatch -Pattern $Text -Label $_.Label -ShortId '') })
     if ($hit.Count -eq 1) { return $hit[0] }
     if ($hit.Count -gt 1) {
         throw ("'$Text' matches several modes: " + (($hit | ForEach-Object { $_.Key }) -join ', '))
@@ -116,6 +121,11 @@ $state = @(Get-DisplayState)
 # Windows for the state again itself, so nothing on the measured path changed.
 [void](Update-KnownDisplays -State $state)
 $state = @(Get-DeskDisplays -State $state)
+
+if ($Mode -eq 'diagnostics') {
+    Format-DisplayDiagnostics -State $state
+    return
+}
 
 if ($Mode -eq 'status') {
     Write-Host ''

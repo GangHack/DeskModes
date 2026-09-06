@@ -4,6 +4,8 @@ last-run.log.old
 
 # A copy of damaged settings: the diagnostics of one incident.
 settings.json.bad
+settings.json.bak
+settings.json.*.tmp
 
 # The cache of compiled types. Built from the source in DisplayCore.ps1.
 native-*.dll

@@ -169,7 +169,7 @@ function ConvertTo-Number {
     return [int]$Text
 }
 
-function Format-Hex {
+function Format-PictureHex {
     param([uint32]$Number)
     return ('0x{0:X2} ({1})' -f $Number, $Number)
 }
@@ -182,7 +182,7 @@ function Write-Reading {
         return
     }
     $kind = $(if ($Reading.Type -eq 0) { 'momentary' } else { 'set-parameter' })
-    Write-Host ($head + ('current {0}, maximum {1}, {2}' -f (Format-Hex $Reading.Current), (Format-Hex $Reading.Maximum), $kind))
+    Write-Host ($head + ('current {0}, maximum {1}, {2}' -f (Format-PictureHex $Reading.Current), (Format-PictureHex $Reading.Maximum), $kind))
 }
 
 # --- who is on the desk -------------------------------------------------------
@@ -242,7 +242,7 @@ try {
         Write-Host '  before:' -ForegroundColor DarkGray
         Write-Reading -Label $label -VcpCode $codes[0] -Reading $before
         $ok = [ProbeDdc]::Write($handle, $codes[0], $number)
-        if ($ok) { Write-Host ('  wrote {0}' -f (Format-Hex $number)) }
+        if ($ok) { Write-Host ('  wrote {0}' -f (Format-PictureHex $number)) }
         else     { Write-Host ('  write refused (0x{0:X8})' -f [ProbeDdc]::LastError) -ForegroundColor Yellow }
         # A monitor takes its time to apply a preset, and a read straight after the write can still
         # show the old number (the UltraFine did exactly that with brightness on 21 August).
@@ -252,7 +252,7 @@ try {
         Write-Reading -Label $label -VcpCode $codes[0] -Reading $after
         if ($after.Answered) {
             if ($after.Current -eq $number) { Write-Host '  the monitor took it' -ForegroundColor Green }
-            else { Write-Host ('  the monitor reports {0} instead' -f (Format-Hex $after.Current)) -ForegroundColor Yellow }
+            else { Write-Host ('  the monitor reports {0} instead' -f (Format-PictureHex $after.Current)) -ForegroundColor Yellow }
         }
         return
     }

@@ -21,20 +21,20 @@ Test-Case 'modes: a fresh desk gets one mode per display plus all, and nothing e
     Assert-Equal 0 @($modes | Where-Object { $_.Kind -eq 'combo' }).Count 'no combinations out of thin air'
 }
 
-Test-Case 'modes: two identical models get the short id appended' {
+Test-Case 'modes: two identical models get distinct connection labels' {
     $state = @(
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-a')
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-b')
     )
     $keys = @(Get-DisplayModes $state | Where-Object { $_.Kind -eq 'solo' } | ForEach-Object { $_.Key })
     Assert-Equal 2 $keys.Count 'two solo modes'
-    Assert-True ($keys -contains 'solo:LG ULTRAFINE GSM5CBB') 'first keyed by short id'
-    Assert-True ($keys -contains 'solo:LG ULTRAFINE GSM5CBC') 'second keyed by short id'
+    Assert-Equal ('solo:' + $state[0].Label) $keys[0] 'first keyed by its selected label'
+    Assert-True ($keys[0] -ne $keys[1]) 'different connections have different keys'
 }
 
-Test-Case 'modes: full twins get numbered, and the keys stay distinct' {
+Test-Case 'modes: full twins get connection labels, and the keys stay distinct' {
     # An identical model on an identical input: the short ID is the model, not the instance.
-    # Without numbering, both solo modes would get ONE key, and "switch on only this one" would
+    # Without instance labels, both solo modes would get ONE key, and "switch on only this one" would
     # light both monitors.
     $state = @(
         (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBB' 'path-a')
@@ -44,8 +44,8 @@ Test-Case 'modes: full twins get numbered, and the keys stay distinct' {
     Assert-Equal 2 $solo.Count 'two solo modes'
     $keys = @($solo | ForEach-Object { $_.Key })
     Assert-Equal 2 (@($keys | Sort-Object -Unique)).Count 'keys are distinct'
-    Assert-True ($keys[0] -like '*#1') 'first numbered'
-    Assert-True ($keys[1] -like '*#2') 'second numbered'
+    Assert-True ($keys[0] -match '\{[a-f0-9]{16}\}$') 'first has a connection fingerprint'
+    Assert-True ($keys[1] -match '\{[a-f0-9]{16}\}$') 'second has a connection fingerprint'
     # And each key leads to its own monitor rather than to both.
     Assert-Equal 'path-a' $solo[0].Id 'first points at its own display'
     Assert-Equal 'path-b' $solo[1].Id 'second points at its own display'

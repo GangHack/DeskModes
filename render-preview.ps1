@@ -12,7 +12,7 @@
 
     Theme and accent colour come from the system, exactly as in the real window.
 
-    Seven files are written beside <name>.png, which is the Settings window on its
+    Eight files are written beside <name>.png, which is the Settings window on its
     first page:
 
         -modes, -rules, -behavior,
@@ -21,12 +21,11 @@
         -rule                               the rule editor
         -timer                              the shutdown timer popup
 
-    README shows five of them, and six live in docs/images/ (those five and the Modes
-    page). The rest are for looking at while working on a window, and are not
-    committed.
+    The English previews live in docs/images/. The README shows the desk page; the
+    reference and development review use the remaining pages.
 
 .PARAMETER Out
-    Where to write the Settings window on its first page. The other seven go next to
+    Where to write the Settings window on its first page. The other eight go next to
     it with the suffixes above. Defaults to preview-settings.png beside the scripts.
 
 .PARAMETER Fake
@@ -50,7 +49,7 @@
 
 .EXAMPLE
     .\render-preview.ps1 -Fake -EditorMode all -Out C:\tmp\ui.png
-    Writes C:\tmp\ui.png and its seven neighbours; C:\tmp\ui-editor.png shows the
+    Writes C:\tmp\ui.png and its eight neighbours; C:\tmp\ui-editor.png shows the
     editor of "All displays" - the short form, without a name to argue about.
 #>
 [CmdletBinding()]
@@ -72,6 +71,7 @@ if (-not $env:DESKMODES_LOG_FILE) {
 }
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
+. (Join-Path $PSScriptRoot 'Diagnostics.ps1')
 . (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')

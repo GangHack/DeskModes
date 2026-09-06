@@ -62,3 +62,19 @@ Test-Case 'resolve: an unknown name is refused with a hint' {
     catch { $threw = $true; Assert-True ($_.Exception.Message -like '*Unknown mode*') 'said unknown' }
     Assert-True $threw 'threw on unknown'
 }
+
+Test-Case 'resolve: a shared monitor ID is refused with the exact instance keys' {
+    $left = New-FakeMonitor -Label 'Twin Panel' -ShortId 'TWN1234' -Id 'path-twin-a'
+    $right = New-FakeMonitor -Label 'Twin Panel' -ShortId 'TWN1234' -Id 'path-twin-b'
+    $modes = @(Get-DisplayModes -State @($left, $right) -Settings (New-TestSettings))
+    $solo = @($modes | Where-Object { $_.Kind -eq 'solo' })
+    $problem = ''
+    try { [void](Resolve-ModeKey -Text 'TWN1234' -Modes $modes) }
+    catch { $problem = $_.Exception.Message }
+
+    Assert-True ([bool]$problem) 'a shared model ID must not choose the first physical panel'
+    foreach ($mode in $solo) {
+        Assert-True ($problem.Contains($mode.Key)) 'the error offers an exact key for each possible instance'
+        Assert-Equal $mode.Id (Resolve-ModeKey -Text $mode.Key -Modes $modes).Id 'an exact instance key still resolves'
+    }
+}

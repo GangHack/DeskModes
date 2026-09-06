@@ -81,7 +81,10 @@
     'diary.apps'                  = 'Programas'
     'diary.appOnDisplay'          = 'Programa en pantalla'
 
-    'about.folder'                = 'La carpeta es el programa: bórrala y no queda nada.'
+    'about.diagnostics'               = 'Diagnóstico'
+    'about.diagnostics.hint'          = 'Estado de las pantallas al abrir los ajustes: versiones y modos, sin ajustes ni diario.'
+    'about.diagnostics.copy'          = 'Copiar diagnóstico'
+    'about.folder'                    = 'Aplicación portátil. Desactiva el inicio con Windows y cierra el programa antes de borrar la carpeta.'
 
     'common.copy'                 = 'Copiar'
 

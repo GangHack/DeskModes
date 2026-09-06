@@ -80,18 +80,17 @@ Test-Case 'level rows: a combination lists its displays by their real names' {
 }
 
 Test-Case 'level rows: a display mode names the display, not its key' {
-    # For two identical models the key holds a short ID ("solo:DELL U2723 ABC123"), and parsing the key
-    # would give a slider row with a name that is on no monitor at all. Get-ModeMembers knows a mode's
-    # membership — and it is what answers.
+    # The row must use the selected instance label, not a key parsed independently from membership.
+    # Otherwise brightness chosen for one of two identical models can apply to both.
     $state = @(
         (New-FakeMonitor 'DELL U2723' 'ABC123' 'path-1')
         (New-FakeMonitor 'DELL U2723' 'ABC124' 'path-2')
     )
     $mode = @(Get-DisplayModes -State $state | Where-Object { $_.Id -eq 'path-1' })[0]
-    Assert-Equal 'solo:DELL U2723 ABC123' ([string]$mode.Key) 'the key carries the short id, as it must'
+    Assert-Equal ('solo:' + $state[0].Label) ([string]$mode.Key) 'the key names the selected instance'
     $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $state -Dark $false
     try {
-        Assert-Equal @('DELL U2723') @(Get-EditorDisplayNames -Editor $ed) 'but the row is named after the display'
+        Assert-Equal @($state[0].Label) @(Get-EditorDisplayNames -Editor $ed) 'the row names that same instance'
     }
     finally { $ed.Window.Close() }
 }

@@ -45,6 +45,7 @@ $ErrorActionPreference = 'Stop'
 $script:StartWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 . (Join-Path $PSScriptRoot 'DisplayCore.ps1')
+. (Join-Path $PSScriptRoot 'Diagnostics.ps1')
 . (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')

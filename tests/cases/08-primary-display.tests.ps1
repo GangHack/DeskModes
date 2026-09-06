@@ -48,3 +48,18 @@ Test-Case 'primary: current one, then rightmost by layout, then the first' {
     Assert-Equal 'B' (Select-PrimaryDisplay -Wanted $wanted -Layout @('A', 'B')).Label 'rightmost by layout'
     Assert-Equal 'A' (Select-PrimaryDisplay -Wanted $wanted -Layout @()).Label 'first as the last resort'
 }
+
+Test-Case 'primary: an explicit name shared by identical monitors is refused instead of guessed' {
+    $left = New-FakeMonitor -Label 'Twin Panel' -ShortId 'TWN1234' -Id 'path-twin-a'
+    $right = New-FakeMonitor -Label 'Twin Panel' -ShortId 'TWN1234' -Id 'path-twin-b'
+    $wanted = @($left, $right)
+    [void](Get-DisplayModes -State $wanted -Settings (New-TestSettings))
+    $problem = ''
+    try { [void](Select-PrimaryDisplay -Wanted $wanted -PrimaryMatch 'Twin Panel' -ModeTitle 'Work') }
+    catch { $problem = $_.Exception.Message }
+
+    Assert-True ([bool]$problem) 'an explicit but ambiguous choice cannot silently move the taskbar'
+    Assert-True ($problem.Contains('Twin Panel')) 'the error identifies the ambiguous input'
+    $selected = Select-PrimaryDisplay -Wanted $wanted -PrimaryMatch $right.Label -ModeTitle 'Work'
+    Assert-Equal $right.Id $selected.Id 'the exact instance label selects the intended taskbar display'
+}
