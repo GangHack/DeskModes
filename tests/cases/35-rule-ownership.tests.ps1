@@ -410,10 +410,16 @@ Test-Case 'rule: a provisional claim releases when its first fresh observation i
 
 Test-Case 'rule: a manual display change wins when the condition ends on the same tick' {
     Set-RuleScene -Mode 'combo:Work'
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = $script:RoLive })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake ends a condition without editing its rule signature.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
     Invoke-RulesCheck
     Set-RoActiveDesk -Labels @('GAME', 'OTHER') -ModeKey ''
     $script:StateCacheGeneration++
-    $script:RoSettings.rules[0].process = $script:RoDead
+    $script:RoProcesses = @()
     Invoke-RulesCheck
 
     Assert-Equal 'solo:GAME' ($script:RoInvoked -join ',') 'the ended rule does not restore over a manual desk'
