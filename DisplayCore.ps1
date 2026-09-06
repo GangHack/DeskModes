@@ -6623,7 +6623,8 @@ function Get-RuleSignature {
 # fifteen seconds over a refusal that will not come right.
 function Get-RuleDecision {
     param($Rules, $Facts, [string]$CurrentMode, [int]$OwnedIndex = -1, [string]$OwnedBack = '',
-          [string]$OwnedSignature = '', [bool]$OwnedTaken = $true, [string]$OwnedDeskRelation = '')
+          [string]$OwnedSignature = '', [bool]$OwnedTaken = $true, [string]$OwnedDeskRelation = '',
+          [int]$ReturnTries = 0)
 
     $list = @($Rules)
     $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Back = ''; RuleIndex = -1; Reason = '' }
@@ -6635,6 +6636,13 @@ function Get-RuleDecision {
         if ($OwnedSignature -and (Get-RuleSignature -Rule $owned) -ne $OwnedSignature) {
             $owned = @($list | Where-Object { (Get-RuleSignature -Rule $_) -eq $OwnedSignature }) |
                         Select-Object -First 1
+        }
+        # A manual desk wins even when the condition ends or its rule is removed on this same tick.
+        # Once a return has started, its own partial result can also sit outside the rule's envelope;
+        # keep that bounded retry alive rather than calling the tray's switch a person's change.
+        if ($OwnedTaken -and $OwnedDeskRelation -eq 'different' -and $ReturnTries -le 0) {
+            return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
+                                      Reason = 'the displays were changed by hand' }
         }
         # The rule vanished from the settings while it was holding the desk (the file gets edited
         # by hand and from the Settings window) — we go back where we came from and let go.
@@ -6658,10 +6666,8 @@ function Get-RuleDecision {
             # We do not fight people: a physical desk outside the envelope left by our switch is a
             # deliberate decision. When no physical claim was supplied, retain the key comparison
             # for callers that do not own a state cache. An unknown cache proves nothing either way.
-            $changedByHand = ($OwnedDeskRelation -eq 'different')
-            if (-not $OwnedDeskRelation -and $CurrentMode -and $CurrentMode -ne [string]$owned.mode) {
-                $changedByHand = $true
-            }
+            $changedByHand = (-not $OwnedDeskRelation -and $CurrentMode -and
+                              $CurrentMode -ne [string]$owned.mode)
             if ($changedByHand) {
                 return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
                                           Reason = 'the displays were changed by hand' }

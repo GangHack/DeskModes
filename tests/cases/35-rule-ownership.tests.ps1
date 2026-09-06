@@ -338,6 +338,117 @@ Test-Case 'rule: a failed post-switch cache refresh defers judgment and preserve
     Assert-Equal 'combo:AB,all' ($script:RoInvoked -join ',') 'uncertainty neither releases early nor loses the original desk'
 }
 
+Test-Case 'rule: a provisional claim resolves on a later fresh target and then detects a new display' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b' $false)
+        (New-FakeMonitor 'C' 'C' 'c' $false)
+    )
+    $script:RoMode = 'solo:A'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'done'
+    $script:RoRefreshSucceeds = $false
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Assert-True (-not $script:RuleOwnedDesk.Known) 'the failed refresh leaves a provisional claim'
+    Set-RoActiveDesk -Labels @('A', 'B') -ModeKey 'combo:AB'
+    $script:StateCacheGeneration++
+    Invoke-RulesCheck
+    Assert-True $script:RuleOwnedDesk.Known 'a newer successful observation resolves the claim'
+
+    Set-RoActiveDesk -Labels @('A', 'B', 'C') -ModeKey ''
+    $script:StateCacheGeneration++
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB' ($script:RoInvoked -join ',') 'the rule does not fight the later different desk'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the new display releases the resolved claim'
+}
+
+Test-Case 'rule: a provisional claim releases when its first fresh observation is unrelated' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b' $false)
+        (New-FakeMonitor 'C' 'C' 'c' $false)
+    )
+    $script:RoMode = 'solo:A'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'done'
+    $script:RoRefreshSucceeds = $false
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Set-RoActiveDesk -Labels @('C') -ModeKey 'solo:C'
+    $script:StateCacheGeneration++
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB' ($script:RoInvoked -join ',') 'the rule makes no corrective switch'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the first fresh unrelated desk releases the claim'
+}
+
+Test-Case 'rule: a manual display change wins when the condition ends on the same tick' {
+    Set-RuleScene -Mode 'combo:Work'
+    Invoke-RulesCheck
+    Set-RoActiveDesk -Labels @('GAME', 'OTHER') -ModeKey ''
+    $script:StateCacheGeneration++
+    $script:RoSettings.rules[0].process = $script:RoDead
+    Invoke-RulesCheck
+
+    Assert-Equal 'solo:GAME' ($script:RoInvoked -join ',') 'the ended rule does not restore over a manual desk'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the manual desk releases the claim'
+}
+
+Test-Case 'rule: a manual display change wins when the owning rule is removed on the same tick' {
+    Set-RuleScene -Mode 'combo:Work'
+    Invoke-RulesCheck
+    Set-RoActiveDesk -Labels @('GAME', 'OTHER') -ModeKey ''
+    $script:StateCacheGeneration++
+    $script:RoSettings.rules = @()
+    Invoke-RulesCheck
+
+    Assert-Equal 'solo:GAME' ($script:RoInvoked -join ',') 'the removed rule does not restore over a manual desk'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the manual desk releases the orphaned claim'
+}
+
+Test-Case 'rule: its own partial return is retried instead of mistaken for a manual desk' {
+    Set-RuleScene -Mode 'combo:Work'
+    Invoke-RulesCheck
+    $script:RoSettings.rules[0].process = $script:RoDead
+    $script:RoOutcome = 'partial'
+    $script:RoPartialActive = @('OTHER')
+    $script:RoPartialMode = 'solo:OTHER'
+    Invoke-RulesCheck
+    Assert-Equal 1 $script:RuleReturnTries 'the partial return remains pending'
+
+    $script:RoOutcome = 'done'
+    Invoke-RulesCheck
+
+    Assert-Equal 'solo:GAME,combo:Work,combo:Work' ($script:RoInvoked -join ',') 'the next tick retries the return'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the successful retry ends ownership'
+}
+
 Test-Case 'rule: an empty or unrelated observation establishes no physical claim' {
     $empty = New-RuleDeskClaim -RequestedIds @('a') -State @() -Fresh $true
     Assert-True (-not $empty.Known) 'an empty cache proves nothing'

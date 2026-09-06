@@ -299,28 +299,47 @@ function Get-RuleModeMemberIds {
 # AB as C finally goes out, without accepting A -> B or a newly introduced D. Known false means the
 # cache could not prove what the switch left; uncertainty must not be called a manual override.
 function New-RuleDeskClaim {
-    param($RequestedIds, $State, [bool]$Fresh)
+    param($RequestedIds, $State, [bool]$Fresh, [int]$Generation = 0)
 
-    $unknown = [pscustomobject]@{ Known = $false; Anchors = @(); Allowed = @() }
-    if (-not $Fresh -or -not $State) { return $unknown }
+    $requested = @($RequestedIds | Where-Object { $_ } | Sort-Object -Unique)
     $observed = @($State | Where-Object { $_ -and $_.Active } |
                   ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
-    if ($observed.Count -eq 0) { return $unknown }
-    $requested = @($RequestedIds | Where-Object { $_ } | Sort-Object -Unique)
+    $allowed = @($observed + $requested | Sort-Object -Unique)
+    $unknown = [pscustomobject]@{
+        Known = $false; Requested = $requested; Anchors = @(); Allowed = $allowed
+        Generation = $Generation
+    }
+    if (-not $Fresh -or $observed.Count -eq 0) { return $unknown }
     $anchors = @($observed | Where-Object { $requested -contains $_ })
     if ($anchors.Count -eq 0) { return $unknown }
-    $allowed = @($observed + $requested | Sort-Object -Unique)
-    return [pscustomobject]@{ Known = $true; Anchors = $anchors; Allowed = $allowed }
+    return [pscustomobject]@{
+        Known = $true; Requested = $requested; Anchors = $anchors; Allowed = $allowed
+        Generation = $Generation
+    }
 }
 
 function Get-RuleDeskRelation {
-    param($Claim, $State)
+    param($Claim, $State, [int]$Generation = 0)
 
     if (-not $Claim) { return '' }
-    if (-not $Claim.Known -or -not $State) { return 'unknown' }
+    if (-not $State) { return 'unknown' }
     $active = @($State | Where-Object { $_ -and $_.Active } |
                 ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
     if ($active.Count -eq 0) { return 'unknown' }
+    if (-not $Claim.Known) {
+        # A failed post-switch refresh leaves the source cache in place. Wait for a later successful
+        # cache generation before resolving it, then require both a requested anchor and the source plus
+        # target envelope captured at the switch. The stale source itself proves neither fact.
+        if ($Generation -le [int]$Claim.Generation) { return 'unknown' }
+        foreach ($id in $active) {
+            if (@($Claim.Allowed) -notcontains [string]$id) { return 'different' }
+        }
+        $anchors = @($active | Where-Object { @($Claim.Requested) -contains $_ })
+        if ($anchors.Count -eq 0) { return 'different' }
+        $Claim.Anchors = $anchors
+        $Claim.Known = $true
+        $Claim.Generation = $Generation
+    }
     foreach ($id in @($Claim.Anchors)) { if ($active -notcontains [string]$id) { return 'different' } }
     foreach ($id in $active) { if (@($Claim.Allowed) -notcontains [string]$id) { return 'different' } }
     return 'same'
@@ -354,11 +373,12 @@ function Invoke-RulesCheck {
         Connected   = $connected
     }
 
-    $deskRelation = Get-RuleDeskRelation -Claim $script:RuleOwnedDesk -State $state
+    $deskRelation = Get-RuleDeskRelation -Claim $script:RuleOwnedDesk -State $state `
+                                                -Generation $script:StateCacheGeneration
     $decision = Get-RuleDecision -Rules $rules -Facts $facts -CurrentMode (Get-CurrentModeKey) `
                                  -OwnedIndex $script:RuleOwnedIndex -OwnedBack $script:RuleOwnedBack `
                                  -OwnedSignature $script:RuleOwnedSig -OwnedTaken $script:RuleOwnedTaken `
-                                 -OwnedDeskRelation $deskRelation
+                                 -OwnedDeskRelation $deskRelation -ReturnTries $script:RuleReturnTries
 
     switch ($decision.Action) {
         'switch' {
@@ -393,7 +413,7 @@ function Invoke-RulesCheck {
                 $script:RuleOwnedTaken = $true
                 $fresh = ($script:StateCacheGeneration -gt $generationBefore)
                 $script:RuleOwnedDesk = New-RuleDeskClaim -RequestedIds $requestedIds `
-                    -State @(Get-CachedState) -Fresh $fresh
+                    -State @(Get-CachedState) -Fresh $fresh -Generation $script:StateCacheGeneration
             }
         }
         'return' {
