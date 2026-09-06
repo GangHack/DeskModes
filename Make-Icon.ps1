@@ -77,25 +77,28 @@ function New-IconBitmap {
     $dim = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(130, 255, 255, 255))
 
     # The second monitor as a hint behind the first: a switch between displays, which is
-    # the whole program in one picture. At 16-20 px it turns to mush, so there only one
-    # screen is left and the silhouette reads.
+    # the whole program in one picture. The FRONT monitor, stand included, sits at the
+    # tile's centre: the eye takes the white shape for the picture and reads the icon as
+    # lopsided when that shape is off-centre, however balanced the bounding box - and at
+    # 16-20 px, where the second monitor turns to mush and is left out, the same coordinates
+    # leave the lone monitor centred rather than stranded on the left.
     $twoScreens = $Size -ge 24
     if ($twoScreens) {
-        $back = New-RoundedPath ($s * 0.40) ($s * 0.18) ($s * 0.42) ($s * 0.30) ($s * 0.05)
+        $back = New-RoundedPath ($s * 0.46) ($s * 0.14) ($s * 0.38) ($s * 0.28) ($s * 0.05)
         $g.FillPath($dim, $back)
         $back.Dispose()
     }
 
     # the front monitor, with a gap in the tile's colour so it stands off the back one
     $sep = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(255, 24, 24, 28)), ([single][Math]::Max(1.0, $s * 0.06))
-    $scr = New-RoundedPath ($s * 0.16) ($s * 0.30) ($s * 0.50) ($s * 0.36) ($s * 0.06)
+    $scr = New-RoundedPath ($s * 0.25) ($s * 0.26) ($s * 0.50) ($s * 0.36) ($s * 0.06)
     if ($twoScreens) { $g.DrawPath($sep, $scr) }
     $g.FillPath($lit, $scr)
     $scr.Dispose(); $sep.Dispose()
 
     # the stand and its foot
-    $g.FillRectangle($lit, ($s * 0.37), ($s * 0.66), ($s * 0.08), ($s * 0.08))
-    $base = New-RoundedPath ($s * 0.27) ($s * 0.73) ($s * 0.28) ($s * 0.07) ($s * 0.035)
+    $g.FillRectangle($lit, ($s * 0.46), ($s * 0.62), ($s * 0.08), ($s * 0.08))
+    $base = New-RoundedPath ($s * 0.36) ($s * 0.70) ($s * 0.28) ($s * 0.07) ($s * 0.035)
     $g.FillPath($lit, $base)
     $base.Dispose()
 
