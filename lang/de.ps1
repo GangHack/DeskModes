@@ -29,11 +29,17 @@
     'nav.diary'                   = 'Tagebuch'
     'nav.about'                   = 'Über'
 
-    'desk.hint'                   = 'Ordnen Sie sie von links nach rechts so an, wie sie auf dem Tisch stehen; der Stern markiert den Monitor, der die Taskleiste behält.'
+    'desk.hint'                   = 'Die aktuelle Windows-Anordnung und die beim Umschalten verwendeten Einstellungen werden getrennt angezeigt.'
+    'desk.live'                   = 'Windows-Anordnung jetzt'
+    'desk.live.hint'              = 'Positionen, Versatz, Ausrichtung und Stern stammen aus Windows beim Öffnen der Einstellungen.'
+    'desk.live.unavailable'       = 'Windows hat keine Bildschirmanordnung gemeldet.'
+    'desk.saved'                  = 'Umschaltlayout anpassen'
+    'desk.saved.hint'             = 'Die Windows-Anordnung bleibt standardmäßig erhalten. Ändern Sie hier die Reihenfolge oder den Taskleistenbildschirm, um sie anzupassen.'
     'desk.whichIsWhich'           = 'Welcher ist welcher'
     'desk.whichIsWhich.tip'       = 'Zeigt den Namen jedes Monitors kurz auf ihm selbst an.'
-    'desk.copy'                   = 'Aus Windows übernehmen'
-    'desk.copy.tip'               = 'Übernimmt die Anordnung, die Windows gerade hat — richtig oder nicht — und setzt den Stern auf den Monitor mit der Taskleiste. Praktisch, wenn Sie die Monitore schon in den Windows-Einstellungen sortiert haben.'
+    'desk.copy'                   = 'Windows-Anordnung verwenden'
+    'desk.copy.tip'               = 'Verwendet Windows'' aktuelle Reihenfolge und Taskleiste beim Umschalten und merkt sich die vollständige Anordnung als Ausgangspunkt dieses Schreibtischs.'
+    'desk.copy.failed'            = 'Die Windows-Anordnung konnte nicht gespeichert werden. In diesem Fenster wurde nichts geändert.'
 
     'displays.heading'            = 'Monitore'
 
@@ -187,10 +193,12 @@
     'switch.unknownMode'          = 'Unbekannter Modus «{0}».'
     'switch.noMembers'            = 'Modus «{0}»: keiner seiner Monitore ist angesteckt. Es wurde nichts ausgeschaltet, Sie behalten also ein Bild.'
     'switch.refused'              = 'Windows hat die Monitorkonfiguration für «{0}» abgelehnt. Es wurde nichts geändert, Sie behalten also ein Bild.'
+    'switch.snapshotWriteFailed'  = 'Der aktuelle Desktop konnte nicht gespeichert werden, daher wurden keine Monitore umgeschaltet.'
     'switch.noneCameUp'           = 'Kein Monitor des Modus «{0}» ist hochgekommen, deshalb wurde der vorige Satz wiederhergestellt. Prüfen Sie das Kabel und den Deep Sleep Mode im Monitormenü.'
     'verdict.failed'              = 'sind nicht hochgekommen: {0} — Kabel abziehen und wieder anstecken'
     'verdict.refused'             = 'Immer noch an: {0} — Windows wollte sie nicht ausschalten'
     'verdict.layout'              = 'Positionen nicht angeordnet — Windows hat die Anordnung abgelehnt, drücken Sie das Tastenkürzel noch einmal'
+    'verdict.restore'             = 'Desktop nicht vollständig wiederhergestellt — Windows hat einen Teil der Bildschirmanordnung geändert; drücken Sie das Tastenkürzel erneut'
 
     'unit.seconds'                = '{0} s'
     'unit.minutes'                = '{0} Min'
@@ -331,7 +339,7 @@
     'balloon.seeLog'              = 'Einzelheiten stehen im Protokoll.'
     'balloon.noLog'               = 'Noch kein Protokoll'
     'balloon.noLog.body'          = 'Es erscheint nach dem ersten Umschalten.'
-    'balloon.firstRun'            = 'Rechtsklick auf das Symbol — dort sind Ihre Monitore und die Einstellungen.'
+    'balloon.firstRun'            = 'Linksklick öffnet die Einstellungen, Rechtsklick das Bildschirmmenü.'
 
     'table.display'               = 'Monitor'
     'table.size'                  = 'Größe'

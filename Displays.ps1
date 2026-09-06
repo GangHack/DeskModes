@@ -1126,8 +1126,11 @@ function Open-SettingsWindow {
     try {
         # The remembered monitors travel into the window: a rule, a combo or a place in the row
         # is most often written for the display you are NOT looking at right now.
+        $positions = @{}
+        try { $positions = Get-CcdSourcePositions }
+        catch { Write-DisplayLog "settings dialog: could not read the live desk positions - $($_.Exception.Message)" }
         $updated = Show-SettingsDialog -State (Get-CachedDesk) `
-                       -Settings (Get-ActiveSettings) -Page $Page
+                       -Settings (Get-ActiveSettings) -Positions $positions -Page $Page
         if ($updated) {
             Set-ActiveSettings $updated
             # The menu is built on every open and the balloon below is about to be shown, so both
@@ -1206,7 +1209,7 @@ $menu.add_Opening({
             $suffix = ''
             if ($m.Primary) { $suffix = '   - ' + (Get-Text -Key 'menu.primary') }
 
-            $line = New-Object System.Windows.Forms.ToolStripMenuItem ('{0}    {1}{2}' -f $m.Label, $what, $suffix)
+            $line = New-Object System.Windows.Forms.ToolStripMenuItem ('{0}    {1}{2}' -f (Get-DisplayTitle -Label ([string]$m.Label)), $what, $suffix)
             $line.Enabled = $false
             $line.Tag = 'info'
             $line.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
@@ -1434,9 +1437,13 @@ $menu.add_Opening({
     [void]$menu.Items.Add($exitItem)
 })
 
-# The menu opens on the right button only — NotifyIcon does that itself once it has been
-# given a ContextMenuStrip. Opening it on a left click as well (through the private
-# ShowContextMenu) was deliberately left alone: it is confusing.
+# NotifyIcon owns the right button and opens its ContextMenuStrip. The left button is the
+# direct route into Settings; filtering the button here keeps a right click from also opening a
+# window behind its menu.
+$tray.add_MouseClick({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Open-SettingsWindow }
+})
 
 # --- the first run ----------------------------------------------------------
 # The default shortcuts are laid out once: the solo modes get F1, F2, …, then the combos.

@@ -93,20 +93,21 @@ $script:UiStateFile = Join-Path $env:TEMP 'deskmodes-render-preview-ui-state.jso
 if (Test-Path $script:UiStateFile) { Remove-Item $script:UiStateFile -Force }
 
 function New-FakeState {
-    # The desk all of this was written for: 4K in the middle, two 1440p on the sides.
+    # Two identical Acers and a portrait Samsung: the case that needs stable visible names and
+    # makes a flat synthetic row visibly different from Windows' real geometry.
     return @(
-        [pscustomobject]@{ Output = '\\.\DISPLAY1'; Label = 'LG ULTRAFINE'; Model = 'LG ULTRAFINE'
-                           ShortId = 'GSM5CBC'; Native = [pscustomobject]@{ Width = 3840; Height = 2160 }
-                           Id = 'fake-ultrafine'; Active = $true; Primary = $false; Disconnected = $false
-                           Width = 3840; Height = 2160; Hz = 60; BestMode = $null }
-        [pscustomobject]@{ Output = '\\.\DISPLAY2'; Label = 'XG27AQDMGR'; Model = 'XG27AQDMGR'
-                           ShortId = 'AUSAA1D'; Native = [pscustomobject]@{ Width = 2560; Height = 1440 }
-                           Id = 'fake-asus'; Active = $true; Primary = $false; Disconnected = $false
-                           Width = 2560; Height = 1440; Hz = 240; BestMode = $null }
-        [pscustomobject]@{ Output = '\\.\DISPLAY3'; Label = 'LG ULTRAGEAR'; Model = 'LG ULTRAGEAR'
-                           ShortId = 'GSM5BB3'; Native = [pscustomobject]@{ Width = 2560; Height = 1440 }
-                           Id = 'fake-ultragear'; Active = $true; Primary = $true; Disconnected = $false
+        [pscustomobject]@{ Output = '\\.\DISPLAY1'; Label = 'Acer XV272U {1111111111111111}'; Model = 'Acer XV272U'
+                           ShortId = 'ACR1234'; Native = [pscustomobject]@{ Width = 2560; Height = 1440 }
+                           Id = 'fake-acer-left'; Active = $true; Primary = $false; Disconnected = $false
                            Width = 2560; Height = 1440; Hz = 144; BestMode = $null }
+        [pscustomobject]@{ Output = '\\.\DISPLAY2'; Label = 'Acer XV272U {2222222222222222}'; Model = 'Acer XV272U'
+                           ShortId = 'ACR1234'; Native = [pscustomobject]@{ Width = 2560; Height = 1440 }
+                           Id = 'fake-acer-centre'; Active = $true; Primary = $true; Disconnected = $false
+                           Width = 2560; Height = 1440; Hz = 144; BestMode = $null }
+        [pscustomobject]@{ Output = '\\.\DISPLAY3'; Label = 'Samsung S27A600'; Model = 'Samsung S27A600'
+                           ShortId = 'SAM5678'; Native = [pscustomobject]@{ Width = 2560; Height = 1440 }
+                           Id = 'fake-samsung-right'; Active = $true; Primary = $false; Disconnected = $false
+                           Width = 1440; Height = 2560; Hz = 75; BestMode = $null }
     )
 }
 
@@ -114,9 +115,9 @@ function New-FakeState {
 # their EDID cannot be read. Their sizes go straight into the cache the real lookup keeps - and
 # they are the point of the picture: the 4K is the SMALLEST panel of the three.
 function Set-FakeSizes {
-    $script:MonitorSizeCache['fake-ultrafine'] = [pscustomobject]@{ WidthCm = 53; HeightCm = 30; Inches = 24.0 }
-    $script:MonitorSizeCache['fake-asus']      = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.2 }
-    $script:MonitorSizeCache['fake-ultragear'] = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.2 }
+    $script:MonitorSizeCache['fake-acer-left']     = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.0 }
+    $script:MonitorSizeCache['fake-acer-centre']   = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.0 }
+    $script:MonitorSizeCache['fake-samsung-right'] = [pscustomobject]@{ WidthCm = 60; HeightCm = 34; Inches = 27.0 }
 }
 
 function New-FakeDiary {
@@ -161,23 +162,31 @@ if ($Fake) {
     # drawing - so the invented one is put where Get-ActivityStore will find it.
     $script:ActivityStore = New-FakeDiary
     # Settings to match the invented desk: otherwise the cards line up by someone else's layout.
-    $settings.layout = @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR')
-    $settings.primary = 'LG ULTRAGEAR'
+    $leftAcer = 'Acer XV272U {1111111111111111}'
+    $centreAcer = 'Acer XV272U {2222222222222222}'
+    $samsung = 'Samsung S27A600'
+    $positions = @{
+        'fake-acer-left' = [pscustomobject]@{ X = -2560; Y = 180 }
+        'fake-acer-centre' = [pscustomobject]@{ X = 0; Y = 0 }
+        'fake-samsung-right' = [pscustomobject]@{ X = 2560; Y = -420 }
+    }
+    $settings.layout = @($leftAcer, $centreAcer, $samsung)
+    $settings.primary = $centreAcer
     $settings.combos = [ordered]@{
-        'Work' = [ordered]@{ displays = @('LG ULTRAFINE', 'LG ULTRAGEAR'); primary = '' }
-        'Movie night' = [ordered]@{ displays = @('LG ULTRAFINE'); primary = 'LG ULTRAFINE' }
+        'Work' = [ordered]@{ displays = @($leftAcer, $centreAcer); primary = $centreAcer }
+        'Movie night' = [ordered]@{ displays = @($centreAcer); primary = $centreAcer }
     }
     $settings.hotkeys = [ordered]@{
-        'solo:LG ULTRAFINE' = 'Ctrl+Alt+F1'
-        'solo:XG27AQDMGR'   = 'Ctrl+Alt+F2'
-        'solo:LG ULTRAGEAR' = 'Ctrl+Alt+F3'
+        ('solo:' + $leftAcer)   = 'Ctrl+Alt+F1'
+        ('solo:' + $centreAcer) = 'Ctrl+Alt+F2'
+        ('solo:' + $samsung)    = 'Ctrl+Alt+F3'
         'combo:Work'        = 'Ctrl+Alt+F4'
         'all'               = 'Ctrl+Alt+F5'
     }
     # So that brightness shows up in the images doing its job rather than empty: the
     # combo has one per monitor (which is what the editor shows), "all" has a single number.
     $settings.brightness = [ordered]@{
-        'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = 25; 'LG ULTRAGEAR' = 60 }
+        'combo:Work' = [ordered]@{ $leftAcer = 25; $centreAcer = 60 }
         'all'        = 80
     }
     # The same for everything else a mode can carry. Set on the combo specifically, because that
@@ -191,16 +200,16 @@ if ($Fake) {
     }
     # A remembered picture preset, so the card shows both of its states. Invented, like the desk:
     # no monitor here is real enough to be asked.
-    $settings.picture = [ordered]@{ 'combo:Movie night' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }
+    $settings.picture = [ordered]@{ 'combo:Movie night' = [ordered]@{ $centreAcer = '0x15:45' } }
     # "Movie night" is the combination whose editor gets photographed, and it has ONE display: with
     # two, the editor unfolded is 1460 points tall - taller than a 1440p work area - and a window
     # taller than the screen comes out of the renderer with its last two boxes cut off.
-    $settings.brightness['combo:Movie night'] = [ordered]@{ 'LG ULTRAFINE' = 40 }
+    $settings.brightness['combo:Movie night'] = [ordered]@{ $centreAcer = 40 }
     # And two rules, so the Rules card is a list rather than its empty line: one of each kind,
     # and one of them switched off — a rule that is off has to look off.
     $settings.rules = @(
         [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0
-                    mode = 'solo:XG27AQDMGR'; back = ''; enabled = $true }
+                    mode = ('solo:' + $samsung); back = ''; enabled = $true }
         [ordered]@{ when = 'idle'; process = ''; minutes = 30
                     mode = 'combo:Movie night'; back = 'combo:Work'; enabled = $false }
     )
@@ -291,7 +300,10 @@ function Save-WindowSnapshot {
 }
 
 $modes = @(Get-DialogModes -State $state -Settings $settings)
-$ui = New-SettingsWindow -Modes $modes -Settings $settings -State $state
+if (-not $positions) {
+    try { $positions = Get-CcdSourcePositions } catch { $positions = @{} }
+}
+$ui = New-SettingsWindow -Modes $modes -Settings $settings -State $state -Positions $positions
 
 try {
     # The Settings window is five images, one per page: the pane is the window's shape now, and a
@@ -302,6 +314,15 @@ try {
         Save-WindowImage -Window $ui.Window -Path $(if ($page -eq 'desk') { $Out } else { Get-OutPath ('-' + $page) })
     }
     Set-UiPage -Ui $ui -Page 'desk'
+    # The opening desk image shows the truthful Windows drawing. Scroll once and save the other
+    # half too: long stable instance titles live below the miniatures, and clipping there is easy
+    # to miss behind the fixed footer in the opening frame.
+    $deskScroll = $ui.Window.FindName('DeskScroll')
+    $deskScroll.ScrollToVerticalOffset(220)
+    $ui.Window.UpdateLayout()
+    Save-WindowImage -Window $ui.Window -Path (Get-OutPath '-desk-switching')
+    $deskScroll.ScrollToTop()
+    $ui.Window.UpdateLayout()
 
     # The second window is the mode editor: everything about a mode is set up in there,
     # so it has to be seen too. By default we take a combination — it is the longest one

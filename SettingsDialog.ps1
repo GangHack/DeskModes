@@ -914,8 +914,19 @@ $script:SettingsWindowXaml = @'
                                     ToolTip="%%T:desk.copy.tip%%"/>
                         </StackPanel>
                     </Grid>
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
+                    <ScrollViewer x:Name="DeskScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
+                            <!-- This drawing is Windows' current geometry, kept separate from the
+                                 saved order below. Reordering a switch must never make the page lie
+                                 about where a portrait panel or a raised side panel stands now. -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:desk.live%%"/>
+                                    <TextBlock Style="{StaticResource Hint}" Text="%%T:desk.live.hint%%"/>
+                                    <Canvas x:Name="LiveDeskCanvas" Height="150" Margin="0,10,0,0"
+                                            ClipToBounds="True"/>
+                                </StackPanel>
+                            </Border>
                             <!-- One slot per display, filling the card's whole width whatever the
                                  window is; the screen inside each slot is drawn against the slot
                                  it actually got (Update-DeskShapes, on SizeChanged).
@@ -929,7 +940,11 @@ $script:SettingsWindowXaml = @'
                                  The -4 cancels the cards' own outer margins, so the leftmost
                                  screen lines up with the card's padding rather than 4 points in. -->
                             <Border Style="{StaticResource Card}">
-                                <UniformGrid x:Name="DeskPanel" Rows="1" Margin="-4,0,-4,0"/>
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:desk.saved%%"/>
+                                    <TextBlock Style="{StaticResource Hint}" Text="%%T:desk.saved.hint%%"/>
+                                    <UniformGrid x:Name="DeskPanel" Rows="1" Margin="-4,6,-4,0"/>
+                                </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
@@ -2321,6 +2336,9 @@ function New-SettingsWindow {
         # The connected monitors: the desk cards and the combo members. Empty — and the
         # corresponding sections simply stand empty (tests).
         $State,
+        # A single CCD snapshot taken with State. Kept out of settings.json: it describes what
+        # Windows is showing now, while layout below is an intentional switching override.
+        $Positions = @{},
         # Which page to open on. Empty — the one the window was left on last time. The tray's
         # About item is what passes a page.
         [string]$Page = ''
@@ -2341,6 +2359,7 @@ function New-SettingsWindow {
         Hotkeys           = [ordered]@{}
         Combos            = (New-Object System.Collections.ArrayList)
         DeletedComboKeys  = @()
+        LiveDeskCanvas    = $win.FindName('LiveDeskCanvas')
         DeskPanel         = $win.FindName('DeskPanel')
         ModesPanel        = $win.FindName('ModesPanel')
         RulesPanel        = $win.FindName('RulesPanel')
@@ -2427,6 +2446,12 @@ function New-SettingsWindow {
         Modes             = @($Modes)
         Settings          = $Settings
         State             = @($State)
+        Positions         = $Positions
+        # Programmatic checks while the window is built do not count. Only the card buttons set
+        # these flags, so an unrelated Save cannot turn legacy values into explicit overrides.
+        LayoutEdited      = $false
+        PrimaryEdited     = $false
+        AdoptLiveDesk     = $false
         Result            = $null
     }
 
@@ -2462,6 +2487,12 @@ function New-SettingsWindow {
     if ($Settings -and $Settings.reapply) { $ui.OnPlugKey = [string]$Settings.reapply.onPlug }
     Import-RuleSettings -Ui $ui -Settings $Settings
     Update-DeskPanel  -Ui $ui
+    Update-LiveDesk   -Ui $ui
+    $ui.LiveDeskCanvas.Tag = $ui
+    $ui.LiveDeskCanvas.add_SizeChanged({
+        param($sender, $e)
+        if ($e.WidthChanged) { Update-LiveDesk -Ui $sender.Tag }
+    })
     Update-DisplaysTable -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
@@ -2579,7 +2610,11 @@ function New-SettingsWindow {
     $ui.ReadDeskBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        Invoke-DeskRead -Ui $ui
+        if (-not (Invoke-DeskRead -Ui $ui)) {
+            [void][System.Windows.MessageBox]::Show(
+                $ui.Window, (Get-Text -Key 'desk.copy.failed'), 'DeskModes',
+                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+        }
     })
 
     $ui.IdentifyBtn.add_Click({
@@ -2702,7 +2737,97 @@ function Update-EditorDisclosure {
     Set-EditorMoreVisible -Editor $Editor -Open $true
 }
 
-# --- the desk: order and the taskbar ----------------------------------------
+# --- the desk as Windows holds it -------------------------------------------
+# CCD positions and current source sizes are both pixels, so one scale preserves offsets,
+# relative sizes and rotation exactly. This function only performs the arithmetic; the WPF
+# drawing below is deliberately thin, and tests can prove the geometry without showing a window.
+function Get-LiveDeskGeometry {
+    param($State, $Positions, [double]$Width, [double]$Height)
+
+    $screens = @()
+    foreach ($m in @($State | Where-Object { $_ -and $_.Active -and -not $_.Disconnected })) {
+        $pos = $(if ($Positions -and $Positions.Contains([string]$m.Id)) { $Positions[[string]$m.Id] } else { $null })
+        if (-not $pos -or $m.Width -le 0 -or $m.Height -le 0) { continue }
+        $screens += [pscustomobject]@{
+            Display = $m
+            X = [double]$pos.X; Y = [double]$pos.Y
+            PixelWidth = [double]$m.Width; PixelHeight = [double]$m.Height
+        }
+    }
+    if ($screens.Count -eq 0) { return @() }
+
+    $minX = [double]($screens | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum
+    $minY = [double]($screens | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum
+    $maxX = [double]($screens | ForEach-Object { $_.X + $_.PixelWidth } | Measure-Object -Maximum).Maximum
+    $maxY = [double]($screens | ForEach-Object { $_.Y + $_.PixelHeight } | Measure-Object -Maximum).Maximum
+    $spanX = [math]::Max(1.0, $maxX - $minX)
+    $spanY = [math]::Max(1.0, $maxY - $minY)
+    $insideWidth = [math]::Max(40.0, $Width - 12.0)
+    $insideHeight = [math]::Max(32.0, $Height - 12.0)
+    $scale = [math]::Min($insideWidth / $spanX, $insideHeight / $spanY)
+    $usedWidth = $spanX * $scale
+    $usedHeight = $spanY * $scale
+    $offsetX = 6.0 + ($insideWidth - $usedWidth) / 2.0
+    $offsetY = 6.0 + ($insideHeight - $usedHeight) / 2.0
+
+    return @($screens | Sort-Object -Property X, Y | ForEach-Object {
+        [pscustomobject]@{
+            Display = $_.Display
+            Left = $offsetX + ($_.X - $minX) * $scale
+            Top = $offsetY + ($_.Y - $minY) * $scale
+            Width = $_.PixelWidth * $scale
+            Height = $_.PixelHeight * $scale
+        }
+    })
+}
+
+function Update-LiveDesk {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.LiveDeskCanvas) { return }
+    $canvas = $Ui.LiveDeskCanvas
+    $canvas.Children.Clear()
+    $wide = [double]$canvas.ActualWidth
+    if ($wide -le 0) { $wide = 560.0 }
+    $tall = [double]$canvas.Height
+    if ($tall -le 0) { $tall = 150.0 }
+    $geometry = @(Get-LiveDeskGeometry -State $Ui.State -Positions $Ui.Positions -Width $wide -Height $tall)
+    if ($geometry.Count -eq 0) {
+        $empty = New-Object System.Windows.Controls.TextBlock
+        $empty.Text = Get-Text -Key 'desk.live.unavailable'
+        $empty.Foreground = $Ui.Window.FindResource('DimBrush')
+        [System.Windows.Controls.Canvas]::SetLeft($empty, 4)
+        [System.Windows.Controls.Canvas]::SetTop($empty, 54)
+        [void]$canvas.Children.Add($empty)
+        return
+    }
+
+    foreach ($g in $geometry) {
+        $m = $g.Display
+        $primary = [bool]$m.Primary
+        $screen = New-Object System.Windows.Controls.Border
+        $screen.Width = [math]::Max(28.0, [math]::Floor([double]$g.Width))
+        $screen.Height = [math]::Max(22.0, [math]::Floor([double]$g.Height))
+        $screen.CornerRadius = New-Object System.Windows.CornerRadius 4
+        $screen.Background = $Ui.Window.FindResource('MiniBrush')
+        $screen.BorderThickness = New-Object System.Windows.Thickness $(if ($primary) { 2 } else { 1 })
+        $screen.BorderBrush = $Ui.Window.FindResource($(if ($primary) { 'AccentBrush' } else { 'InputBorderBrush' }))
+        $label = New-Object System.Windows.Controls.TextBlock
+        $label.Text = $(if ($primary) { $script:UiStar + ' ' } else { '' }) + (Get-DisplayTitle -Label ([string]$m.Label))
+        $label.FontSize = 10
+        $label.TextWrapping = 'Wrap'
+        $label.TextAlignment = 'Center'
+        $label.VerticalAlignment = 'Center'
+        $label.HorizontalAlignment = 'Center'
+        $label.Margin = New-Object System.Windows.Thickness 3
+        $screen.Child = $label
+        [System.Windows.Controls.Canvas]::SetLeft($screen, [double]$g.Left)
+        [System.Windows.Controls.Canvas]::SetTop($screen, [double]$g.Top)
+        [void]$canvas.Children.Add($screen)
+    }
+}
+
+# --- the saved desk: order and the taskbar ----------------------------------
 # The cards in DeskPanel ARE the layout: their order left to right leaves for settings.json ->
 # layout, and the starred one -> primary. Entries for monitors that are not here right now are
 # not lost: a dimmed card of its own is built for each of them.
@@ -2801,9 +2926,9 @@ function Add-DeskCard {
     $stack = New-Object System.Windows.Controls.StackPanel
     $outer.Child = $stack
 
-    # A mini-screen with the name inside it — the same metaphor as in Windows settings. Its size
-    # is NOT set here: it comes from the whole desk at once, in Update-DeskShapes, because a
-    # screen can only be drawn to scale against its neighbours.
+    # A mini-screen with its name immediately below it — the same metaphor as in Windows settings.
+    # Its size is NOT set here: it comes from the whole desk at once, in Update-DeskShapes, because
+    # a screen can only be drawn to scale against its neighbours.
     #
     # The band is one height for the whole row, so the cards line up whatever shapes the panels
     # are; the mini stands in the middle of it. Its height is worked out with the widths, in
@@ -2818,19 +2943,23 @@ function Add-DeskCard {
     $mini.HorizontalAlignment = 'Center'
     $mini.VerticalAlignment = 'Center'
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Label
-    # Ten, not twelve: the name now lives inside a rectangle drawn at the desk's scale, and a
-    # 1440p panel beside a 4K one is under fifty points tall. This is a label on a drawing, not
-    # text to read — the card's own caption below carries the full name's tooltip.
-    $name.FontSize = 10
+    $title = Get-DisplayTitle -Label $Label
+    $name.Text = $title
+    # The title sits below the shape. Inside a 27-inch landscape silhouette it was squeezed to
+    # two clipped lines as soon as stable duplicate suffixes appeared, and a portrait silhouette
+    # was narrower still. The rectangle says shape; this caption says which physical panel.
+    $name.FontSize = 12
     $name.TextWrapping = 'Wrap'
     $name.TextAlignment = 'Center'
     $name.VerticalAlignment = 'Center'
-    $name.HorizontalAlignment = 'Center'
-    $name.Margin = New-Object System.Windows.Thickness 3
-    $mini.Child = $name
+    # Stretch constrains wrapping to this card's slot. Center let the desired width spill into the
+    # next card, so two fingerprinted panels could read like one concatenated monitor name.
+    $name.HorizontalAlignment = 'Stretch'
+    $name.Margin = New-Object System.Windows.Thickness 4, 4, 4, 0
+    $name.ToolTip = $title
     [void]$band.Children.Add($mini)
     [void]$stack.Children.Add($band)
+    [void]$stack.Children.Add($name)
 
     $sub = New-Object System.Windows.Controls.TextBlock
     $sub.FontSize = 12
@@ -2883,7 +3012,7 @@ function Add-DeskCard {
     if (-not $connected) {
         $mini.Opacity = 0.45
         $name.Opacity = 0.6
-        $outer.ToolTip = Get-Text -Key 'desk.card.remembered' -Values @($Label)
+        $outer.ToolTip = Get-Text -Key 'desk.card.remembered' -Values @($title)
     }
 
     # The size in pixels, for the desk preview. From a monitor that is on we take what it shows
@@ -2902,6 +3031,9 @@ function Add-DeskCard {
         ShortId   = $(if ($Display) { [string]$Display.ShortId } else { '' })
         Connected = $connected
         Radio     = $radio
+        Name      = $name
+        LeftButton = $left
+        RightButton = $right
         Width     = $pw
         Height    = $ph
         # The panel's diagonal, which is what the screen is drawn to scale by. 0 — the EDID does
@@ -2943,6 +3075,7 @@ function Add-DeskCard {
     # is declared active (see the comment above).
     $move = {
         Move-DeskCard -Panel $this.Tag.Panel -Card $this.Tag.Card -Delta $this.Tag.Delta
+        $this.Tag.Ui.LayoutEdited = $true
         Update-DeskShapes -Ui $this.Tag.Ui
     }
     $left.add_Click($move)
@@ -2952,6 +3085,9 @@ function Add-DeskCard {
     # colour in it, and the whole layout's shift to the coordinate origin is counted from it.
     $radio.Tag = $Ui
     $radio.add_Checked({ Update-DeskShapes -Ui $this.Tag })
+    # Click, unlike Checked, is only raised by a person (mouse or keyboard). The window checks a
+    # saved primary while building, and that must not silently become an explicit override.
+    $radio.add_Click({ $this.Tag.PrimaryEdited = $true })
 
     [void]$panel.Children.Add($outer)
 }
@@ -2984,7 +3120,7 @@ function Update-DisplaysTable {
         $native = '-'
         if ($m.Native) { $native = '{0} x {1}' -f $m.Native.Width, $m.Native.Height }
         $rows += ,@(
-            [string]$m.Label
+            (Get-DisplayTitle -Label ([string]$m.Label))
             [string]$m.ShortId
             $(if ($inches -gt 0) { '{0}"' -f [int][math]::Round($inches) } else { '-' })
             $native
@@ -3083,15 +3219,29 @@ function Get-DeskReadOrder {
 
 # "Copy from Windows": the cards take the order Windows holds and the star goes to the display that
 # has the taskbar now. On a desk that has never been arranged this is the whole of the set-up; on one
-# that has, it is a way back to what the eye can see after an experiment went wrong. Nothing is saved
-# here - the footer knows the window changed, and Save writes it like any other edit.
+# that has, it is a way back to what the eye can see after an experiment went wrong. The complete
+# snapshot is saved immediately; the footer still tracks the compatibility fields shown in the row.
 function Invoke-DeskRead {
-    param($Ui)
+    param($Ui, $State = $null, $Positions = $null, [switch]$SkipSnapshot)
 
-    $positions = @{}
-    try { $positions = Get-CcdSourcePositions } catch { $positions = @{} }   # no desk to ask: the cards stay
-    $read = Get-DeskReadOrder -State $Ui.State -Positions $positions
-    if (@($read.Order).Count -eq 0) { return }
+    # Adoption is durable before the form changes. A concurrent switch or an unwritable file
+    # refuses the snapshot, and the row must then stay exactly as it was.
+    if (-not $SkipSnapshot -and (Test-Path Function:\Save-CurrentDesktopSnapshot)) {
+        if (-not (Save-CurrentDesktopSnapshot)) { return $false }
+    }
+    if ($null -eq $State) {
+        try { $State = @(Get-DeskDisplays -State @(Get-DisplayState)) }
+        catch { return $false }
+    }
+    if ($null -eq $Positions) {
+        try { $Positions = Get-CcdSourcePositions }
+        catch { return $false }
+    }
+    $read = Get-DeskReadOrder -State $State -Positions $Positions
+    if (@($read.Order).Count -eq 0) { return $false }
+
+    $Ui.State = @($State)
+    $Ui.Positions = $Positions
 
     $panel = $Ui.DeskPanel
     $at = 0
@@ -3111,7 +3261,14 @@ function Invoke-DeskRead {
             if ($info -and $info.Radio -and [string]$info.Label -eq $read.Primary) { $info.Radio.IsChecked = $true; break }
         }
     }
+    # Adopting the exact Windows snapshot removes synthetic overrides. The row still follows the
+    # fresh state so the configured view says what Save will preserve for older settings readers.
+    $Ui.AdoptLiveDesk = $true
+    $Ui.LayoutEdited = $false
+    $Ui.PrimaryEdited = $false
     Update-DeskShapes -Ui $Ui
+    Update-LiveDesk -Ui $Ui
+    return $true
 }
 
 # What "Add a combination" opens on: the displays that are on, and the one with the taskbar. The same
@@ -3769,7 +3926,7 @@ function Add-LevelRow {
     # in this mode, not "zero".
     $check = New-Object System.Windows.Controls.CheckBox
     $check.Style = $win.FindResource('Check')
-    $check.Content = $Name
+    $check.Content = Get-DisplayTitle -Label $Name
     $check.IsChecked = $set
     $check.VerticalAlignment = 'Center'
     [void]$grid.Children.Add($check)
@@ -4151,7 +4308,8 @@ function Add-ComboMemberChecks {
         $cb.Style = $Window.FindResource('Check')
         # The same wording a pattern with no monitor behind it gets below, and the same one the
         # tray menu and the mode list use: one phrase for one fact.
-        $cb.Content = $(if ($m.Disconnected) { [string]$m.Label + '   (not connected)' } else { [string]$m.Label })
+        $displayTitle = Get-DisplayTitle -Label ([string]$m.Label)
+        $cb.Content = $(if ($m.Disconnected) { $displayTitle + '   (not connected)' } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
             if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
@@ -4175,12 +4333,17 @@ function Add-ComboMemberChecks {
     }
 
     [void]$primaryBox.Items.Add((Get-Text -Key 'editor.usualRules'))
-    foreach ($cb in $checks) { [void]$primaryBox.Items.Add([string]$cb.Tag) }
+    foreach ($cb in $checks) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = [string]$cb.Content
+        $item.Tag = [string]$cb.Tag
+        [void]$primaryBox.Items.Add($item)
+    }
     $primaryBox.SelectedIndex = 0
     if ($Combo -and $Combo.Primary) {
-        foreach ($cb in $checks) {
-            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$cb.Tag) -ShortId '') {
-                $primaryBox.SelectedItem = [string]$cb.Tag
+        foreach ($item in @($primaryBox.Items | Select-Object -Skip 1)) {
+            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$item.Tag) -ShortId '') {
+                $primaryBox.SelectedItem = $item
                 break
             }
         }
@@ -4360,7 +4523,7 @@ function Update-PicturePanel {
         $text = New-Object System.Windows.Controls.StackPanel
         $text.VerticalAlignment = 'Center'
         $text.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
-        [void]$text.Children.Add((New-UiTextBlock -Text $name -Style 'RowTitle' -Window $win))
+        [void]$text.Children.Add((New-UiTextBlock -Text (Get-DisplayTitle -Label $name) -Style 'RowTitle' -Window $win))
         $state = New-UiTextBlock -Text (Get-PictureRowText -Setting $setting) -Style 'RowSub' -Window $win
         # The number itself is on hover and in settings.json, never in the row: a person who has
         # never opened a monitor's menu has no use for "0x15:45", and one who edits the file by
@@ -4480,7 +4643,7 @@ function Update-HdrPanel {
                 $column.Width = $width
                 [void]$row.ColumnDefinitions.Add($column)
             }
-            $title = New-UiTextBlock -Text $name -Style 'RowTitle' -Window $win
+            $title = New-UiTextBlock -Text (Get-DisplayTitle -Label $name) -Style 'RowTitle' -Window $win
             $title.VerticalAlignment = 'Center'
             $title.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
             [void]$row.Children.Add($title)
@@ -4843,7 +5006,7 @@ function Read-ModeFromUi {
     $name = $Editor.NameBox.Text.Trim()
     $chosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
     $prim = ''
-    if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem }
+    if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem.Tag }
 
     $problem = ''
     if (-not $name) { $problem = Get-Text -Key 'editor.needName' }
@@ -5621,7 +5784,8 @@ function Add-RuleDisplayChecks {
     foreach ($m in @($Displays | Where-Object { $_ })) {
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Style = $Window.FindResource('Check')
-        $cb.Content = $(if ($m.Disconnected) { [string]$m.Label + '   (not connected)' } else { [string]$m.Label })
+        $displayTitle = Get-DisplayTitle -Label ([string]$m.Label)
+        $cb.Content = $(if ($m.Disconnected) { $displayTitle + '   (not connected)' } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
             if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
@@ -5851,14 +6015,17 @@ function Read-SettingsFromUi {
     # field is carried over except the ones holding form elements, so that each new setting
     # without an element of its own does not bring this bug back.
     $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
-                  'restoreLastMode', 'stats', 'layout', 'primary', 'combos',
+                  'restoreLastMode', 'stats', 'layout', 'primary', 'layoutOverride',
+                  'primaryOverride', 'combos',
                   'audio', 'hooks', 'brightness', 'contrast', 'picture', 'reapply', 'rules')
     foreach ($k in @($Settings.Keys)) {
         if ($fromForm -contains $k) { continue }
         $updated[$k] = $Settings[$k]
     }
 
-    # The layout and the taskbar come from the desk cards, in their visible order.
+    # The layout and the taskbar come from the desk cards only after their own direct action.
+    # Before that the row is a view of old settings, and writing it back used to turn an ordinary
+    # Save into a new physical-layout override.
     $labels = @()
     $primary = ''
     foreach ($card in @($Ui.DeskPanel.Children)) {
@@ -5867,10 +6034,30 @@ function Read-SettingsFromUi {
         $labels += [string]$info.Label
         if ($info.Radio -and $info.Radio.IsChecked) { $primary = [string]$info.Label }
     }
-    $updated.layout = $labels
-    # No star was set — leave it as it was: an empty string would erase a choice the person
-    # never cancelled.
-    $updated.primary = $(if ($primary) { $primary } else { [string]$Settings.primary })
+    if ($Ui.LayoutEdited) {
+        $updated.layout = $labels
+        $updated.layoutOverride = $true
+    }
+    elseif ($Ui.AdoptLiveDesk) {
+        $updated.layout = $labels
+        $updated.layoutOverride = $false
+    }
+    else {
+        $updated.layout = @($Settings.layout)
+        $updated.layoutOverride = [bool]$Settings.layoutOverride
+    }
+    if ($Ui.PrimaryEdited) {
+        $updated.primary = $primary
+        $updated.primaryOverride = $true
+    }
+    elseif ($Ui.AdoptLiveDesk) {
+        $updated.primary = $primary
+        $updated.primaryOverride = $false
+    }
+    else {
+        $updated.primary = [string]$Settings.primary
+        $updated.primaryOverride = [bool]$Settings.primaryOverride
+    }
 
     $updated.combos = ConvertTo-ComboSettings -Combos $Ui.Combos
 
@@ -5955,6 +6142,7 @@ function Show-SettingsDialog {
     param(
         $State,
         $Settings,
+        $Positions = @{},
         # Which page to open on. Empty - the one the window was left on. The tray's About item
         # is what names a page.
         [string]$Page = ''
@@ -5969,7 +6157,7 @@ function Show-SettingsDialog {
 
     $modes = @(Get-DialogModes -State $State -Settings $Settings)
 
-    $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Page $Page
+    $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Positions $Positions -Page $Page
 
     # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
     # from the settings: the shortcut could have been deleted by hand.
@@ -6041,7 +6229,7 @@ function Get-BadgeText {
     }
     $mark = Get-Text -Key 'desk.taskbar.lower'
     if ($Display.Primary) { $line = $(if ($line) { $line + $script:UiDot + $mark } else { $mark }) }
-    return [pscustomobject]@{ Title = [string]$Display.Label; Line = $line }
+    return [pscustomobject]@{ Title = Get-DisplayTitle -Label ([string]$Display.Label); Line = $line }
 }
 
 # One badge: a dark plate with light text whatever the theme, because it lies on top of whatever is

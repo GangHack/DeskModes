@@ -28,8 +28,9 @@ Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
 
         # The XG27AQDMGR is not connected right now — its place in the row has to survive.
         Assert-Equal @('LG ULTRAFINE', 'XG27AQDMGR', 'LG ULTRAGEAR') @($updated.layout) 'layout survived, absent display included'
-        # The star was set by the ULTRAGEAR pattern — the exact name is what leaves for the file.
-        Assert-Equal 'LG ULTRAGEAR' $updated.primary 'primary written as the exact name'
+        # Looking at the resolved star is not an edit: the old selector stays byte-for-byte the
+        # same until the taskbar control is used.
+        Assert-Equal 'ULTRAGEAR' $updated.primary 'primary selector survived unchanged'
         Assert-Equal 'ULTRAFINE' $updated.audio['combo:Work'] 'audio survived'
         Assert-Equal 'x.cmd' $updated.hooks['combo:Work'].after 'the command survived'
         Assert-Equal 'Ctrl+Alt+F1' $updated.hotkeys['solo:LG ULTRAGEAR'] 'hotkey came from the box'
@@ -79,13 +80,101 @@ Test-Case 'dialog: moving a desk card changes the saved order' {
     $ui = New-DialogUi -Settings $settings
     try {
         $first = $ui.DeskPanel.Children[0]
-        Move-DeskCard -Panel $ui.DeskPanel -Card $first -Delta 1
+        $first.Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($got.Settings.layout) 'the card really moved'
 
         # A card does not move past the end of the row and does not get lost.
         Move-DeskCard -Panel $ui.DeskPanel -Card $first -Delta 5
         Assert-Equal 2 $ui.DeskPanel.Children.Count 'nothing lost at the edge'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: an unrelated save preserves legacy desk choices without creating overrides' {
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAFINE', 'LG ULTRAGEAR')
+    $settings.primary = 'LG ULTRAFINE'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($updated.layout) 'the saved order is untouched'
+        Assert-Equal 'LG ULTRAFINE' ([string]$updated.primary) 'the saved taskbar choice is untouched'
+        Assert-Equal $false ([bool]$updated.layoutOverride) 'opening the page does not make the legacy order explicit'
+        Assert-Equal $false ([bool]$updated.primaryOverride) 'opening the page does not make the legacy taskbar choice explicit'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: direct desk edits mark only the setting a person changed' {
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE')
+    $settings.primary = 'LG ULTRAGEAR'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $first = $ui.DeskPanel.Children[0]
+        $first.Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($updated.layout) 'the explicit order is saved'
+        Assert-Equal $true ([bool]$updated.layoutOverride) 'the layout is marked deliberate'
+        Assert-Equal $false ([bool]$updated.primaryOverride) 'moving a card does not claim the taskbar choice'
+
+        $ui.DeskPanel.Children[0].Tag.Radio.IsChecked = $true
+        $ui.DeskPanel.Children[0].Tag.Radio.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal $true ([bool]$updated.primaryOverride) 'choosing the taskbar marks it deliberate'
+        Assert-Equal 'LG ULTRAFINE' ([string]$updated.primary) 'and saves the selected display'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: live geometry keeps Windows offsets and portrait shape' {
+    $state = @(
+        (New-FakeMonitor 'Acer XV272U {1111111111111111}' 'ACR1234' 'path-left')
+        (New-FakeMonitor 'Acer XV272U {2222222222222222}' 'ACR1234' 'path-centre')
+        (New-FakeMonitor 'Samsung S27A600' 'SAM5678' 'path-right')
+    )
+    $state[1].Primary = $true
+    $state[2].Width = 1440
+    $state[2].Height = 2560
+    $positions = @{
+        'path-left' = [pscustomobject]@{ X = -2560; Y = 180 }
+        'path-centre' = [pscustomobject]@{ X = 0; Y = 0 }
+        'path-right' = [pscustomobject]@{ X = 2560; Y = -420 }
+    }
+
+    $geometry = @(Get-LiveDeskGeometry -State $state -Positions $positions -Width 600 -Height 150)
+    Assert-Equal @('path-left', 'path-centre', 'path-right') @($geometry.Display.Id) 'physical left-to-right order'
+    Assert-True ($geometry[0].Top -gt $geometry[1].Top) 'the left display keeps its lower Windows offset'
+    Assert-True ($geometry[2].Top -lt $geometry[1].Top) 'the portrait display keeps its higher Windows offset'
+    Assert-True ($geometry[2].Height -gt $geometry[2].Width) 'portrait is drawn as portrait'
+    Assert-True $geometry[1].Display.Primary 'the central display carries the live primary star'
+}
+
+Test-Case 'desk: configured taskbar edits do not change the live Windows star' {
+    $left = New-FakeMonitor 'Acer XV272U {1111111111111111}' 'ACR1234' 'path-left'
+    $centre = New-FakeMonitor 'Acer XV272U {2222222222222222}' 'ACR1234' 'path-centre'
+    $centre.Primary = $true
+    $state = @($left, $centre)
+    $positions = @{
+        'path-left' = [pscustomobject]@{ X = -2560; Y = 160 }
+        'path-centre' = [pscustomobject]@{ X = 0; Y = 0 }
+    }
+    $settings = Get-DefaultSettings
+    $settings.layout = @($left.Label, $centre.Label)
+    $settings.primary = $centre.Label
+    $modes = @(Get-DialogModes -State $state -Settings $settings)
+    $ui = New-SettingsWindow -Modes $modes -Settings $settings -State $state -Positions $positions
+    try {
+        Assert-Equal 'Acer XV272U · 111111' ([string]$ui.DeskPanel.Children[0].Tag.Name.Text) 'the saved row uses a readable caption outside the shape'
+        Assert-Null $ui.DeskPanel.Children[0].Tag.Mini.Child 'the bounded silhouette cannot clip the title'
+        Assert-True ([string]$ui.LiveDeskCanvas.Children[1].Child.Text -like "$script:UiStar*") 'Windows primary is starred initially'
+
+        $ui.DeskPanel.Children[0].Tag.Radio.IsChecked = $true
+        $ui.DeskPanel.Children[0].Tag.Radio.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        Update-LiveDesk -Ui $ui
+        Assert-True ([string]$ui.LiveDeskCanvas.Children[1].Child.Text -like "$script:UiStar*") 'the live star still reports Windows'
+        Assert-True ([string]$ui.LiveDeskCanvas.Children[0].Child.Text -notlike "$script:UiStar*") 'the configured choice stays in the separate row'
     }
     finally { $ui.Window.Close() }
 }
@@ -158,7 +247,7 @@ Test-Case 'dialog: the mode editor prefills members, leftovers, taskbar and shor
         Assert-True (-not $byTag['LG ULTRAFINE']) 'unrelated display not ticked'
         # The monitor was taken away, but throwing it out of the combo silently is not allowed.
         Assert-True $byTag['GONE PANEL'] 'a pattern with no display kept as its own ticked row'
-        Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem) 'taskbar pick found by pattern'
+        Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem.Tag) 'taskbar pick found by pattern'
         Assert-Equal 'Ctrl+Alt+F9' $ed.HotkeyBox.Text 'shortcut prefilled'
     }
     finally { $ed.Window.Close() }
@@ -350,7 +439,7 @@ Test-Case 'combo editor: the taskbar display must be one of the ticked ones' {
     try {
         $ed.NameBox.Text = 'Pair'
         $ed.Checks[0].IsChecked = $true
-        $ed.PrimaryBox.SelectedItem = [string]$ed.Checks[1].Tag   # not ticked
+        $ed.PrimaryBox.SelectedItem = $ed.PrimaryBox.Items[2]   # not ticked
         $got = Read-ModeFromUi -Editor $ed
         Assert-True (-not $got.Ok) 'refused'
         Assert-True ($got.Problem -like '*must be one of the ticked*') 'and says why'
@@ -892,10 +981,53 @@ Test-Case 'desk: copy from Windows orders the cards by position and stars the ta
         # (empty) $positions is the nearest one a plain name would find.
         $script:TestReadPositions = $positions
         function Get-CcdSourcePositions { return $script:TestReadPositions }
-        Invoke-DeskRead -Ui $ui
+        [void](Invoke-DeskRead -Ui $ui -State $state -Positions $positions -SkipSnapshot)
         $got = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR', 'XG27AQDMGR') @($got.layout) 'the two that are on lead, the off one keeps its card behind them'
         Assert-Equal 'LG ULTRAFINE' ([string]$got.primary) 'and the star moved'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: using the Windows layout adopts the exact snapshot and clears synthetic overrides' {
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')
+    )
+    $state[1].Primary = $true
+    $positions = @{
+        'path-ug' = [pscustomobject]@{ X = 2560; Y = -300 }
+        'path-uf' = [pscustomobject]@{ X = 0; Y = 0 }
+    }
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE')
+    $settings.primary = 'LG ULTRAGEAR'
+    $settings.layoutOverride = $true
+    $settings.primaryOverride = $true
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $script:SnapshotSaves = 0
+        function Save-CurrentDesktopSnapshot { $script:SnapshotSaves++; return $true }
+        Assert-True (Invoke-DeskRead -Ui $ui -State $state -Positions $positions) 'the snapshot was adopted'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal 1 $script:SnapshotSaves 'the explicit action writes one physical baseline'
+        Assert-Equal $false ([bool]$updated.layoutOverride) 'the exact offsets replace a synthetic row override'
+        Assert-Equal $false ([bool]$updated.primaryOverride) 'the exact primary replaces a taskbar override'
+        Assert-Equal @('LG ULTRAFINE', 'LG ULTRAGEAR') @($updated.layout) 'the compatibility order follows the fresh state'
+        Assert-Equal 'LG ULTRAFINE' ([string]$updated.primary) 'the compatibility primary follows the fresh state'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a refused Windows snapshot leaves the form untouched' {
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE')
+    $ui = New-DialogUi -Settings $settings
+    try {
+        function Save-CurrentDesktopSnapshot { return $false }
+        Assert-Equal $false (Invoke-DeskRead -Ui $ui -State $script:DlgState -Positions @{}) 'the action reports the refusal'
+        Assert-True (-not $ui.AdoptLiveDesk) 'the form does not claim an adoption'
+        Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') @($ui.DeskPanel.Children.Tag.Label) 'the visible row is unchanged'
     }
     finally { $ui.Window.Close() }
 }
@@ -916,7 +1048,7 @@ Test-Case 'desk: a new combination opens on the displays that are on, with the t
         Assert-Equal 'New combination' $ed.Window.FindName('HeadTitle').Text 'still a new one'
         $ticked = @($ed.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
         Assert-Equal @('LG ULTRAGEAR') $ticked 'the display that is on is ticked'
-        Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem) 'and chosen for the taskbar'
+        Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem.Tag) 'and chosen for the taskbar'
     }
     finally { $ed.Window.Close(); $script:ActiveEditor = $null }
 }

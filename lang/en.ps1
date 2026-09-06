@@ -36,11 +36,17 @@
     'nav.diary'                   = 'Diary'
     'nav.about'                   = 'About'
 
-    'desk.hint'                   = 'Arrange them left to right as they stand; the star marks the display that keeps the taskbar.'
+    'desk.hint'                   = 'Windows'' live layout and the choices DeskModes uses when switching are shown separately.'
+    'desk.live'                   = 'Windows layout now'
+    'desk.live.hint'              = 'Positions, offsets, orientation and the star come from Windows as Settings opened.'
+    'desk.live.unavailable'       = 'Windows did not report a display layout.'
+    'desk.saved'                  = 'Customize switching layout'
+    'desk.saved.hint'             = 'Windows layout is preserved by default. Change the order or taskbar display here to customize it.'
     'desk.whichIsWhich'           = 'Which is which'
     'desk.whichIsWhich.tip'       = 'Show each display''s name on it for a moment.'
-    'desk.copy'                   = 'Copy from Windows'
-    'desk.copy.tip'               = 'Copies the arrangement Windows holds right now, right or wrong, and stars the display that has the taskbar. Handy when you have arranged the displays in Windows settings already.'
+    'desk.copy'                   = 'Use Windows layout'
+    'desk.copy.tip'               = 'Uses Windows'' current order and taskbar display for switching, and remembers the complete arrangement as this desk''s baseline.'
+    'desk.copy.failed'            = 'The Windows layout could not be saved. Nothing in this window was changed.'
 
     'displays.heading'            = 'Displays'
 
@@ -161,10 +167,12 @@
     'switch.unknownMode'          = 'Unknown mode ''{0}''.'
     'switch.noMembers'            = 'Mode ''{0}'': none of its displays are connected. Nothing was turned off, so you keep a picture.'
     'switch.refused'              = 'Windows refused the display configuration for ''{0}''. Nothing was changed, so you keep a picture.'
+    'switch.snapshotWriteFailed'  = 'The current desktop could not be saved, so no displays were changed.'
     'switch.noneCameUp'           = 'None of the displays of ''{0}'' came up, so the previous set was put back. Check the cable and Deep Sleep Mode in the monitor''s menu.'
     'verdict.failed'              = 'did not come up: {0} - unplug the cable and plug it back in'
     'verdict.refused'             = 'Still on: {0} - Windows would not turn them off'
     'verdict.layout'              = 'positions not arranged - Windows refused the layout, press the hotkey to retry'
+    'verdict.restore'             = 'desktop not fully restored - Windows changed part of the display arrangement, press the hotkey to retry'
 
     # --- how long ---
     # Read back by ConvertFrom-DurationText, so whatever abbreviation a language picks here has to
@@ -362,7 +370,7 @@
     'balloon.seeLog'              = 'Details are in the log.'
     'balloon.noLog'               = 'No log yet'
     'balloon.noLog.body'          = 'It appears after the first switch.'
-    'balloon.firstRun'            = 'Right-click the icon for your displays and Settings.'
+    'balloon.firstRun'            = 'Left-click the icon for Settings; right-click for the display menu.'
 
     # --- the displays table on the desk page ---
     'table.display'               = 'Display'

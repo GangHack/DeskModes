@@ -15,6 +15,19 @@ Test-Case 'display identity: reversing identical monitors does not reassign thei
     }
 }
 
+Test-Case 'display identity: fingerprinted labels have short stable visible titles' {
+    $left = New-FakeMonitor -Label 'Acer XV272U {0123456789abcdef}' -ShortId 'ACR1234' -Id 'path-acer-left'
+    $right = New-FakeMonitor -Label 'Acer XV272U {fedcba9876543210}' -ShortId 'ACR1234' -Id 'path-acer-right'
+
+    Assert-Equal 'Acer XV272U · 012345' (Get-DisplayTitle -Label $left.Label) 'the stable selector is shortened for a person'
+    Assert-Equal 'Acer XV272U · FEDCBA' (Get-DisplayTitle -Label $right.Label) 'the twins remain visibly distinct'
+
+    $modes = @(Get-DisplayModes -State @($right, $left) -Settings (New-TestSettings) | Where-Object { $_.Kind -eq 'solo' })
+    Assert-Equal 'Only Acer XV272U · 012345' (($modes | Where-Object { $_.Id -eq $left.Id }).Title) 'the mode uses the visible title'
+    Assert-Equal 'Only Acer XV272U · FEDCBA' (Get-ModeTitleFromKey ('solo:' + $right.Label)) 'a saved key gets the same title without a live state'
+    Assert-Equal ('solo:' + $left.Label) (($modes | Where-Object { $_.Id -eq $left.Id }).Key) 'the full fingerprint remains the selector'
+}
+
 Test-Case 'display identity: a remaining identical monitor keeps its solo key' {
     $oldRosterPath = $script:KnownDisplaysFile
     $script:KnownDisplaysFile = Join-Path $script:TestDir 'identity-survivor-roster.json'

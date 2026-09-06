@@ -28,11 +28,17 @@
     'nav.diary'                   = 'Journal de bord'
     'nav.about'                   = 'À propos'
 
-    'desk.hint'                   = 'Rangez-les de gauche à droite comme ils sont posés sur le bureau ; l''étoile marque l''écran qui garde la barre des tâches.'
+    'desk.hint'                   = 'La disposition actuelle de Windows et les choix utilisés lors du basculement sont affichés séparément.'
+    'desk.live'                   = 'Disposition Windows actuelle'
+    'desk.live.hint'              = 'Les positions, décalages, orientations et l''étoile viennent de Windows à l''ouverture des paramètres.'
+    'desk.live.unavailable'       = 'Windows n''a signalé aucune disposition d''écrans.'
+    'desk.saved'                  = 'Personnaliser la disposition au basculement'
+    'desk.saved.hint'             = 'La disposition Windows est conservée par défaut. Modifiez ici l''ordre ou l''écran de la barre des tâches pour la personnaliser.'
     'desk.whichIsWhich'           = 'Lequel est lequel'
     'desk.whichIsWhich.tip'       = 'Affiche un instant le nom de chaque écran sur l''écran lui-même.'
-    'desk.copy'                   = 'Reprendre de Windows'
-    'desk.copy.tip'               = 'Reprend la disposition que Windows a en ce moment, juste ou non, et met l''étoile sur l''écran qui porte la barre des tâches. Pratique si vous avez déjà rangé les écrans dans les paramètres de Windows.'
+    'desk.copy'                   = 'Utiliser la disposition Windows'
+    'desk.copy.tip'               = 'Utilise l''ordre et l''écran principal actuels de Windows lors du basculement et mémorise la disposition complète comme base de ce bureau.'
+    'desk.copy.failed'            = 'La disposition Windows n''a pas pu être enregistrée. Rien n''a changé dans cette fenêtre.'
 
     'displays.heading'            = 'Écrans'
 
@@ -186,10 +192,12 @@
     'switch.unknownMode'          = 'Mode inconnu « {0} ».'
     'switch.noMembers'            = 'Mode « {0} » : aucun de ses écrans n''est branché. Rien n''a été éteint, vous gardez donc une image.'
     'switch.refused'              = 'Windows a refusé la configuration d''écrans de « {0} ». Rien n''a été changé, vous gardez donc une image.'
+    'switch.snapshotWriteFailed'  = 'Le bureau actuel n''a pas pu être enregistré ; aucun écran n''a donc été basculé.'
     'switch.noneCameUp'           = 'Aucun écran du mode « {0} » ne s''est allumé, le jeu précédent a donc été remis. Vérifiez le câble et le Deep Sleep Mode dans le menu du moniteur.'
     'verdict.failed'              = 'ne se sont pas allumés : {0} — débranchez le câble et rebranchez-le'
     'verdict.refused'             = 'Toujours allumés : {0} — Windows n''a pas voulu les éteindre'
     'verdict.layout'              = 'positions non arrangées : Windows a refusé la disposition, appuyez de nouveau sur le raccourci'
+    'verdict.restore'             = 'bureau restauré partiellement : Windows a modifié une partie de la disposition, appuyez de nouveau sur le raccourci'
 
     'unit.seconds'                = '{0} s'
     'unit.minutes'                = '{0} min'
@@ -330,7 +338,7 @@
     'balloon.seeLog'              = 'Les détails sont dans le journal.'
     'balloon.noLog'               = 'Pas encore de journal'
     'balloon.noLog.body'          = 'Il apparaîtra après le premier basculement.'
-    'balloon.firstRun'            = 'Clic droit sur l''icône : vos écrans et les paramètres sont là.'
+    'balloon.firstRun'            = 'Clic gauche pour les paramètres ; clic droit pour le menu des écrans.'
 
     'table.display'               = 'Écran'
     'table.size'                  = 'Taille'

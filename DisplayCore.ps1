@@ -3837,6 +3837,19 @@ function Test-DisplayNameMatch {
     return $false
 }
 
+# A connection fingerprint is part of the stable selector, not a name anyone should have to
+# read. Keep enough of it visible to tell identical panels apart, while the complete Label stays
+# behind the title for settings, matching and the log. The same formatting is used for a live
+# display and for a solo key whose display is currently absent.
+function Get-DisplayTitle {
+    param([string]$Label)
+
+    if ($Label -match '^(.*) \{([a-f0-9]{16})\}$') {
+        return $Matches[1] + ' ' + [string][char]0x00B7 + ' ' + $Matches[2].Substring(0, 6).ToUpperInvariant()
+    }
+    return $Label
+}
+
 # Who is primary right now. We ask the adapters only: they carry the PRIMARY_DEVICE flag right there in
 # StateFlags, and there is no need at all to walk the child monitors (where the bug with the hard-coded
 # index 0 used to live) for this.
@@ -4112,7 +4125,7 @@ function Get-DisplayModes {
             Key       = 'solo:' + $name
             # The title is for a person and changes with the language; the KEY is what settings.json,
             # the log and every comparison use, and it never does. Nothing may be looked up by title.
-            Title     = (Get-Text -Key 'mode.solo' -Values @($m.Label))
+            Title     = (Get-Text -Key 'mode.solo' -Values @((Get-DisplayTitle -Label ([string]$m.Label))))
             Kind      = 'solo'
             Label     = $m.Label
             ShortId   = $m.ShortId
@@ -4179,7 +4192,7 @@ function Get-ModeTitleFromKey {
     param([Parameter(Mandatory)][string]$Key)
 
     switch -Regex ($Key) {
-        '^solo:(.+)$'  { return (Get-Text -Key 'mode.solo' -Values @($Matches[1])) }
+        '^solo:(.+)$'  { return (Get-Text -Key 'mode.solo' -Values @((Get-DisplayTitle -Label $Matches[1]))) }
         '^combo:(.+)$' { return $Matches[1] }
         '^all$'        { return (Get-Text -Key 'mode.all') }
         default        { return $Key }

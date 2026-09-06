@@ -35,6 +35,12 @@ if ($startupTick.Count -ne 1) { throw "expected exactly one StartupTimer tick in
 # have assembled a script-block literal out of it rather than a body.
 $script:StartupTick = [scriptblock]::Create($startupTick[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
 
+$trayMouseClick = @($script:TrayAst.FindAll({ param($n)
+    $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+    $n.Member.Extent.Text -eq 'add_MouseClick' }, $true))
+if ($trayMouseClick.Count -ne 1) { throw "expected exactly one tray MouseClick handler in Displays.ps1, found $($trayMouseClick.Count)" }
+$script:TrayMouseClick = [scriptblock]::Create($trayMouseClick[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
+
 # --- the environment these two pieces expect around themselves ---------------
 
 # The tray icon. Not a real NotifyIcon: a visible one would show a balloon over somebody else's screen,
@@ -179,7 +185,8 @@ Test-Case 'startup: the first run says where the menu is and opens Settings itse
     Invoke-StartupTick -First $true
     Assert-True $script:TimerStopped 'the one-shot timer stopped itself'
     Assert-Equal 1 $script:tray.Shown 'one balloon'
-    Assert-True ($script:tray.BalloonTipText -like '*Right-click*') 'which says where the menu is'
+    Assert-True ($script:tray.BalloonTipText -like '*Left-click*') 'which says how Settings opens'
+    Assert-True ($script:tray.BalloonTipText -like '*right-click*') 'and where the display menu is'
     Assert-True $script:SettingsOpened 'and the window opened by itself'
 }
 
@@ -198,4 +205,14 @@ Test-Case 'startup: a Settings window that will not open does not take the start
     Invoke-StartupTick -First $true
     Assert-Equal 1 $script:tray.Shown 'the balloon still went out'
     Assert-True $script:TimerStopped 'and the start finished'
+}
+
+Test-Case 'tray: left click opens Settings and right click remains the context menu' {
+    $script:SettingsOpened = $false
+    & $script:TrayMouseClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left })
+    Assert-True $script:SettingsOpened 'left click opens Settings'
+
+    $script:SettingsOpened = $false
+    & $script:TrayMouseClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Right })
+    Assert-True (-not $script:SettingsOpened) 'right click is left to NotifyIcon and its ContextMenuStrip'
 }

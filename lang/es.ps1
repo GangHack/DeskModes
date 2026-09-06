@@ -28,11 +28,17 @@
     'nav.diary'                   = 'Diario'
     'nav.about'                   = 'Acerca de'
 
-    'desk.hint'                   = 'Colócalas de izquierda a derecha tal como están sobre la mesa; la estrella marca la pantalla que se queda con la barra de tareas.'
+    'desk.hint'                   = 'La disposición actual de Windows y las opciones usadas al cambiar se muestran por separado.'
+    'desk.live'                   = 'Disposición de Windows ahora'
+    'desk.live.hint'              = 'Las posiciones, los desplazamientos, la orientación y la estrella proceden de Windows al abrir la configuración.'
+    'desk.live.unavailable'       = 'Windows no informó de una disposición de pantallas.'
+    'desk.saved'                  = 'Personalizar disposición al cambiar'
+    'desk.saved.hint'             = 'La disposición de Windows se conserva de forma predeterminada. Cambia aquí el orden o la pantalla de la barra de tareas para personalizarla.'
     'desk.whichIsWhich'           = 'Cuál es cuál'
     'desk.whichIsWhich.tip'       = 'Muestra un momento el nombre de cada pantalla sobre ella misma.'
-    'desk.copy'                   = 'Copiar de Windows'
-    'desk.copy.tip'               = 'Copia la disposición que Windows tiene ahora mismo, acertada o no, y pone la estrella en la pantalla que lleva la barra de tareas. Útil si ya has ordenado las pantallas en la configuración de Windows.'
+    'desk.copy'                   = 'Usar disposición de Windows'
+    'desk.copy.tip'               = 'Usa el orden y la pantalla principal actuales de Windows al cambiar y recuerda la disposición completa como base de este escritorio.'
+    'desk.copy.failed'            = 'No se pudo guardar la disposición de Windows. No se cambió nada en esta ventana.'
 
     'displays.heading'            = 'Pantallas'
 
@@ -186,10 +192,12 @@
     'switch.unknownMode'          = 'Modo desconocido «{0}».'
     'switch.noMembers'            = 'Modo «{0}»: ninguna de sus pantallas está conectada. No se ha apagado nada, así que sigues con imagen.'
     'switch.refused'              = 'Windows ha rechazado la configuración de pantallas de «{0}». No se ha cambiado nada, así que sigues con imagen.'
+    'switch.snapshotWriteFailed'  = 'No se pudo guardar el escritorio actual, así que no se cambió ninguna pantalla.'
     'switch.noneCameUp'           = 'Ninguna pantalla del modo «{0}» ha llegado a encenderse, así que se ha restablecido el conjunto anterior. Revisa el cable y el Deep Sleep Mode en el menú del monitor.'
     'verdict.failed'              = 'no se han encendido: {0} — desenchufa el cable y vuelve a enchufarlo'
     'verdict.refused'             = 'Siguen encendidas: {0} — Windows no ha querido apagarlas'
     'verdict.layout'              = 'las posiciones no se han colocado: Windows rechazó la disposición, pulsa el atajo otra vez'
+    'verdict.restore'             = 'el escritorio no se restauró por completo: Windows cambió parte de la disposición; pulsa de nuevo el atajo'
 
     'unit.seconds'                = '{0} s'
     'unit.minutes'                = '{0} min'
@@ -331,7 +339,7 @@
     'balloon.seeLog'              = 'Los detalles están en el registro.'
     'balloon.noLog'               = 'Todavía no hay registro'
     'balloon.noLog.body'          = 'Aparecerá después del primer cambio.'
-    'balloon.firstRun'            = 'Haz clic derecho en el icono: ahí están tus pantallas y la configuración.'
+    'balloon.firstRun'            = 'Clic izquierdo para la configuración; clic derecho para el menú de pantallas.'
 
     'table.display'               = 'Pantalla'
     'table.size'                  = 'Tamaño'
