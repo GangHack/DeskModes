@@ -6482,7 +6482,7 @@ function Get-RuleSignature {
 # fifteen seconds over a refusal that will not come right.
 function Get-RuleDecision {
     param($Rules, $Facts, [string]$CurrentMode, [int]$OwnedIndex = -1, [string]$OwnedBack = '',
-          [string]$OwnedSignature = '', [bool]$OwnedTaken = $true)
+          [string]$OwnedSignature = '', [bool]$OwnedTaken = $true, [string]$OwnedDeskRelation = '')
 
     $list = @($Rules)
     $none = [pscustomobject]@{ Action = 'none'; Mode = ''; Back = ''; RuleIndex = -1; Reason = '' }
@@ -6514,9 +6514,14 @@ function Get-RuleDecision {
             # ends. Without this the next tick read an unchanged desk as "the displays were changed by
             # hand" and wrote that in the log about a person who had touched nothing.
             if (-not $OwnedTaken) { return $none }
-            # We do not fight people: the set of screens was changed past us, so that was a
-            # deliberate decision, and putting it back is not ours to do.
-            if ($CurrentMode -and $CurrentMode -ne [string]$owned.mode) {
+            # We do not fight people: a physical desk outside the envelope left by our switch is a
+            # deliberate decision. When no physical claim was supplied, retain the key comparison
+            # for callers that do not own a state cache. An unknown cache proves nothing either way.
+            $changedByHand = ($OwnedDeskRelation -eq 'different')
+            if (-not $OwnedDeskRelation -and $CurrentMode -and $CurrentMode -ne [string]$owned.mode) {
+                $changedByHand = $true
+            }
+            if ($changedByHand) {
                 return [pscustomobject]@{ Action = 'release'; Mode = ''; Back = ''; RuleIndex = -1
                                           Reason = 'the displays were changed by hand' }
             }

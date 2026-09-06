@@ -134,6 +134,9 @@ function Set-ActiveSettings {
 # configuration-changed event.
 
 $script:StateCache = $null
+# A successful refresh advances this even when the desk itself is unchanged. Rule ownership reads
+# it across Invoke-Mode so a failed refresh cannot pass the old source desk off as the switch result.
+$script:StateCacheGeneration = 0
 
 # Device path -> name, everything seen during this run. Needed to name a monitor that is
 # ALREADY GONE from the state: one the driver removed from the bus vanishes from the
@@ -177,6 +180,7 @@ function Update-StateCache {
         # the desk out of it: everybody who asks later (the menu, the Settings window, the
         # startup migration) gets it without going near the disk again.
         $script:DeskCache = @(Get-DeskDisplays -State $script:StateCache)
+        $script:StateCacheGeneration++
     }
     catch {
         Write-DisplayLog "cache: could not refresh display state - $($_.Exception.Message)"
@@ -255,6 +259,10 @@ $script:RuleOwnedSig = ''
 # and this is what keeps the state honest while it is kept: the desk is nobody's, so the next tick must
 # not read it as "the displays were changed by hand" and say so about a person who touched nothing.
 $script:RuleOwnedTaken = $false
+# The physical desk left by our switch. Mode keys are names and can alias the same set; a partial
+# switch can also leave a subset of the target or a source display that refused to turn off. The
+# claim records both facts so the next tick can tell those results from a person's different desk.
+$script:RuleOwnedDesk = $null
 # How many times the way back has been tried. The way back is the one path that has to keep asking: the
 # condition has ended, so nothing comes through here again later, and a desk left standing in the rule's
 # mode stays there for good. Bounded all the same — see $script:AutoRetryLimit.
@@ -268,7 +276,54 @@ function Reset-RuleOwnership {
     $script:RuleOwnedBack = ''
     $script:RuleOwnedSig = ''
     $script:RuleOwnedTaken = $false
+    $script:RuleOwnedDesk = $null
     $script:RuleReturnTries = 0
+}
+
+# Device IDs requested by a mode, captured before switching while the complete source state is still
+# available. Capturing a mode key afterwards is too late: the active-mode lookup may call a partial
+# result a solo mode, or pick another combination with the same members.
+function Get-RuleModeMemberIds {
+    param([string]$ModeKey, $State)
+
+    if (-not $ModeKey -or -not $State) { return @() }
+    $mode = @(Get-DisplayModes -State $State -Settings (Get-ActiveSettings) |
+              Where-Object { [string]$_.Key -eq $ModeKey } | Select-Object -First 1)[0]
+    if (-not $mode) { return @() }
+    return @(Get-ModeMembers -Mode $mode -State $State |
+             ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+# A claim has anchors that our switch actually put in the requested set, and an allowed envelope made
+# from the requested set plus displays initially left on. This accepts A -> AB as B wakes, and ABC ->
+# AB as C finally goes out, without accepting A -> B or a newly introduced D. Known false means the
+# cache could not prove what the switch left; uncertainty must not be called a manual override.
+function New-RuleDeskClaim {
+    param($RequestedIds, $State, [bool]$Fresh)
+
+    $unknown = [pscustomobject]@{ Known = $false; Anchors = @(); Allowed = @() }
+    if (-not $Fresh -or -not $State) { return $unknown }
+    $observed = @($State | Where-Object { $_ -and $_.Active } |
+                  ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
+    if ($observed.Count -eq 0) { return $unknown }
+    $requested = @($RequestedIds | Where-Object { $_ } | Sort-Object -Unique)
+    $anchors = @($observed | Where-Object { $requested -contains $_ })
+    if ($anchors.Count -eq 0) { return $unknown }
+    $allowed = @($observed + $requested | Sort-Object -Unique)
+    return [pscustomobject]@{ Known = $true; Anchors = $anchors; Allowed = $allowed }
+}
+
+function Get-RuleDeskRelation {
+    param($Claim, $State)
+
+    if (-not $Claim) { return '' }
+    if (-not $Claim.Known -or -not $State) { return 'unknown' }
+    $active = @($State | Where-Object { $_ -and $_.Active } |
+                ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
+    if ($active.Count -eq 0) { return 'unknown' }
+    foreach ($id in @($Claim.Anchors)) { if ($active -notcontains [string]$id) { return 'different' } }
+    foreach ($id in $active) { if (@($Claim.Allowed) -notcontains [string]$id) { return 'different' } }
+    return 'same'
 }
 
 function Invoke-RulesCheck {
@@ -289,7 +344,8 @@ function Invoke-RulesCheck {
 
     # The connected displays out of the cache, never a fresh query: this runs every fifteen seconds,
     # and the cache was refreshed by the very event a plug or unplug raises.
-    $connected = @(Get-CachedState | Where-Object { $_ -and -not $_.Disconnected } |
+    $state = @(Get-CachedState)
+    $connected = @($state | Where-Object { $_ -and -not $_.Disconnected } |
                    ForEach-Object { [pscustomobject]@{ Label = [string]$_.Label; ShortId = [string]$_.ShortId } })
 
     $facts = [pscustomobject]@{
@@ -298,9 +354,11 @@ function Invoke-RulesCheck {
         Connected   = $connected
     }
 
+    $deskRelation = Get-RuleDeskRelation -Claim $script:RuleOwnedDesk -State $state
     $decision = Get-RuleDecision -Rules $rules -Facts $facts -CurrentMode (Get-CurrentModeKey) `
                                  -OwnedIndex $script:RuleOwnedIndex -OwnedBack $script:RuleOwnedBack `
-                                 -OwnedSignature $script:RuleOwnedSig -OwnedTaken $script:RuleOwnedTaken
+                                 -OwnedSignature $script:RuleOwnedSig -OwnedTaken $script:RuleOwnedTaken `
+                                 -OwnedDeskRelation $deskRelation
 
     switch ($decision.Action) {
         'switch' {
@@ -310,6 +368,8 @@ function Invoke-RulesCheck {
             $script:RuleOwnedTaken = $false
             $script:RuleReturnTries = 0
             $script:RuleLastBlocked = ''
+            $requestedIds = @(Get-RuleModeMemberIds -ModeKey ([string]$decision.Mode) -State $state)
+            $generationBefore = $script:StateCacheGeneration
             Write-DisplayLog ("rule: {0} -> {1}" -f $decision.Reason, $decision.Mode)
             Invoke-Mode $decision.Mode -Auto
 
@@ -331,6 +391,9 @@ function Invoke-RulesCheck {
                 # 'done' or 'partial'. The desk moved, so it is the rule's now: a display that did not
                 # come up does not undo the ones that did.
                 $script:RuleOwnedTaken = $true
+                $fresh = ($script:StateCacheGeneration -gt $generationBefore)
+                $script:RuleOwnedDesk = New-RuleDeskClaim -RequestedIds $requestedIds `
+                    -State @(Get-CachedState) -Fresh $fresh
             }
         }
         'return' {

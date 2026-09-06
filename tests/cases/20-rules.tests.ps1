@@ -160,6 +160,21 @@ Test-Case 'rule: switched by hand during the game means we let go' {
     Assert-Equal 'release' $d.Action 'no war with the human'
 }
 
+Test-Case 'rule: a physical claim tells aliases from a different desk' {
+    $rules = @((New-TestRule -Process 'cs2' -Mode 'combo:AB'))
+    $same = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'combo:Alias' `
+                             -OwnedIndex 0 -OwnedBack 'all' -OwnedDeskRelation 'same'
+    Assert-Equal 'none' $same.Action 'the same member set under another name stays owned'
+
+    $different = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode '' `
+                                  -OwnedIndex 0 -OwnedBack 'all' -OwnedDeskRelation 'different'
+    Assert-Equal 'release' $different.Action 'a known different set releases even when it names no mode'
+
+    $unknown = Get-RuleDecision -Rules $rules -Facts (New-TestFacts @('cs2')) -CurrentMode 'solo:A' `
+                                -OwnedIndex 0 -OwnedBack 'all' -OwnedDeskRelation 'unknown'
+    Assert-Equal 'none' $unknown.Action 'an unavailable cache does not invent a manual change'
+}
+
 Test-Case 'rule: a rule deleted while it held the desk still gives the desk back' {
     $d = Get-RuleDecision -Rules @() -Facts (New-TestFacts) -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'combo:Work'
     Assert-Equal 'return' $d.Action 'back'

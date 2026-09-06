@@ -17,15 +17,20 @@
 Write-Host ''
 Write-Host 'who owns the desk after a rule fires' -ForegroundColor White
 
-. (Get-TrayFunctionSource 'Reset-RuleOwnership', 'Invoke-RulesCheck')
+. (Get-TrayFunctionSource 'Get-RuleModeMemberIds', 'New-RuleDeskClaim', 'Get-RuleDeskRelation',
+                          'Reset-RuleOwnership', 'Invoke-RulesCheck')
 # Invoke-RulesCheck reads this to know when to stop offering the desk back; the tray's own number.
-. (Get-TrayVariableSource '$script:AutoRetryLimit')
+. (Get-TrayVariableSource '$script:AutoRetryLimit', '$script:StateCacheGeneration')
 
 # The tray environment these two expect around themselves. Its own rather than inherited from earlier
 # files of cases: a test that reads somebody else's scene breaks when that scene is edited.
 $script:RoSettings = Get-DefaultSettings
 $script:RoMode = ''
 $script:RoInvoked = @()
+$script:RoState = @()
+$script:RoPartialActive = @()
+$script:RoPartialMode = ''
+$script:RoRefreshSucceeds = $true
 # The answer the fake gives, in the tray's vocabulary: 'done' landed, 'busy' is the mutex the
 # refresh-rate watchdog holds for a second after every switch, 'partial' is a display that never woke,
 # 'refused' is Windows turning the whole configuration down. All four arrive here in real life.
@@ -39,11 +44,43 @@ $script:RoDead = 'deskmodes-no-such-process'
 
 function Get-ActiveSettings { return $script:RoSettings }
 function Get-CurrentModeKey { return $script:RoMode }
+function Get-CachedState { return $script:RoState }
+
+function Set-RoActiveDesk {
+    param([string[]]$Labels, [string]$ModeKey)
+
+    foreach ($display in $script:RoState) { $display.Active = ($Labels -contains [string]$display.Label) }
+    $script:RoMode = $ModeKey
+}
+
+function Set-RoModeDesk {
+    param([string]$ModeKey)
+
+    $mode = @(Get-DisplayModes -State $script:RoState -Settings $script:RoSettings |
+              Where-Object { [string]$_.Key -eq $ModeKey } | Select-Object -First 1)[0]
+    $ids = @()
+    if ($mode) {
+        $ids = @(Get-ModeMembers -Mode $mode -State $script:RoState | ForEach-Object { [string]$_.Id })
+    }
+    foreach ($display in $script:RoState) { $display.Active = ($ids -contains [string]$display.Id) }
+    $script:RoMode = $ModeKey
+}
+
 # The fake reports back through the same object the real Invoke-Mode leaves behind it.
 function Invoke-Mode {
     param([string]$Key, [switch]$Auto, [switch]$Silent)
     $script:RoInvoked += [string]$Key
     Set-FakeSwitchOutcome -Outcome $script:RoOutcome -ModeKey $Key
+    if ($script:RoRefreshSucceeds) {
+        $script:StateCacheGeneration++
+        if ($script:RoOutcome -eq 'done') { Set-RoModeDesk -ModeKey $Key }
+        elseif ($script:RoOutcome -eq 'partial') {
+            if ($script:RoPartialActive.Count -gt 0) {
+                Set-RoActiveDesk -Labels $script:RoPartialActive -ModeKey $script:RoPartialMode
+            }
+            else { Set-RoModeDesk -ModeKey $Key }
+        }
+    }
 }
 
 # One rule: while that process is running, the desk belongs to the game display.
@@ -52,13 +89,22 @@ function Set-RuleScene {
           [string]$Back = '')
 
     $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['Work'] = [ordered]@{ displays = @('WORK'); primary = '' }
     $script:RoSettings.rules = @([ordered]@{
         when = 'process'; minutes = 0
         process = $(if ($Running) { $script:RoLive } else { $script:RoDead })
         mode = 'solo:GAME'; back = $Back; enabled = $true })
-    $script:RoMode = $Mode
+    $script:RoState = @(
+        (New-FakeMonitor 'GAME' 'GAME' 'game' $false)
+        (New-FakeMonitor 'WORK' 'WORK' 'work' $false)
+        (New-FakeMonitor 'OTHER' 'OTHER' 'other' $false)
+    )
+    Set-RoModeDesk -ModeKey $Mode
     $script:RoInvoked = @()
     $script:RoOutcome = $Outcome
+    $script:RoPartialActive = @()
+    $script:RoPartialMode = ''
+    $script:RoRefreshSucceeds = $true
     Reset-RuleOwnership
 }
 
@@ -122,6 +168,184 @@ Test-Case 'rule: a display that did not come up still means the desk moved' {
     Assert-Equal 'solo:GAME' ($script:RoInvoked -join ',') 'switched once'
     Assert-Equal 0 $script:RuleOwnedIndex 'and holds the desk'
     Assert-True $script:RuleOwnedTaken 'as its own'
+}
+
+Test-Case 'rule: a partial switch stays owned until the condition ends and returns to the original desk' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b')
+        (New-FakeMonitor 'C' 'C' 'c')
+    )
+    $script:RoMode = 'all'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'partial'
+    $script:RoPartialActive = @('A')
+    $script:RoPartialMode = 'solo:A'
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Invoke-RulesCheck
+    $script:RoProcesses = @()
+    $script:RoOutcome = 'done'
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB,all' ($script:RoInvoked -join ',') 'the partial desk is held and then returned to All'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the claim ends only after the return goes through'
+}
+
+Test-Case 'rule: an equivalent combination name is still the desk the rule switched to' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.combos['Alias'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b')
+        (New-FakeMonitor 'C' 'C' 'c')
+    )
+    $script:RoMode = 'all'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'done'
+    $script:RoPartialActive = @()
+    $script:RoPartialMode = ''
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    $script:RoMode = 'combo:Alias'
+    Invoke-RulesCheck
+    $script:RoProcesses = @()
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB,all' ($script:RoInvoked -join ',') 'an alias neither releases nor loses the original way back'
+}
+
+Test-Case 'rule: a source display left on by a partial switch may go out without losing ownership' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b')
+        (New-FakeMonitor 'C' 'C' 'c')
+    )
+    $script:RoMode = 'all'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'partial'
+    $script:RoPartialActive = @('A', 'B', 'C')
+    $script:RoPartialMode = 'all'
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Set-RoActiveDesk -Labels @('A', 'B') -ModeKey 'combo:AB'
+    Invoke-RulesCheck
+    $script:RoProcesses = @()
+    $script:RoOutcome = 'done'
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB,all' ($script:RoInvoked -join ',') 'the late departure is accepted and the original desk returns'
+}
+
+Test-Case 'rule: a newly introduced display is a manual change and releases the claim' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b')
+        (New-FakeMonitor 'C' 'C' 'c')
+        (New-FakeMonitor 'D' 'D' 'd' $false)
+    )
+    $script:RoMode = 'all'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'done'
+    $script:RoPartialActive = @()
+    $script:RoPartialMode = ''
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Set-RoActiveDesk -Labels @('A', 'B', 'D') -ModeKey ''
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB' ($script:RoInvoked -join ',') 'the rule does not fight the different desk'
+    Assert-Equal -1 $script:RuleOwnedIndex 'and releases its claim'
+}
+
+Test-Case 'rule: a failed post-switch cache refresh defers judgment and preserves the way back' {
+    $script:RoSettings = Get-DefaultSettings
+    $script:RoSettings.combos['AB'] = [ordered]@{ displays = @('A', 'B'); primary = '' }
+    $script:RoSettings.rules = @([ordered]@{
+        when = 'process'; minutes = 0; process = 'audit-game'
+        mode = 'combo:AB'; back = ''; enabled = $true })
+    $script:RoState = @(
+        (New-FakeMonitor 'A' 'A' 'a')
+        (New-FakeMonitor 'B' 'B' 'b')
+        (New-FakeMonitor 'C' 'C' 'c')
+    )
+    $script:RoMode = 'all'
+    $script:RoInvoked = @()
+    $script:RoOutcome = 'done'
+    $script:RoRefreshSucceeds = $false
+    $script:RoProcesses = @([pscustomobject]@{ ProcessName = 'audit-game' })
+    function Get-Process {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Scoped process fake drives a condition across rule ticks.')]
+        param([string]$ErrorAction)
+        return $script:RoProcesses
+    }
+    Reset-RuleOwnership
+
+    Invoke-RulesCheck
+    Assert-True (-not $script:RuleOwnedDesk.Known) 'the stale source cache is not recorded as the result'
+    Invoke-RulesCheck
+    $script:RoProcesses = @()
+    $script:RoRefreshSucceeds = $true
+    Invoke-RulesCheck
+
+    Assert-Equal 'combo:AB,all' ($script:RoInvoked -join ',') 'uncertainty neither releases early nor loses the original desk'
+}
+
+Test-Case 'rule: an empty or unrelated observation establishes no physical claim' {
+    $empty = New-RuleDeskClaim -RequestedIds @('a') -State @() -Fresh $true
+    Assert-True (-not $empty.Known) 'an empty cache proves nothing'
+    Assert-Equal 'unknown' (Get-RuleDeskRelation -Claim $empty -State @()) 'and remains unknown on comparison'
+
+    $state = @((New-FakeMonitor 'C' 'C' 'c'))
+    $unrelated = New-RuleDeskClaim -RequestedIds @('a', 'b') -State $state -Fresh $true
+    Assert-True (-not $unrelated.Known) 'a partial result with no requested display establishes no claim'
 }
 
 Test-Case 'rule: a switch Windows refused keeps the claim, but not as a desk of its own' {
