@@ -34,6 +34,34 @@ Test-Case 'desktop subset: one trusted superset supplies every relative coordina
     Assert-Equal 1920 $subset.Displays[0].X 'the record came from the coherent larger desk'
 }
 
+Test-Case 'desktop subset: the trusted current desk wins over a smaller stale superset' {
+    $current = @(
+        (New-FakeMonitor 'A' 'AAA0001' 'path-a')
+        (New-FakeMonitor 'B' 'BBB0001' 'path-b')
+        (New-FakeMonitor 'C' 'CCC0001' 'path-c')
+    )
+    for ($i = 0; $i -lt $current.Count; $i++) {
+        $current[$i].Primary = ($i -eq 0)
+        $current[$i].X = $i * 1920
+    }
+    $current[0].Width = 1080; $current[0].Height = 1920; $current[0].Rotation = 4
+    $current[0].Hz = 75; $current[0].RateNum = 75; $current[0].RateDen = 1
+    $currentSnapshot = New-DesktopSnapshot -State $current
+    $stale = @(
+        (New-FakeMonitor 'A' 'AAA0001' 'path-a')
+        (New-FakeMonitor 'B' 'BBB0001' 'path-b')
+    )
+    $stale[0].Primary = $true; $stale[1].Primary = $false; $stale[1].X = 1920
+    $store = New-DesktopSnapshotStore
+    $saved = New-DesktopSnapshot -State $stale
+    $store.Snapshots[$saved.Key] = $saved
+
+    $subset = New-DesktopSubsetSnapshot -Wanted @($current[0]) -CurrentSnapshot $currentSnapshot -Store $store
+
+    Assert-Equal 4 $subset.Displays[0].Rotation 'the recent portrait observation wins'
+    Assert-Equal 75 $subset.Displays[0].Hz 'and so does its recent physical rate'
+}
+
 Test-Case 'desktop subset: an unsafe superset is not a source for a new destination' {
     $a = New-FakeMonitor 'A' 'AAA0001' 'path-a'
     $b = New-FakeMonitor 'B' 'BBB0001' 'path-b'

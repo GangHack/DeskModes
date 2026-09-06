@@ -582,6 +582,28 @@ Test-Case 'switch: KeepMode restores saved geometry with the live mode and keeps
     Assert-Equal 120 $script:SwStore.Snapshots[$allKey].Displays[0].Hz 'that explicit repeat promotes the successful live desk'
 }
 
+Test-Case 'switch: automatic reapply restores and retains the durable KeepMode protection' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwDesk[0].Hz = 75; $script:SwDesk[0].RateNum = 75; $script:SwDesk[0].RateDen = 1
+    $allKey = Get-DesktopSetKey -DevicePaths @($script:SwDesk | ForEach-Object { $_.Id })
+    [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
+    $script:SwDesk[0].Hz = 120; $script:SwDesk[0].RateNum = 120000; $script:SwDesk[0].RateDen = 1000
+    [void](Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet)
+
+    # Windows drops only the active monitor's rate. Automatic reapply must use the verified KeepMode
+    # state rather than the older canonical All snapshot.
+    $script:SwDesk[0].Hz = 60; $script:SwDesk[0].RateNum = 60; $script:SwDesk[0].RateDen = 1
+    $script:SwCalls = @()
+    $r = Switch-DisplayMode -ModeKey 'all' -Automatic -Quiet
+
+    Assert-True $r.Ok 'the automatic repair completes'
+    Assert-Equal 120 $script:SwDesk[0].Hz 'the applied KeepMode rate is restored'
+    Assert-Equal 75 $script:SwStore.Snapshots[$allKey].Displays[0].Hz 'the one-shot repair still does not rewrite the canonical desk'
+    Assert-Equal 120 $script:SwStore.ProtectedSnapshot.Displays[0].Hz 'the durable protection survives automatic reapply'
+}
+
 Test-Case 'switch: KeepMode refuses a live size that overlaps saved sleeping geometry' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk

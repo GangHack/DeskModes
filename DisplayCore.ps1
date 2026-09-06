@@ -1253,17 +1253,23 @@ function New-DesktopSubsetSnapshot {
     $wantedList = @($Wanted)
     $wantedIds = @($wantedList | ForEach-Object { [string]$_.Id })
     $candidates = @()
-    if ($CurrentSnapshot) { $candidates += $CurrentSnapshot }
     foreach ($key in @($Store.Snapshots.Keys | Sort-Object)) {
         if ($Store.PendingKey -eq $key -or $Store.UnsafeKeys.ContainsKey($key)) { continue }
         $snapshot = $Store.Snapshots[$key]
-        if ($snapshot -and $snapshot -ne $CurrentSnapshot) { $candidates += $snapshot }
+        if ($snapshot) { $candidates += $snapshot }
     }
 
     # Relative coordinates only have meaning inside one observation. Combining records from two solo
     # snapshots would put both displays at (0,0), even though every individual record is valid.
     $source = $null
+    if ($CurrentSnapshot) {
+        $currentIds = @($CurrentSnapshot.Displays | ForEach-Object { [string]$_.Id })
+        if (@($wantedIds | Where-Object { $currentIds -notcontains $_ }).Count -eq 0) {
+            $source = $CurrentSnapshot
+        }
+    }
     foreach ($snapshot in @($candidates | Sort-Object { @($_.Displays).Count }, Key)) {
+        if ($source) { break }
         $ids = @($snapshot.Displays | ForEach-Object { [string]$_.Id })
         if (@($wantedIds | Where-Object { $ids -notcontains $_ }).Count -eq 0) {
             $source = $snapshot
@@ -5370,6 +5376,10 @@ function Switch-DisplayMode {
         $currentSnapshot = New-DesktopSnapshot -State $monitors
         $destinationSnapshot = $desktopStore.Snapshots[$destinationKey]
         $hadDestinationSnapshot = ($null -ne $destinationSnapshot)
+        $usingProtectedSnapshot = ($Automatic -and $desktopStore.ProtectedKey -eq $destinationKey -and
+            -not $desktopStore.UnsafeKeys.ContainsKey($destinationKey) -and
+            $desktopStore.ProtectedSnapshot -and $desktopStore.ProtectedSnapshot.Key -eq $destinationKey)
+        if ($usingProtectedSnapshot) { $destinationSnapshot = $desktopStore.ProtectedSnapshot }
         $storeDirty = $false
         $currentSnapshotTrusted = ($currentSnapshot -and
             $desktopStore.PendingKey -ne $currentSnapshot.Key -and
@@ -5679,7 +5689,10 @@ function Switch-DisplayMode {
                 $desktopStore.PendingKey = ''
                 [void]$desktopStore.UnsafeKeys.Remove($destinationKey)
                 $desktopStore.ProtectedKey = $destinationKey
-                $desktopStore.ProtectedSnapshot = $(if ($KeepMode) { $verifiedSnapshot } else { $null })
+                $desktopStore.ProtectedSnapshot = $(if ($KeepMode -or $usingProtectedSnapshot) {
+                                                          $verifiedSnapshot
+                                                      }
+                                                      else { $null })
                 try { Write-DesktopSnapshotStore -Store $desktopStore }
                 catch {
                     Write-DisplayLog "warn: the restored physical desktop could not be marked complete - $($_.Exception.Message)"
