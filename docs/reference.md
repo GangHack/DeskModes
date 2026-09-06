@@ -200,8 +200,9 @@ your accent color:
   entry shows what is coming and when, and its submenu grows **Add 15 minutes**, **Take 15
   minutes off** and **Cancel the timer** — an armed timer is moved more often than cancelled.
   A minute before, a notification says so — that minute is the whole difference between a
-  handy timer and lost work. The countdown lives in memory only: a computer that switches
-  itself off a day after you asked would be worse than no timer.
+  handy timer and lost work. A late first warning, including after resume, starts a full new
+  minute; subsequent ticks do not extend it. The countdown lives in memory only: a computer
+  that switches itself off a day after you asked would be worse than no timer.
 - **Statistics…** — the diary in a window of its own, in your theme and accent colour:
   **Today**, **7 days**, **30 days** or **All**, and everything on one screen without a
   scrollbar. **Open as a page** at the bottom writes the same report to `stats.html` and
@@ -609,15 +610,22 @@ source coordinates, rotation and the driver's refresh fraction. It supplies that
 in one CCD request and verifies the returned desktop. A refusal is reported instead of
 retrying with omitted Hz or replacing the saved orientation with a best-mode guess. The
 watchdog respects the restored modes and leaves unverified destinations alone. A failed
-restore also cannot overwrite the last good window positions on the next departure.
+restore also cannot overwrite the last good window positions on the next departure, and a
+direct retry restores those windows even if the display set has already settled. An unresolved
+switch pauses the watchdog; a verified refusal preserves the unchanged source protection.
 The snapshot is separate from the legacy best-mode
 cache in `display-modes.json`.
 
 A first subset uses one complete source desktop, preferring the current trusted Windows
-arrangement. Separate solo snapshots cannot establish where those displays belong together.
+arrangement. Nonadjacent components are joined without gaps or overlap, keeping the primary
+component in place and leaving the saved full desktop untouched. Separate solo snapshots cannot
+establish where those displays belong together.
 Repeating All manually preserves the live desk, including a mode retained with `-KeepMode`.
 
-For a set with no complete known geometry, the fallback repair steps remain. After applying
+Generated `-KeepMode` plans retain and verify active resolution, rotation and exact refresh;
+missing preservation data or a refused exact mode cannot fall back to unspecified rates.
+
+For other sets with no complete known geometry, the fallback repair steps remain. After applying
 the set, the tool checks
 the arrangement and each mode, and fixes whatever did not take (a display that refuses a
 rate, for instance). When everything landed, those checks find nothing to do and cost

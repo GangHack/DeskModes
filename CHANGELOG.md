@@ -62,6 +62,15 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 - End diary sessions across long sampling gaps and disabled recording instead of counting
   the intervening hours as continuous work.
 
+- Protect the actual partial desktop and the unchanged source after a failed switch; direct
+  restoration retries bring saved windows back, including when the driver settles asynchronously.
+- Restore primary by physical identity, connect nonadjacent subsets without gaps, and find
+  complete CCD source assignments when an active source must move to another display.
+- Preserve and verify live resolution, rotation and exact refresh on generated `-KeepMode` plans.
+- Keep Monitor-ID primary settings and existing shortcuts when editing or renaming combinations.
+  Translate disconnected labels and duplicate validation in every supported language.
+- Give a full cancellation minute after the first power-timer warning, including after resume.
+
 ### Release verification
 
 - Syntax, BOM/CRLF, PSScriptAnalyzer, translation consistency and isolated behavior tests.

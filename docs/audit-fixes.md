@@ -39,7 +39,7 @@ Three independent reviewers covered engine/native switching, state/persistence/c
 and UI/tray. The coordinator covered CLI, diagnostics, developer tools, packaging and integration,
 and reran the concrete reproductions. This pass made no production or test changes.
 
-Status: review completed; the implementation remains **REVIEW**, with ten P2 defects and one
+Status at this reviewed revision: **REVIEW**, with ten P2 defects and one
 P3 localization defect below. The earlier twelve corrections remain historical acceptance
 results, not evidence that every adjacent failure path is correct. Locations below refer to
 this source revision.
@@ -161,5 +161,32 @@ directory. The core probe named "Fallback layout before resolution repair" is ex
 fake overlap endpoint does not establish actual Windows behavior. The midnight diary observation
 is also excluded because the continuous-session contract does not require clipping at midnight.
 
-Next step: correct R1-R11, add regression assertions that distinguish these observed failures,
-then rerun the required integrated gate and independent review of the state/switching changes.
+## R1-R11 correction acceptance
+
+All eleven findings above are corrected on `codex/audit-fixes`. Their original locations and
+failure evidence remain tied to the reviewed source revision, rather than the fixed code.
+
+| Findings | Correction and regression evidence |
+| --- | --- |
+| R1, R2, R4 | Persist the trusted source identity with the pending destination. Guard actual partial results, retain protected source modes after refusal, and restore windows on direct or asynchronously settled retries. Explicit adoption clears pending recovery. Ten transition-recovery cases cover geometry, windows, crash recovery, serialization and protected fractional refresh. |
+| R3 | Pass saved primary identity directly to selection, after explicit overrides, without an ambiguous label round trip. Panel/Panel Pro regression restores original primary and X/Y. |
+| R5 | Generated KeepMode preserves and verifies live resolution, rotation and exact refresh. Unreadable preservation data and lossy retries are refused. Native fixtures cover portrait mode and exact fractions. |
+| R6 | Derived subsets join disconnected components without overlap while preserving each component's geometry and the primary component. Canonical snapshots remain unchanged. |
+| R7 | CCD source matching can reassign earlier choices to find a complete feasible assignment; adapter LUID remains part of source identity. |
+| R8, R9 | The editor retains ShortId primary selectors and recognizes a renamed combo's existing shortcut. Missing displays and foreign/back shortcut conflicts remain covered. |
+| R10 | Every first timer warning grants a full 60 seconds, including overdue and 1-59 second ticks. Later ticks do not renew the grace period; cancellation and exactly-once action are covered with fake power actions. |
+| R11 | Disconnected labels and duplicate validation use translation keys in all six languages. |
+
+Independent strong reviewers accepted the state, engine and UI/tray corrections with no
+remaining blockers in those scopes. Additional isolated checks covered every one of the 512
+three-target/three-source graphs against brute-force matching, all 510 nonempty proper subsets
+of a 3x3 desktop for connectivity and non-overlap, and 17 editor/timer checks. These use fake
+native APIs or extracted production functions; no hardware mutation is part of this evidence.
+
+Integrated verification in Windows PowerShell 5.1 passed: 77 scripts parsed, 104 encoding
+checks, PSScriptAnalyzer 1.25.0 clean, 303 English keys with complete translations, and
+2,312 assertions. The relocated transition-recovery cases also pass with the switch suite
+selected independently via `tests/run-tests.ps1 -File 29`.
+
+The assigned software corrections are complete. Actual driver timing, DDC and real monitor
+switching remain outside this acceptance boundary; no release, tag or push was performed.
