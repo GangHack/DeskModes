@@ -30,3 +30,136 @@ monitors, move user windows, edit real settings, or write Windows startup shortc
 The required final gate is `tools/check.ps1 -RequireAnalyzer` in Windows PowerShell 5.1.
 Actual driver behavior, display wake timing and a hardware All -> Solo -> All round trip
 remain separate manual acceptance work.
+
+## Whole-tree recheck after the corrections
+
+Reviewed source revision: `bc0e74f1f700828e655cc9de096229168d95bbb6`, branch
+`codex/audit-fixes`, 6 September 2026. The owner requested another full verification.
+Three independent reviewers covered engine/native switching, state/persistence/concurrency,
+and UI/tray. The coordinator covered CLI, diagnostics, developer tools, packaging and integration,
+and reran the concrete reproductions. This pass made no production or test changes.
+
+Status: review completed; the implementation remains **REVIEW**, with ten P2 defects and one
+P3 localization defect below. The earlier twelve corrections remain historical acceptance
+results, not evidence that every adjacent failure path is correct. Locations below refer to
+this source revision.
+
+### R1 — P2: An unintended partial desktop overwrites a trusted baseline
+
+Location: `DisplayCore.ps1:5455`, with later capture at `5386`.
+Only the requested destination is marked unsafe. Save Solo A at 75 Hz, start All A/B/C at
+144 Hz, and request A/B while B fails to attach. The actual result is Solo A at 144 Hz.
+Departing to C treats that unintended Solo A as trusted and replaces its saved 75 Hz baseline.
+The same gap permits window recapture and watchdog writes on the unintended set.
+Production-function fake evidence: `Outcome=partial; ActualGuarded=false;
+SavedSoloHzBefore=75; SavedSoloHzAfter=144`.
+
+### R2 — P2: A refused transition removes the unchanged source's protection
+
+Location: `DisplayCore.ps1:5458`; watchdog lookup at `5926`.
+Start protected All at 75 Hz while BestMode is 144 Hz, then make the exact Solo request fail
+without changing the physical desktop. Preparation already cleared the source protection;
+pending/unsafe describe Solo, so the watchdog can maximize the still-active All desk.
+Evidence: `ProtectedBefore=true; ProtectedAfter=false; SourceHz=75; WatchdogRequestedHz=[144]`.
+An unsuccessful request therefore changes the desk later through the watchdog.
+
+### R3 — P2: Saved primary identity passes through an ambiguous name match
+
+Location: `DisplayCore.ps1:5427`.
+With distinct displays named Panel and Panel Pro, make Panel primary, switch All -> Solo Panel Pro
+-> All. The saved primary ID becomes a label and goes through substring matching, which matches
+both displays. Selection retains the current solo primary. All three calls return success,
+but primary changes from `p-a` to `p-b`, and `p-a.X` changes from 0 to -2560. Verification uses
+that incorrectly selected primary, so it accepts the wrong restored desktop.
+
+### R4 — P2: A successful direct retry does not restore saved windows
+
+Location: `DisplayCore.ps1:5503`, with the restore gate at `5739`.
+All -> Solo -> All reaches the full display set but fails geometry verification. A direct All
+retry fixes geometry. Because the set now already matches, window restoration is skipped.
+Evidence: `First=partial; Second=done; RestoreCalls=0`; windows remain displaced by the failed
+attempt. The earlier correction covered leaving through Solo again, not this direct retry.
+
+### R5 — P2: Generated KeepMode drops the live refresh fraction
+
+Location: `DisplayCore.ps1:1419`, called at `5537`.
+On a first All request with a newly attached second display, no coherent full snapshot or matching
+mode cache exists. Active A has live `143999/1000`, but generated `-KeepMode` targets carry `0/0`.
+That delegates refresh selection to Windows, as specified by the
+[CCD refresh-rate contract](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_path_target_info).
+The fake driver selects `60/1`; the switch returns success and protects 60 as its new baseline.
+The exact-snapshot KeepMode correction does not cover this generated path.
+
+### R6 — P2: A nonadjacent subset creates an invalid exact layout
+
+Location: `DisplayCore.ps1:1283`; exact apply at `5530`.
+Three 1920-wide displays occupy X=0, 1920, 3840. Select the outer two for their first combo.
+Subset construction retains X=0 and 3840 and accepts a plan with a 1920-pixel gap. Microsoft
+[documents that desktop source surfaces cannot have gaps](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/desktop-layout).
+The invalid exact plan must be refused or rearranged, after which exact verification fails;
+there is no generated fallback for this plan. Repeating the combo reconstructs the same gap.
+The invalid plan is reproduced with production pure functions; the particular driver response
+is inferred from the documented API contract, not measured on hardware.
+
+### R7 — P2: Greedy CCD assignment rejects a feasible extended desktop
+
+Location: `DisplayCore.ps1:3327`, `3334`.
+Available paths: A->source0 active, A->source1 available, B->source0 available. A valid complete
+assignment exists: A->source1 plus B->source0. The selector reserves A's current source and never
+reconsiders it, then returns no choice for B. Both full apply and topology fallback use this
+selector. The native fixture confirms `ChoiceFound=false` with zero apply calls.
+[QueryDisplayConfig](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig)
+returns valid source/target combinations; their priority order does not establish a complete
+assignment. The adapter-LUID correction does not solve this separate allocation problem.
+
+### R8 — P2: Editing a combo clears its Monitor ID primary
+
+Location: `SettingsDialog.ps1:4359`; saved value at `5022`.
+Configure combo primary as the supported ShortId GSM5CBC for LG ULTRAFINE. Open the editor and
+save unchanged. Membership resolves the IDs, but primary lookup passes an empty ShortId and
+selects the default entry. Evidence from never-shown WPF controls: `SelectedIndex=0;
+Save.Ok=true; SavedPrimary=''`. The next switch can select another primary.
+
+### R9 — P2: Renaming a combo rejects its own shortcut
+
+Location: `SettingsDialog.ps1:4983`.
+Rename Work to Office while keeping Ctrl+Alt+F4. Duplicate validation excludes the destination
+key but sees the original combo:Work key as another mode. Evidence: `Ok=false`, with
+"Ctrl+Alt+F4 already drives 'Work'". The ordinary rename cannot be saved with its existing hotkey.
+
+### R10 — P2: An overdue timer omits the promised cancellation interval
+
+Location: `Displays.ps1:1086` through `1097`; warning text `lang/en.ps1:349`.
+Set a shutdown timer, sleep before its warning, and resume after its deadline. The first late
+tick displays "in a minute" and invokes shutdown immediately in the same handler. Extracted
+handler evidence with both side effects mocked: `warning -> POWER shutdown`. The production
+action requests `shutdown.exe /s /t 0`; the user does not receive the promised minute to cancel.
+No real shutdown was invoked and forced loss of unsaved work is not claimed.
+
+### R11 — P3: Some editor messages bypass translation
+
+Locations: `SettingsDialog.ps1:4325`, `4341`, `4990`, `5029`, `5301`, `5802`, `5818`.
+Under Russian UI, disconnected/orphan display rows still append the literal "(not connected)";
+shortcut and duplicate-name validation also emits literal English. These strings bypass Get-Text,
+so complete language dictionaries and a green language gate do not translate those user paths.
+
+### Verification evidence and limits
+
+| Check | Status | Evidence |
+| --- | --- | --- |
+| Full `tools/check.ps1 -RequireAnalyzer`, Windows PowerShell 5.1 | Passed | 76 parsed files; 103 encoding checks; PSScriptAnalyzer 1.25.0 clean; all 300 language keys; 2,212 assertions. |
+| New failure scenarios | Failed as expected | Coordinator reran all ten P2 reproductions using extracted production functions, fake native types or never-shown WPF controls, and isolated mutexes. R6 proves an invalid request, not a measured driver result. |
+| Local `tools/pack.ps1 -OutDir <temporary directory> -NotesOut <temporary file>` | Passed | 25 program files; SHA256 `3a17008b2036cde165e419085c5a3163491758270d53f30c1b9248a6098ecf47`. No release/tag/push. |
+| Unpacked CLI `Set-Display.ps1 diagnostics` | Passed | Fresh PS5.1 process produced parseable schema 1 JSON; queried displays without switching. All generated state stayed in the temporary copy. |
+| `render-preview.ps1 -Fake -Language en` and `ru` in temporary unpacked copy | Passed | 20 PNG files generated; desktop, switching, modes, behavior, diary, about, rule and timer views sampled visually. This is not an interactive UI acceptance test. |
+| `Make-Icon.ps1` with temporary output paths | Passed | Nine-size ICO and preview generated. |
+| Real All -> Solo -> All, driver refusal/timing, DDC, interactive hotkeys/startup/power actions | Not run | Real display switching remains excluded by the owner; mocks do not prove hardware behavior. |
+
+Temporary evidence files are named `deskmodes-full-recheck.log`, `deskmodes-state-audit.ps1`,
+`deskmodes-ui-review.ps1`, and `core-probes.ps1` / `native-probes.ps1` under the review's temporary
+directory. The core probe named "Fallback layout before resolution repair" is excluded: its
+fake overlap endpoint does not establish actual Windows behavior. The midnight diary observation
+is also excluded because the continuous-session contract does not require clipping at midnight.
+
+Next step: correct R1-R11, add regression assertions that distinguish these observed failures,
+then rerun the required integrated gate and independent review of the state/switching changes.
