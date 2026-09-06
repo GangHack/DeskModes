@@ -1087,7 +1087,15 @@ $script:PowerTicker.add_Tick({
 
     if (-not $script:PowerWarned -and $left -le 60) {
         $script:PowerWarned = $true
+        $wasOverdue = ($left -le 0)
         Show-Balloon (Get-Text -Key 'timer.lastMinute') (Get-Text -Key ('timer.lastMinute.' + $script:PowerAction)) 'Warning'
+        # A suspended computer can miss the entire warning minute. In that one case the first
+        # late tick starts the promised cancellation window after showing the warning.
+        if ($wasOverdue) {
+            $script:PowerDeadline = (Get-Date).AddMinutes(1)
+            $left = Get-PowerRemaining
+            Update-TrayText
+        }
     }
     if ($left -le 0) {
         $action = $script:PowerAction
