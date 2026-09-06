@@ -18,6 +18,7 @@ function New-FakeMonitor {
         Native = $null; Id = $Id; Active = $Active
         Primary = $false; Disconnected = $Disconnected
         Width = 2560; Height = 1440; Hz = 144; BestMode = $null
+        X = 0; Y = 0; Rotation = 1; RateNum = 143999; RateDen = 1000
     }
 }
 

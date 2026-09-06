@@ -34,6 +34,7 @@ $script:LogFile      = $(if ($env:DESKMODES_LOG_FILE) { $env:DESKMODES_LOG_FILE 
 $script:SettingsFile = Join-Path $PSScriptRoot 'settings.json'
 $script:LastModeFile = Join-Path $PSScriptRoot 'last-mode.json'
 $script:ModeCacheFile = Join-Path $PSScriptRoot 'display-modes.json'
+$script:DesktopSnapshotsFile = Join-Path $PSScriptRoot 'desktop-layouts.json'
 # Every monitor this desk has ever had, by the name the settings call it (see Get-KnownDisplays).
 $script:KnownDisplaysFile = Join-Path $PSScriptRoot 'known-displays.json'
 # Where the Settings window stood and which page it was on. The machine's state and not a
@@ -146,9 +147,14 @@ function Get-DefaultSettings {
         # way they really stand. Names can be written in parts: "UltraGear" will find
         # "LG ULTRAGEAR".
         layout          = @()
+        # Old versions filled layout and primary while saving unrelated settings. These markers are set
+        # only by an explicit reorder or taskbar choice, so a legacy incidental value cannot override a
+        # physical desktop snapshot.
+        layoutOverride  = $false
         # Which monitor to make primary (that is, where the taskbar goes), if it is
         # among the ones that are on. A piece of a name, as in layout.
         primary         = ''
+        primaryOverride = $false
         # Combos: a name -> an arbitrary set of monitors. The sets may overlap, and one
         # monitor takes part in as many as it likes. The mode key is combo:<name>, and
         # the title is the name itself, as entered.
@@ -386,6 +392,8 @@ function Get-DisplaySettings {
         if ($null -ne $raw.stats)           { $s.stats           = [bool]$raw.stats }
         if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
         if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
+        if ($null -ne $raw.layoutOverride)  { $s.layoutOverride  = [bool]$raw.layoutOverride }
+        if ($null -ne $raw.primaryOverride) { $s.primaryOverride = [bool]$raw.primaryOverride }
         if ($null -ne $raw.language)        { $s.language        = [string]$raw.language }
 
         foreach ($field in 'hotkeys', 'audio') {
@@ -956,6 +964,321 @@ function Save-ModeCache {
         # is nothing worth bringing down over a cache.
         Write-DisplayLog "warn: could not remember the display modes - $($_.Exception.Message)"
     }
+}
+
+# --- exact physical desktops -----------------------------------------------
+# A desktop is more than the set of active targets. Windows can change the primary display, source
+# coordinates, rotation and the exact refresh fraction while another set is active. These snapshots are
+# keyed by physical monitor device paths so DISPLAY1/2 renumbering cannot send a portrait mode to a
+# neighbour.
+
+function Get-DesktopSetKey {
+    param([Parameter(Mandatory)][string[]]$DevicePaths)
+
+    $ids = @($DevicePaths | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique)
+    if ($ids.Count -eq 0) { return '' }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes(($ids -join "`n"))
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
+function New-DesktopSnapshot {
+    param([Parameter(Mandatory)]$State)
+
+    $active = @($State | Where-Object { $_.Active -and -not $_.Disconnected })
+    if ($active.Count -eq 0) { return $null }
+    $ids = @($active | ForEach-Object { [string]$_.Id })
+    if (@($ids | Where-Object { $_ }).Count -ne $active.Count -or
+        @($ids | Sort-Object -Unique).Count -ne $active.Count) { return $null }
+    $primary = @($active | Where-Object { $_.Primary })
+    if ($primary.Count -ne 1) { return $null }
+
+    $displays = @()
+    foreach ($m in $active) {
+        foreach ($field in 'X', 'Y', 'Rotation', 'RateNum', 'RateDen') {
+            if (-not $m.PSObject.Properties[$field]) { return $null }
+        }
+        if ([int]$m.Width -le 0 -or [int]$m.Height -le 0 -or [int]$m.Hz -le 0 -or
+            [int]$m.Rotation -lt 1 -or [int]$m.Rotation -gt 4 -or
+            [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0) { return $null }
+        $displays += [pscustomobject][ordered]@{
+            Id       = [string]$m.Id
+            Label    = [string]$m.Label
+            X        = [int]$m.X
+            Y        = [int]$m.Y
+            Width    = [int]$m.Width
+            Height   = [int]$m.Height
+            Hz       = [int]$m.Hz
+            Rotation = [int]$m.Rotation
+            RateNum  = [int]$m.RateNum
+            RateDen  = [int]$m.RateDen
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        Key       = Get-DesktopSetKey -DevicePaths $ids
+        PrimaryId = [string]$primary[0].Id
+        Displays  = @($displays)
+    }
+}
+
+function New-DesktopSnapshotStore {
+    return [pscustomobject][ordered]@{
+        Version      = 1
+        Snapshots    = @{}
+        ProtectedKey = ''
+        PendingKey   = ''
+        UnsafeKeys   = @{}
+    }
+}
+
+function Read-DesktopSnapshotStore {
+    $store = New-DesktopSnapshotStore
+    if (-not (Test-Path $script:DesktopSnapshotsFile)) { return $store }
+    try {
+        $raw = Get-Content $script:DesktopSnapshotsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($saved in @($raw.snapshots)) {
+            if (-not $saved) { continue }
+            $state = @()
+            foreach ($d in @($saved.displays)) {
+                foreach ($field in 'id', 'x', 'y', 'width', 'height', 'hz', 'rotation', 'rateNum', 'rateDen') {
+                    if (-not $d.PSObject.Properties[$field]) { throw "Desktop snapshot is missing $field." }
+                }
+                $state += [pscustomobject]@{
+                    Id = [string]$d.id; Label = [string]$d.label
+                    Active = $true; Disconnected = $false
+                    Primary = ([string]$d.id -eq [string]$saved.primaryId)
+                    X = [int]$d.x; Y = [int]$d.y
+                    Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
+                    Rotation = [int]$d.rotation; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
+                }
+            }
+            $snapshot = New-DesktopSnapshot -State $state
+            if ($snapshot -and ([string]$saved.key -eq $snapshot.Key)) {
+                $store.Snapshots[$snapshot.Key] = $snapshot
+            }
+        }
+        $store.ProtectedKey = [string]$raw.protectedKey
+        $store.PendingKey = [string]$raw.pendingKey
+        if ($store.PendingKey) { $store.UnsafeKeys[$store.PendingKey] = $true }
+        foreach ($key in @($raw.unsafeKeys)) {
+            if ([string]$key) { $store.UnsafeKeys[[string]$key] = $true }
+        }
+    }
+    catch {
+        # A damaged state file cannot justify touching a desktop. It reads as empty and the current complete
+        # desk will be captured before the next transition.
+        return (New-DesktopSnapshotStore)
+    }
+    return $store
+}
+
+function Write-DesktopSnapshotStore {
+    param([Parameter(Mandatory)]$Store)
+
+    $saved = @()
+    foreach ($key in @($Store.Snapshots.Keys | Sort-Object)) {
+        $s = $Store.Snapshots[$key]
+        if (-not $s) { continue }
+        $saved += [ordered]@{
+            key = [string]$s.Key; primaryId = [string]$s.PrimaryId
+            displays = @($s.Displays | ForEach-Object {
+                [ordered]@{
+                    id = [string]$_.Id; label = [string]$_.Label
+                    x = [int]$_.X; y = [int]$_.Y
+                    width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
+                    rotation = [int]$_.Rotation; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
+                }
+            })
+        }
+    }
+    $flat = [ordered]@{
+        version = 1; protectedKey = [string]$Store.ProtectedKey
+        pendingKey = [string]$Store.PendingKey
+        unsafeKeys = @($Store.UnsafeKeys.Keys | Sort-Object)
+        snapshots = @($saved)
+    }
+    $temp = $script:DesktopSnapshotsFile + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        $json = $flat | ConvertTo-Json -Depth 6 -Compress
+        [System.IO.File]::WriteAllText($temp, $json + "`r`n", (New-Object System.Text.UTF8Encoding $true))
+        if (Test-Path -LiteralPath $script:DesktopSnapshotsFile) {
+            [System.IO.File]::Replace($temp, $script:DesktopSnapshotsFile, [NullString]::Value)
+        }
+        else { [System.IO.File]::Move($temp, $script:DesktopSnapshotsFile) }
+    }
+    finally {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function New-DesktopRestorePlan {
+    param(
+        [Parameter(Mandatory)]$Snapshot,
+        [Parameter(Mandatory)]$Wanted,
+        [string]$PrimaryPath = '',
+        [string[]]$Order = @(),
+        [switch]$UseConfiguredLayout
+    )
+
+    $wantedById = @{}
+    foreach ($m in @($Wanted)) { $wantedById[[string]$m.Id] = $m }
+    if ($wantedById.Count -ne @($Snapshot.Displays).Count) { return $null }
+    foreach ($d in @($Snapshot.Displays)) {
+        if (-not $wantedById.ContainsKey([string]$d.Id)) { return $null }
+    }
+
+    $primary = $(if ($PrimaryPath) { $PrimaryPath } else { [string]$Snapshot.PrimaryId })
+    if (-not $wantedById.ContainsKey($primary)) { return $null }
+    $anchor = @($Snapshot.Displays | Where-Object { $_.Id -eq $primary })[0]
+    $configuredPositions = @{}
+    if ($UseConfiguredLayout) {
+        $configuredPositions = Get-LayoutPositions -Screens @($Snapshot.Displays | ForEach-Object {
+            [pscustomobject]@{
+                DevicePath = [string]$_.Id; Label = [string]$wantedById[[string]$_.Id].Label
+                Width = [int]$_.Width; Height = [int]$_.Height
+            }
+        }) -Order $Order -PrimaryPath $primary
+    }
+    $targets = @()
+    foreach ($d in @($Snapshot.Displays)) {
+        $m = $wantedById[[string]$d.Id]
+        $where = $configuredPositions[[string]$d.Id]
+        $targets += [pscustomobject][ordered]@{
+            DevicePath = [string]$d.Id
+            Label      = [string]$m.Label
+            Width      = [int]$d.Width
+            Height     = [int]$d.Height
+            Hz         = [int]$d.Hz
+            RateNum    = [int]$d.RateNum
+            RateDen    = [int]$d.RateDen
+            Rotation   = [int]$d.Rotation
+            X          = $(if ($UseConfiguredLayout) { [int]$where.X } else { [int]$d.X - [int]$anchor.X })
+            Y          = $(if ($UseConfiguredLayout) { [int]$where.Y } else { [int]$d.Y - [int]$anchor.Y })
+        }
+    }
+    $expectedState = @($targets | ForEach-Object {
+        [pscustomobject]@{
+            Id = [string]$_.DevicePath; Label = [string]$_.Label
+            Active = $true; Disconnected = $false; Primary = ([string]$_.DevicePath -eq $primary)
+            X = [int]$_.X; Y = [int]$_.Y
+            Width = [int]$_.Width; Height = [int]$_.Height; Hz = [int]$_.Hz
+            Rotation = [int]$_.Rotation; RateNum = [int]$_.RateNum; RateDen = [int]$_.RateDen
+        }
+    })
+    $expected = New-DesktopSnapshot -State $expectedState
+    return [pscustomobject]@{ PrimaryPath = $primary; Targets = @($targets); Expected = $expected }
+}
+
+# Build a first snapshot for a subset from physical records already observed in a larger desk. This is
+# what keeps a portrait display portrait on its first solo switch: BestMode knows only width, height and
+# hertz, while the source desktop also knows its rotation and exact rate.
+function New-DesktopSubsetSnapshot {
+    param(
+        [Parameter(Mandatory)]$Wanted,
+        $CurrentSnapshot,
+        [Parameter(Mandatory)]$Store
+    )
+
+    $records = @()
+    foreach ($m in @($Wanted)) {
+        $record = $null
+        if ($CurrentSnapshot) {
+            $record = @($CurrentSnapshot.Displays | Where-Object { $_.Id -eq [string]$m.Id } | Select-Object -First 1)
+            if ($record.Count -gt 0) { $record = $record[0] } else { $record = $null }
+        }
+        if (-not $record) {
+            foreach ($snapshot in @($Store.Snapshots.Values)) {
+                $record = @($snapshot.Displays | Where-Object { $_.Id -eq [string]$m.Id } | Select-Object -First 1)
+                if ($record.Count -gt 0) { $record = $record[0]; break }
+                $record = $null
+            }
+        }
+        if (-not $record) { return $null }
+        $records += [pscustomobject]@{
+            Id = [string]$m.Id; Label = [string]$m.Label
+            Active = $true; Disconnected = $false; Primary = $false
+            X = [int]$record.X; Y = [int]$record.Y
+            Width = [int]$record.Width; Height = [int]$record.Height; Hz = [int]$record.Hz
+            Rotation = [int]$record.Rotation; RateNum = [int]$record.RateNum; RateDen = [int]$record.RateDen
+        }
+    }
+    $primaryId = ''
+    if ($CurrentSnapshot -and @($records | Where-Object { $_.Id -eq $CurrentSnapshot.PrimaryId }).Count -gt 0) {
+        $primaryId = [string]$CurrentSnapshot.PrimaryId
+    }
+    else { $primaryId = [string]$records[0].Id }
+    foreach ($r in $records) { $r.Primary = ($r.Id -eq $primaryId) }
+    return (New-DesktopSnapshot -State $records)
+}
+
+function Test-DesktopSnapshotMatch {
+    param([Parameter(Mandatory)]$Snapshot, [Parameter(Mandatory)]$State)
+
+    $now = New-DesktopSnapshot -State $State
+    if (-not $now -or $now.Key -ne $Snapshot.Key -or $now.PrimaryId -ne $Snapshot.PrimaryId) { return $false }
+    $byId = @{}
+    foreach ($d in @($now.Displays)) { $byId[[string]$d.Id] = $d }
+    foreach ($wanted in @($Snapshot.Displays)) {
+        $actual = $byId[[string]$wanted.Id]
+        if (-not $actual) { return $false }
+        foreach ($field in 'X', 'Y', 'Width', 'Height', 'Rotation') {
+            if ([int]$actual.$field -ne [int]$wanted.$field) { return $false }
+        }
+        # Drivers are free to reduce the same fraction (60000/1000 -> 60/1). Cross multiplication accepts
+        # that normalization while still distinguishing 143999/1000 from the invented 144/1.
+        if ([int64]$actual.RateNum * [int64]$wanted.RateDen -ne
+            [int64]$wanted.RateNum * [int64]$actual.RateDen) { return $false }
+    }
+    return $true
+}
+
+# The explicit UI action for adopting a rearranged Windows desktop. Ordinary Settings saves must never
+# call this: taking a baseline is a physical observation, not a side effect of editing a shortcut.
+function Save-CurrentDesktopSnapshot {
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\DeskModesSwitch')
+    $held = $false
+    try { $held = $mutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] { $held = $true }
+    if (-not $held) { $mutex.Dispose(); return $false }
+    try {
+        $snapshot = New-DesktopSnapshot -State @(Get-DisplayState)
+        if (-not $snapshot) { return $false }
+        $store = Read-DesktopSnapshotStore
+        $store.Snapshots[$snapshot.Key] = $snapshot
+        if ($store.PendingKey -eq $snapshot.Key) { $store.PendingKey = '' }
+        [void]$store.UnsafeKeys.Remove($snapshot.Key)
+        $store.ProtectedKey = $snapshot.Key
+        Write-DesktopSnapshotStore -Store $store
+        Write-DisplayLog ("desktop: adopted the current physical arrangement - {0} display(s)" -f $snapshot.Displays.Count)
+        return $true
+    }
+    catch {
+        Write-DisplayLog "warn: could not remember the current physical desktop - $($_.Exception.Message)"
+        return $false
+    }
+    finally {
+        $mutex.ReleaseMutex()
+        $mutex.Dispose()
+    }
+}
+
+function Get-WatchdogMode {
+    param($Monitor, $ProtectedSnapshot)
+
+    if ($ProtectedSnapshot) {
+        $saved = @($ProtectedSnapshot.Displays | Where-Object { $_.Id -eq [string]$Monitor.Id } |
+                   Select-Object -First 1)
+        if ($saved.Count -gt 0) {
+            return [pscustomobject]@{
+                Width = [int]$saved[0].Width; Height = [int]$saved[0].Height; Hz = [int]$saved[0].Hz
+            }
+        }
+    }
+    return $Monitor.BestMode
 }
 
 # The target state of every monitor for a one-call transition: DevicePath, Label, Width, Height, Hz. An
@@ -2817,6 +3140,24 @@ function Get-CcdTargets {
 
         $shortId = (ConvertTo-VendorCode ([int]$t.edidManufactureId)) + ('{0:X4}' -f $t.edidProductCodeId)
 
+        $x = 0; $y = 0; $rotation = 0; $rateNum = 0; $rateDen = 0
+        if ($active) {
+            $mi = [uint32]$p.sourceInfo.modeInfoIdx
+            if ($mi -ne [NativeCcd]::MODE_IDX_INVALID -and $mi -lt $nm -and
+                $modes[[int]$mi].infoType -eq [NativeCcd]::MODE_INFO_TYPE_SOURCE -and
+                $modes[[int]$mi].id -eq $p.sourceInfo.id -and
+                $modes[[int]$mi].adapterId.Low -eq $p.sourceInfo.adapterId.Low -and
+                $modes[[int]$mi].adapterId.High -eq $p.sourceInfo.adapterId.High) {
+                $x = [int]$modes[[int]$mi].srcPosX; $y = [int]$modes[[int]$mi].srcPosY
+                $rotation = [int]$p.targetInfo.rotation
+                $rateNum = [int]$p.targetInfo.refreshRate.Numerator
+                $rateDen = [int]$p.targetInfo.refreshRate.Denominator
+            }
+            # An active path without its matching source-mode record is a transient, incomplete read. The
+            # zero rotation/rate values make New-DesktopSnapshot reject it instead of accepting (0,0) as a
+            # real position and later flattening the desk around that invented origin.
+        }
+
         $byPath[$key] = [pscustomobject]@{
             DevicePath = $t.monitorDevicePath
             Label      = $t.monitorFriendlyDeviceName
@@ -2826,6 +3167,11 @@ function Get-CcdTargets {
             Available  = ($p.targetInfo.targetAvailable -ne 0)
             Native     = $native
             PathIndex  = $i
+            X           = $x
+            Y           = $y
+            Rotation    = $rotation
+            RateNum     = $rateNum
+            RateDen     = $rateDen
             # Who to address a per-target question to (HDR, say): the adapter's LUID and the target's
             # id, as one struct and one number - a LUID's fields cannot be set one at a time from
             # PowerShell, which hands back a copy of a nested struct.
@@ -2983,13 +3329,16 @@ function Set-CcdFullConfig {
     param(
         [Parameter(Mandatory)]$Targets,
         [string]$PrimaryPath = '',
-        [string[]]$Order = @()
+        [string[]]$Order = @(),
+        [switch]$Exact
     )
 
     $list = @($Targets)
     if ($list.Count -eq 0) { return $false }
     foreach ($t in $list) {
         if ([int]$t.Width -le 0 -or [int]$t.Height -le 0) { return $false }
+        if ($Exact -and ([int]$t.RateNum -le 0 -or [int]$t.RateDen -le 0 -or
+                         [int]$t.Rotation -lt 1 -or [int]$t.Rotation -gt 4)) { return $false }
     }
 
     # Without the monitors' order this road cannot be taken. Setting the whole desk, we are obliged to name
@@ -3003,7 +3352,8 @@ function Set-CcdFullConfig {
     # most often of all. Without this line every desk whose owner has never opened the Settings window —
     # that is, every fresh install — went the long way with its three transitions even to switch to a
     # single display.
-    if ($list.Count -gt 1 -and @($Order | Where-Object { $_ }).Count -eq 0) {
+    $hasExactPositions = ($Exact -and @($list | Where-Object { $null -eq $_.X -or $null -eq $_.Y }).Count -eq 0)
+    if ($list.Count -gt 1 -and -not $hasExactPositions -and @($Order | Where-Object { $_ }).Count -eq 0) {
         Write-DisplayLog 'ccd: no display order in the settings - rebuilding the desk the long way'
         return $false
     }
@@ -3018,8 +3368,12 @@ function Set-CcdFullConfig {
     # We skip the first attempt when there is no exact fraction for any monitor: there is nothing to ask a
     # refresh rate with, and the attempt would knowingly be the same as the second.
     foreach ($withHz in $true, $false) {
+        # A saved physical desktop is an all-or-nothing request. Retrying it without the exact rate would
+        # report success after silently replacing part of the baseline Windows was asked to restore.
+        if ($Exact -and -not $withHz) { continue }
         if ($withHz -and -not (@($list | Where-Object { [int]$_.RateDen -gt 0 }).Count)) { continue }
-        if (Invoke-CcdFullConfigAttempt -Targets $list -PrimaryPath $PrimaryPath -Order $Order -WithHz:$withHz) {
+        if (Invoke-CcdFullConfigAttempt -Targets $list -PrimaryPath $PrimaryPath -Order $Order `
+                                        -WithHz:$withHz -Exact:$Exact) {
             return $true
         }
     }
@@ -3034,7 +3388,8 @@ function Invoke-CcdFullConfigAttempt {
         [Parameter(Mandatory)]$Targets,
         [string]$PrimaryPath = '',
         [string[]]$Order = @(),
-        [switch]$WithHz
+        [switch]$WithHz,
+        [switch]$Exact
     )
 
     $tag = $(if ($WithHz) { ' (with refresh rates)' } else { ' (rates left to Windows)' })
@@ -3063,7 +3418,16 @@ function Invoke-CcdFullConfigAttempt {
         }
     }
     if ($screens.Count -ne $chosen.Count) { return $false }
-    $pos = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
+    $useSavedPositions = ($Exact -and @($Targets | Where-Object { $null -eq $_.X -or $null -eq $_.Y }).Count -eq 0)
+    $pos = @{}
+    if ($useSavedPositions) {
+        foreach ($t in @($Targets)) {
+            $pos[[string]$t.DevicePath] = [pscustomobject]@{ X = [int]$t.X; Y = [int]$t.Y }
+        }
+    }
+    else {
+        $pos = Get-LayoutPositions -Screens $screens -Order $Order -PrimaryPath $PrimaryPath
+    }
 
     # One mode record per path: the source mode (resolution and position). We do not set the TARGET's
     # mode — the refresh-rate hint in targetInfo is enough for it, and there is nowhere and no need to
@@ -3107,7 +3471,8 @@ function Invoke-CcdFullConfigAttempt {
             # and a zero is invalid in both enumerations: together with a specified refresh rate such a
             # path fails validation. We fix only the zeroes — if there is a value, it is somebody else's
             # and touching it is none of our business.
-            if ($ti.rotation -eq 0) { $ti.rotation = [NativeCcd]::ROTATION_IDENTITY }
+            if ($Exact)             { $ti.rotation = [uint32][int]$t.Rotation }
+            elseif ($ti.rotation -eq 0) { $ti.rotation = [NativeCcd]::ROTATION_IDENTITY }
             if ($ti.scaling -eq 0)  { $ti.scaling  = [NativeCcd]::SCALING_IDENTITY }
         }
         else {
@@ -3606,7 +3971,7 @@ function Get-CurrentMode {
     if ([NativeDisplay]::EnumDisplaySettings($Output, [NativeDisplay]::CURRENT_SETTINGS, [ref]$dm)) {
         return [pscustomobject]@{
             Width = $dm.dmPelsWidth; Height = $dm.dmPelsHeight; Hz = $dm.dmDisplayFrequency
-            X = $dm.dmPositionX; Y = $dm.dmPositionY
+            X = $dm.dmPositionX; Y = $dm.dmPositionY; Rotation = $dm.dmDisplayOrientation
         }
     }
     return $null
@@ -3906,6 +4271,11 @@ function Get-DisplayState {
             Width        = $(if ($cur) { $cur.Width } else { 0 })
             Height       = $(if ($cur) { $cur.Height } else { 0 })
             Hz           = $(if ($cur) { $cur.Hz } else { 0 })
+            X            = $(if ($t.Active) { [int]$t.X } else { 0 })
+            Y            = $(if ($t.Active) { [int]$t.Y } else { 0 })
+            Rotation     = $(if ($t.Active) { [int]$t.Rotation } else { 0 })
+            RateNum      = $(if ($t.Active) { [int]$t.RateNum } else { 0 })
+            RateDen      = $(if ($t.Active) { [int]$t.RateDen } else { 0 })
             BestMode     = $best
         }
     })
@@ -4093,6 +4463,11 @@ function Get-DeskDisplays {
             Width        = 0
             Height       = 0
             Hz           = 0
+            X            = 0
+            Y            = 0
+            Rotation     = 0
+            RateNum      = 0
+            RateDen      = 0
             BestMode     = $null
         }
     }
@@ -4432,7 +4807,13 @@ function Get-ActiveModeKey {
 # way: if it is only visible in the log, the tray reports a green "Displays switched" and the person
 # discovers the muddled monitors themselves.
 function Format-SwitchResult {
-    param([string[]]$Summary = @(), [string[]]$Failed = @(), [string[]]$Refused = @(), [bool]$LayoutFailed = $false)
+    param(
+        [string[]]$Summary = @(),
+        [string[]]$Failed = @(),
+        [string[]]$Refused = @(),
+        [bool]$LayoutFailed = $false,
+        [bool]$RestoreFailed = $false
+    )
 
     # Twice over, in the person's language and in English: this verdict is both the balloon a person
     # reads and the done: line in the log, and the log stays English (see Get-Text).
@@ -4449,6 +4830,9 @@ function Format-SwitchResult {
         if ($LayoutFailed) {
             $parts += (Get-Text -Key 'verdict.layout' -Language $lang)
         }
+        if ($RestoreFailed) {
+            $parts += (Get-Text -Key 'verdict.restore' -Language $lang)
+        }
         foreach ($p in $parts) {
             $text = $(if ($text) { $text + '. ' + $p } else { $p })
         }
@@ -4457,7 +4841,8 @@ function Format-SwitchResult {
     return [pscustomobject]@{
         Text = $said['']
         Log  = $said[$script:LangFallback]
-        Ok   = (@($Failed).Count -eq 0 -and @($Refused).Count -eq 0 -and -not $LayoutFailed)
+        Ok   = (@($Failed).Count -eq 0 -and @($Refused).Count -eq 0 -and
+                -not $LayoutFailed -and -not $RestoreFailed)
     }
 }
 
@@ -4880,14 +5265,96 @@ function Switch-DisplayMode {
         $wantedIds = @($wanted | ForEach-Object { $_.Id })
         $toDisable = @($usable | Where-Object { $wantedIds -notcontains $_.Id })
 
+        $activeNow = @($monitors | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
+        $wantedSorted = @($wantedIds | Sort-Object)
+        $sameTopology = ($activeNow.Count -eq $wantedSorted.Count -and
+                         -not (Compare-Object $activeNow $wantedSorted))
+
+        # Capture the complete physical source desk before any command or Windows call can change it. A
+        # pending key means an earlier exact restore did not reach verified success (or the process died
+        # during it); that observed destination must not replace the good baseline on the next run.
+        $desktopStore = Read-DesktopSnapshotStore
+        $destinationKey = Get-DesktopSetKey -DevicePaths $wantedIds
+        $currentSnapshot = New-DesktopSnapshot -State $monitors
+        $destinationSnapshot = $desktopStore.Snapshots[$destinationKey]
+        $hadDestinationSnapshot = ($null -ne $destinationSnapshot)
+        $storeDirty = $false
+        $currentSnapshotTrusted = ($currentSnapshot -and
+            $desktopStore.PendingKey -ne $currentSnapshot.Key -and
+            -not $desktopStore.UnsafeKeys.ContainsKey($currentSnapshot.Key))
+        if ($currentSnapshot) {
+            if ($currentSnapshot.Key -ne $destinationKey) {
+                if ($currentSnapshotTrusted) {
+                    $desktopStore.Snapshots[$currentSnapshot.Key] = $currentSnapshot
+                    $storeDirty = $true
+                }
+            }
+            elseif (-not $destinationSnapshot -and $currentSnapshotTrusted) {
+                # The first All press on an already complete desk establishes the live arrangement as the
+                # baseline. It then becomes an exact no-op instead of applying legacy incidental settings.
+                $desktopStore.Snapshots[$currentSnapshot.Key] = $currentSnapshot
+                $destinationSnapshot = $currentSnapshot
+                $storeDirty = $true
+            }
+            elseif (-not $Automatic -and $desktopStore.PendingKey -ne $destinationKey -and
+                    -not $desktopStore.UnsafeKeys.ContainsKey($destinationKey) -and
+                    -not $PrimaryMatch -and -not [string]$mode.Primary -and
+                    -not $settings.layoutOverride -and -not $settings.primaryOverride) {
+                # A person's repeat press on the set already in front of them adopts the complete live
+                # geometry. This makes All idempotent after a deliberate Windows rearrangement. Automatic
+                # reapply keeps using the baseline instead, which is what repairs drift after wake.
+                $desktopStore.Snapshots[$currentSnapshot.Key] = $currentSnapshot
+                $destinationSnapshot = $currentSnapshot
+                $storeDirty = $true
+            }
+        }
+        if (-not $destinationSnapshot) {
+            $destinationSnapshot = New-DesktopSubsetSnapshot -Wanted $wanted `
+                -CurrentSnapshot $(if ($currentSnapshotTrusted) { $currentSnapshot } else { $null }) `
+                -Store $desktopStore
+        }
+
         # The whole ladder of the choice is in Select-PrimaryDisplay (and in its tests). Combos have a
         # primary of their own — it is gentler than -PrimaryMatch: that one a person types right now and
         # a typo has to be an error, whereas a combo's primary was written down once, and that monitor
         # not being on the desk is no reason to bring the whole mode down.
+        $snapshotPrimary = ''
+        if ($destinationSnapshot) {
+            $snapshotPrimary = [string](@($wanted | Where-Object {
+                $_.Id -eq [string]$destinationSnapshot.PrimaryId }) | Select-Object -First 1).Label
+        }
+        $settingsPrimary = $(if ($settings.primaryOverride) { [string]$settings.primary } else { $snapshotPrimary })
+        $selectionLayout = $(if ($destinationSnapshot -and -not $settings.layoutOverride) { @() } else { @($settings.layout) })
         $primary = Select-PrimaryDisplay -Wanted $wanted -PrimaryMatch $PrimaryMatch `
                                          -ModePrimary ([string]$mode.Primary) `
-                                         -SettingsPrimary ([string]$settings.primary) `
-                                         -Layout @($settings.layout) -ModeTitle $mode.Title
+                                         -SettingsPrimary $settingsPrimary `
+                                         -Layout $selectionLayout -ModeTitle $mode.Title
+        $restorePlan = $null
+        if ($destinationSnapshot) {
+            $restorePlan = New-DesktopRestorePlan -Snapshot $destinationSnapshot -Wanted $wanted `
+                -PrimaryPath ([string]$primary.Id) -Order @($settings.layout) `
+                -UseConfiguredLayout:([bool]$settings.layoutOverride)
+        }
+        $exactAlready = ($restorePlan -and $currentSnapshot -and
+                         (Test-DesktopSnapshotMatch -Snapshot $restorePlan.Expected -State $monitors))
+
+        if (-not $DryRun) {
+            $willChangeDesktop = (-not $exactAlready)
+            if ($willChangeDesktop -and -not $currentSnapshot -and
+                -not $desktopStore.Snapshots[(Get-DesktopSetKey -DevicePaths $activeNow)]) {
+                throw (New-DisplayRefusal -Key 'switch.snapshotWriteFailed')
+            }
+            if ($willChangeDesktop) {
+                $desktopStore.PendingKey = $destinationKey
+                $desktopStore.UnsafeKeys[$destinationKey] = $true
+                $desktopStore.ProtectedKey = ''
+                $storeDirty = $true
+            }
+            if ($storeDirty) {
+                try { Write-DesktopSnapshotStore -Store $desktopStore }
+                catch { throw (New-DisplayRefusal -Key 'switch.snapshotWriteFailed') }
+            }
+        }
         & $notePhase $phases 'state'
 
         if (-not $Quiet) {
@@ -4911,25 +5378,8 @@ function Switch-DisplayMode {
             # somebody else's program for a mode that will not happen is not allowed.
             [void](Invoke-ModeHook -Settings $settings -ModeKey $ModeKey -Phase 'before')
 
-            # The set is already what is being asked for — there is no topology to rebuild. We have the
-            # state in hand, in $monitors: no extra query needed.
-            #
-            # This is the main saving on a repeat press of the shortcut. Without the check Windows would
-            # honestly rebuild the desk into the very same state: the screens blinked, the refresh rate
-            # was dropped, and all of that took a full cycle. And it is also what fixes a queue of
-            # presses: the tray's message loop is single-threaded, and presses that piled up during a
-            # switch are now executed as cheap no-ops instead of a series of full rebuilds.
-            #
-            # The layout, the primary and the modes below are checked anyway: that is cheap, and skipping
-            # them is not allowed — the set of monitors can match while the layout is in pieces (after
-            # DisplaySwitch /extend, for instance).
-            $activeNow = @($monitors | Where-Object { $_.Active } | ForEach-Object { $_.Id } | Sort-Object)
-            $wantedSorted = @($wantedIds | Sort-Object)
-            $sameTopology = ($activeNow.Count -eq $wantedSorted.Count -and
-                             -not (Compare-Object $activeNow $wantedSorted))
-
-            if ($sameTopology) {
-                Write-DisplayLog 'switch: topology already correct'
+            if ($exactAlready) {
+                Write-DisplayLog 'switch: physical desktop already correct'
             }
             else {
                 # The window-position snapshot comes before the rebuild, while the windows still stand
@@ -4940,7 +5390,7 @@ function Switch-DisplayMode {
                 # Only when the topology really changes: on a repeat press the windows did not move
                 # anywhere, and walking the windows while reading process paths costs tens of
                 # milliseconds.
-                $doWindows = ((Test-Path Function:\Save-WindowLayout) -and
+                $doWindows = (-not $sameTopology -and (Test-Path Function:\Save-WindowLayout) -and
                               ($null -eq $settings.restoreWindows -or $settings.restoreWindows))
                 if ($doWindows) {
                     try { Save-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $activeNow) }
@@ -4957,15 +5407,25 @@ function Switch-DisplayMode {
                 # and work as repairs: when everything landed at once, they see "already correct" and do
                 # nothing.
                 $full = $false
-                $targets = @(Get-SwitchTargets -Wanted $wanted -Cache (Get-ModeCache) -KeepMode:$KeepMode)
-                if ($targets.Count -eq $wanted.Count) {
-                    $full = Set-CcdFullConfig -Targets $targets -PrimaryPath $primary.Id -Order @($settings.layout)
+                if ($restorePlan) {
+                    # Saved physical state is exact. A simplified retry would erase the very rotation or
+                    # rational rate this path exists to preserve, so refusal stops here.
+                    $full = Set-CcdFullConfig -Targets $restorePlan.Targets `
+                        -PrimaryPath $restorePlan.PrimaryPath -Exact
+                    if (-not $full) {
+                        throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
+                    }
                 }
-
-                # It did not work out — the old three-step road. It works, it just blinks: the set
-                # without the modes, and the positions and the refresh rate brought up afterwards.
-                if (-not $full -and -not (Set-CcdTopology -DevicePaths $wantedIds)) {
-                    throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
+                elseif (-not $sameTopology) {
+                    $targets = @(Get-SwitchTargets -Wanted $wanted -Cache (Get-ModeCache) -KeepMode:$KeepMode)
+                    if ($targets.Count -eq $wanted.Count) {
+                        $full = Set-CcdFullConfig -Targets $targets -PrimaryPath $primary.Id -Order @($settings.layout)
+                    }
+                    # It did not work out — the old three-step road. It works, it just blinks: the set
+                    # without the modes, and the positions and the refresh rate brought up afterwards.
+                    if (-not $full -and -not (Set-CcdTopology -DevicePaths $wantedIds)) {
+                        throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
+                    }
                 }
                 & $notePhase $phases 'apply'
 
@@ -4988,48 +5448,31 @@ function Switch-DisplayMode {
 
         if ($DryRun) { return (New-SwitchResult -ModeKey $ModeKey -Outcome 'dryrun' -Message 'dry run') }
 
-        # The layout is built here, once the set of active monitors is final: before the
-        # switching-off there is nothing to arrange — some of the screens are about to vanish, and
-        # their coordinates would have to be recomputed anyway.
-        #
-        # And it is built on EVERY switch, not only when there is an order to arrange by. "Primary" in
-        # Windows is not a flag but the place (0, 0), and this call is the only thing in the whole
-        # application that moves anybody there. Behind the `if ($order.Count -gt 0)` that used to stand
-        # here, a desk with no `layout` in the settings — every desk until its owner opens the Settings
-        # window once — never had its taskbar placed at all: the `primary` setting, a combo's own
-        # primary and -PrimaryMatch from the command line were all silently doing nothing, while README
-        # and the diary both described the old road as "moves only the primary and leaves the rest
-        # where they are". Set-CcdLayout has handled that case from the start, and nobody ever called
-        # it that way; with no order it moves nobody and only anchors the primary, and when that one is
-        # at (0, 0) already it applies nothing.
         $order = @($settings.layout)
         $layoutChanged = $false
         $layoutFailed = $false
-        $laid = Set-CcdLayout -PrimaryPath $primary.Id -Order $order
-        # We write "arranged" only when we really did arrange: otherwise the log gets the pair
-        # "already correct" + "arranged left to right", and the second line reports work that
-        # never happened. With no order there is nothing to arrange either — only the taskbar moved.
-        if ($laid.Ok -and $laid.Changed) {
-            if ($order.Count -gt 0) {
-                Write-DisplayLog ("layout: arranged left to right - " + ($order -join ' | '))
-            }
-            else {
-                Write-DisplayLog ("layout: taskbar moved to " + $primary.Label + " - no display order in the settings, the rest stay where they are")
-            }
-            $layoutChanged = $true
-        }
-        elseif ($laid.Ok) {
-            # A Note is "nothing moved, and not because everything was already right" — the display that
-            # was to hold the taskbar never came up, say. Printing "already correct" over that would be
-            # the log agreeing with a desk it has not looked at.
-            if ($laid.Note) { Write-DisplayLog $laid.Note }
-            else            { Write-DisplayLog 'layout: already correct' }
+        if ($restorePlan) {
+            # The exact CCD request already included the primary and both source coordinates. Calling the
+            # ordinary layout path here would immediately flatten those saved offsets into a row.
+            Write-DisplayLog $(if ($exactAlready) { 'layout: physical arrangement already correct' }
+                               else { 'layout: restored the saved physical arrangement' })
         }
         else {
-            # The reason is already in the log — Set-CcdLayout writes down every attempt. Here
-            # the failure is remembered for the summary and the verdict: a silent success with
-            # the monitors muddled up is the worst possible message.
-            $layoutFailed = $true
+            $laid = Set-CcdLayout -PrimaryPath $primary.Id -Order $order
+            if ($laid.Ok -and $laid.Changed) {
+                if ($order.Count -gt 0) {
+                    Write-DisplayLog ("layout: arranged left to right - " + ($order -join ' | '))
+                }
+                else {
+                    Write-DisplayLog ("layout: taskbar moved to " + $primary.Label + " - no display order in the settings, the rest stay where they are")
+                }
+                $layoutChanged = $true
+            }
+            elseif ($laid.Ok) {
+                if ($laid.Note) { Write-DisplayLog $laid.Note }
+                else            { Write-DisplayLog 'layout: already correct' }
+            }
+            else { $layoutFailed = $true }
         }
         & $notePhase $phases 'layout'
 
@@ -5038,8 +5481,27 @@ function Switch-DisplayMode {
         $nothingMoved = ($sameTopology -eq $true) -and (-not $layoutChanged)
         $alreadyBest = ($nothingMoved -and -not $KeepMode -and (Test-ModesAlreadyBest $wanted))
 
-        $step = Set-WantedModes -Wanted $wanted -AlreadyBest:$alreadyBest -KeepMode:$KeepMode
+        if ($restorePlan -and $exactAlready) {
+            $step = Set-WantedModes -Wanted $wanted -AlreadyBest
+        }
+        elseif ($restorePlan) {
+            # Query and summarize what landed, but never run the best-mode repair over an exact snapshot.
+            $step = Set-WantedModes -Wanted $wanted -KeepMode
+        }
+        else {
+            $step = Set-WantedModes -Wanted $wanted -AlreadyBest:$alreadyBest -KeepMode:$KeepMode
+        }
         & $notePhase $phases 'modes'
+
+        $restoreFailed = $false
+        $verifiedState = $null
+        if ($restorePlan) {
+            $verifiedState = $(if ($exactAlready) { $monitors } else { @(Get-DisplayState) })
+            $restoreFailed = -not (Test-DesktopSnapshotMatch -Snapshot $restorePlan.Expected -State $verifiedState)
+            if ($restoreFailed) {
+                Write-DisplayLog 'warn: the saved physical desktop did not verify after apply'
+            }
+        }
 
         # Not one of the displays we asked for attached: the set we put out is out, and the set we put
         # on never came. That is a black desk - the one failure a shortcut cannot mend, because the
@@ -5051,16 +5513,83 @@ function Switch-DisplayMode {
         # went dark. And only when EVERY wanted display failed - one that came up keeps the picture, and
         # the partial verdict below says which did not.
         if (-not $sameTopology -and $wanted.Count -gt 0 -and @($step.Failed).Count -ge $wanted.Count) {
-            $wasOn = @($monitors | Where-Object { $_.Active })
+            $sourceIds = @($(if ($currentSnapshot) { $currentSnapshot.Displays | ForEach-Object { $_.Id } }
+                             else { $activeNow }))
+            $wasOn = @($monitors | Where-Object { $sourceIds -contains $_.Id })
             Write-DisplayLog ("revert: none of the requested displays came up - putting back " + (@($wasOn | ForEach-Object { $_.Label }) -join ', '))
-            $reverted = Set-CcdTopology -DevicePaths @($wasOn | ForEach-Object { $_.Id })
-            if ($reverted) { Write-DisplayLog 'revert: the previous set is back' }
-            else           { Write-DisplayLog 'revert: Windows refused the previous set as well' }
+            $reverted = $false
+            $exactReverted = $false
+            $sourceKey = $(if ($currentSnapshot) { [string]$currentSnapshot.Key }
+                           else { Get-DesktopSetKey -DevicePaths @($wasOn | ForEach-Object { $_.Id }) })
+            if ($sourceKey) {
+                # A topology-only emergency fallback can recover the picture while losing the primary,
+                # coordinates or rotation. Guard that observed set before attempting the rollback so a
+                # later switch cannot learn the damaged result over its complete baseline.
+                $desktopStore.UnsafeKeys[$sourceKey] = $true
+                try { Write-DesktopSnapshotStore -Store $desktopStore }
+                catch { Write-DisplayLog "warn: could not guard the previous desktop before rollback - $($_.Exception.Message)" }
+            }
+            $sourceSnapshot = $(if ($currentSnapshotTrusted) { $currentSnapshot }
+                                elseif ($sourceKey) { $desktopStore.Snapshots[$sourceKey] })
+            if ($sourceSnapshot) {
+                # When this source set was already guarded, the live pre-switch state may itself be the
+                # damaged result of an earlier topology-only rollback. Restore and verify the saved good
+                # baseline; matching that damaged observation must never clear its guard.
+                $sourcePlan = New-DesktopRestorePlan -Snapshot $sourceSnapshot -Wanted $wasOn
+                if ($sourcePlan) {
+                    $reverted = Set-CcdFullConfig -Targets $sourcePlan.Targets `
+                        -PrimaryPath $sourcePlan.PrimaryPath -Exact
+                    if ($reverted) {
+                        $reverted = Test-DesktopSnapshotMatch -Snapshot $sourcePlan.Expected `
+                            -State @(Get-DisplayState)
+                        $exactReverted = $reverted
+                        if ($exactReverted -and $sourceKey) {
+                            [void]$desktopStore.UnsafeKeys.Remove($sourceKey)
+                            try { Write-DesktopSnapshotStore -Store $desktopStore }
+                            catch { Write-DisplayLog "warn: could not mark the previous physical desktop verified - $($_.Exception.Message)" }
+                        }
+                    }
+                }
+            }
+            if (-not $reverted) {
+                $reverted = Set-CcdTopology -DevicePaths @($wasOn | ForEach-Object { $_.Id })
+            }
+            if ($exactReverted) { Write-DisplayLog 'revert: the previous physical desktop is back' }
+            elseif ($reverted)  { Write-DisplayLog 'revert: the previous display set is back' }
+            else           { Write-DisplayLog 'revert: Windows refused the previous desktop as well' }
             throw (New-DisplayRefusal -Key 'switch.noneCameUp' -Values @($mode.Title) -LogValues @($mode.Key))
         }
 
         $verdict = Format-SwitchResult -Summary $step.Summary -Failed $step.Failed `
-                                       -Refused $refused -LayoutFailed $layoutFailed
+                                       -Refused $refused -LayoutFailed $layoutFailed `
+                                       -RestoreFailed $restoreFailed
+
+        # A pending destination stays durable until fresh CCD state proves the whole physical desktop.
+        # Only then may the watchdog protect these exact modes, including across a separate tray process.
+        if ($verdict.Ok) {
+            if (-not $verifiedState) { $verifiedState = @(Get-DisplayState) }
+            $verifiedSnapshot = New-DesktopSnapshot -State $verifiedState
+            if ($verifiedSnapshot -and $verifiedSnapshot.Key -eq $destinationKey) {
+                if (-not $hadDestinationSnapshot) {
+                    $desktopStore.Snapshots[$destinationKey] = $verifiedSnapshot
+                }
+                $desktopStore.PendingKey = ''
+                [void]$desktopStore.UnsafeKeys.Remove($destinationKey)
+                $desktopStore.ProtectedKey = $destinationKey
+                try { Write-DesktopSnapshotStore -Store $desktopStore }
+                catch {
+                    Write-DisplayLog "warn: the restored physical desktop could not be marked complete - $($_.Exception.Message)"
+                    $restoreFailed = $true
+                    $verdict = Format-SwitchResult -Summary $step.Summary -Failed $step.Failed `
+                        -Refused $refused -LayoutFailed $layoutFailed -RestoreFailed $true
+                }
+            }
+            else {
+                $restoreFailed = $true
+                $verdict = Format-SwitchResult -Summary $step.Summary -Failed $step.Failed `
+                    -Refused $refused -LayoutFailed $layoutFailed -RestoreFailed $true
+            }
+        }
         $text = $verdict.Text
         # Formatted through InvariantCulture: the log is English, and `-f` takes the separator from
         # the current locale and on a Russian one would write "4,2 s".
@@ -5086,7 +5615,7 @@ function Switch-DisplayMode {
         # And here it is the other way round — only the fact: whatever the monitor showed is what we remembered.
         Save-AppliedModes -Applied $step.Applied
 
-        Invoke-SwitchTail -Settings $settings -ModeKey $ModeKey -RestoreWindows $doWindows `
+        Invoke-SwitchTail -Settings $settings -ModeKey $ModeKey -RestoreWindows:($doWindows -and $verdict.Ok) `
                           -WantedIds $wantedIds -LevelTargets $step.LevelTargets
 
         return (New-SwitchResult -ModeKey $ModeKey -Message $text `
@@ -5262,30 +5791,41 @@ function Restore-BestModes {
         # First we only gather the list — nothing is applied. A game manages to open after the
         # mode-change event, and the check on the way in sometimes does not catch it; gathering the
         # state takes a second, and the repeat check below lands on an already-open full screen.
+        $state = @(Get-DisplayState)
+        $activeKey = Get-DesktopSetKey -DevicePaths @($state | Where-Object { $_.Active } | ForEach-Object { $_.Id })
+        $snapshotStore = Read-DesktopSnapshotStore
+        $protectedSnapshot = $null
+        if ($snapshotStore.ProtectedKey -eq $activeKey -and
+            -not $snapshotStore.UnsafeKeys.ContainsKey($activeKey)) {
+            $protectedSnapshot = $snapshotStore.Snapshots[$activeKey]
+        }
+
         $todo = @()
-        foreach ($m in @(Get-DisplayState)) {
+        foreach ($m in $state) {
             if (-not $m.Active -or -not $m.BestMode) { continue }
             $cur = Get-CurrentMode $m.Output
             if (-not $cur) { continue }
+            $desired = Get-WatchdogMode -Monitor $m -ProtectedSnapshot $protectedSnapshot
+            if (-not $desired) { continue }
             # The watchdog does not touch the resolution. It does not change by itself: what Windows
             # drops is the refresh rate specifically (see the log — 240→144, 60→29). An application,
             # though, changes the resolution specifically and deliberately: Counter-Strike sets a
             # stretched 1440x1080, and three restores to 2560x1440 in a row broke its startup.
-            $sameRes = ($cur.Width -eq $m.BestMode.Width -and $cur.Height -eq $m.BestMode.Height)
+            $sameRes = ($cur.Width -eq $desired.Width -and $cur.Height -eq $desired.Height)
             if (-not $sameRes) {
                 $note = '{0}x{1}' -f $cur.Width, $cur.Height
                 if ($script:LastResNote[$m.Label] -ne $note) {
                     $script:LastResNote[$m.Label] = $note
                     Write-DisplayLog ("watch: {0} is at {1}x{2}, not {3}x{4} - leaving the resolution alone, an app set it" -f `
-                        $m.Label, $cur.Width, $cur.Height, $m.BestMode.Width, $m.BestMode.Height)
+                        $m.Label, $cur.Width, $cur.Height, $desired.Width, $desired.Height)
                 }
                 continue
             }
 
             $script:LastResNote.Remove($m.Label)
-            if ($cur.Hz -eq $m.BestMode.Hz) { continue }
+            if ($cur.Hz -eq $desired.Hz) { continue }
 
-            $todo += [pscustomobject]@{ Monitor = $m; Current = $cur }
+            $todo += [pscustomobject]@{ Monitor = $m; Current = $cur; Desired = $desired }
         }
 
         if ($todo.Count -gt 0 -and (Test-FullscreenApp)) {
@@ -5300,15 +5840,15 @@ function Restore-BestModes {
         foreach ($t in $todo) {
             $m = $t.Monitor
             $cur = $t.Current
+            $desired = $t.Desired
 
             Write-DisplayLog ("watch: {0} dropped to {1}x{2} @ {3} Hz, restoring {4}x{5} @ {6} Hz" -f `
-                $m.Label, $cur.Width, $cur.Height, $cur.Hz, $m.BestMode.Width, $m.BestMode.Height, $m.BestMode.Hz)
+                $m.Label, $cur.Width, $cur.Height, $cur.Hz, $desired.Width, $desired.Height, $desired.Hz)
 
             $nw = 0; $nh = 0
             if ($m.Native) { $nw = $m.Native.Width; $nh = $m.Native.Height }
-            # BestMode is already worked out here too: the watchdog decided the monitor had sagged by
-            # that very thing. A second pass over the modes would be redundant.
-            if (Set-BestModeFor -Output $m.Output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode) {
+            # A protected physical snapshot deliberately takes precedence over the largest driver mode.
+            if (Set-BestModeFor -Output $m.Output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $desired) {
                 $fixed += $m.Label
             }
         }

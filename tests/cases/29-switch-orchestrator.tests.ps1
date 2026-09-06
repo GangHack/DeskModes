@@ -31,6 +31,9 @@ function New-SwitchDesk {
     )
     for ($i = 0; $i -lt $desk.Count; $i++) {
         $desk[$i].Output = '\\.\DISPLAY' + ($i + 1)
+        $desk[$i].X = $i * 2560
+        $desk[$i].Y = 0
+        $desk[$i].Primary = ($i -eq 0)
         $desk[$i].BestMode = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144 }
     }
     return $desk
@@ -59,6 +62,9 @@ $script:SwFakes = {
     $script:SwLayoutNote = ''
     $script:SwSavedMode = ''
     $script:SwAppliedModes = $null
+    $script:SwStore = New-DesktopSnapshotStore
+    $script:SwPendingIds = @()
+    $script:SwVerifyMismatch = $false
 
     function Get-DisplaySettings { return $script:SwSettings }
     function Get-DisplayState { return @($script:SwDesk) }
@@ -66,6 +72,8 @@ $script:SwFakes = {
     # The cache of verified modes is shadowed on purpose: the file in the temporary folder is left behind
     # by other groups of cases, and without this the set of targets would depend on the order of the run.
     function Get-ModeCache { return @{} }
+    function Read-DesktopSnapshotStore { return $script:SwStore }
+    function Write-DesktopSnapshotStore { param($Store) $script:SwStore = $Store }
 
     function Invoke-ModeHook {
         param($Settings, [string]$ModeKey, [string]$Phase)
@@ -77,21 +85,50 @@ $script:SwFakes = {
     function Restore-WindowLayout { param([string]$Key) $script:SwCalls += 'windows:restore' }
 
     function Set-CcdFullConfig {
-        param($Targets, [string]$PrimaryPath, $Order)
+        param($Targets, [string]$PrimaryPath, $Order, [switch]$Exact)
         $script:SwCalls += ('full:' + ((@($Targets) | ForEach-Object { $_.DevicePath }) -join '+'))
         $script:SwFullPrimary = $PrimaryPath
+        $script:SwFullTargets = @($Targets)
+        $script:SwFullExact = [bool]$Exact
+        if ($script:SwFullOk) {
+            $ids = @($Targets | ForEach-Object { $_.DevicePath })
+            $script:SwPendingIds = $ids
+            foreach ($m in @($script:SwDesk)) {
+                $m.Primary = ($m.Id -eq $PrimaryPath)
+                $t = @($Targets | Where-Object { $_.DevicePath -eq $m.Id } | Select-Object -First 1)
+                if ($t.Count -gt 0) {
+                    $m.Width = [int]$t[0].Width; $m.Height = [int]$t[0].Height; $m.Hz = [int]$t[0].Hz
+                    if ($t[0].PSObject.Properties['X']) { $m.X = [int]$t[0].X; $m.Y = [int]$t[0].Y }
+                    if ($t[0].PSObject.Properties['Rotation']) { $m.Rotation = [int]$t[0].Rotation }
+                    if ($t[0].PSObject.Properties['RateNum'] -and [int]$t[0].RateDen -gt 0) {
+                        $m.RateNum = [int]$t[0].RateNum; $m.RateDen = [int]$t[0].RateDen
+                    }
+                }
+            }
+        }
         return $script:SwFullOk
     }
 
     function Set-CcdTopology {
         param($DevicePaths)
         $script:SwCalls += ('topology:' + (@($DevicePaths) -join '+'))
+        if ($script:SwTopologyOk) {
+            $script:SwPendingIds = @($DevicePaths)
+        }
         return $script:SwTopologyOk
     }
 
     function Wait-ForTopology {
         param($WantedPaths)
         $script:SwCalls += 'settle'
+        foreach ($m in @($script:SwDesk)) {
+            $missing = (@($script:SwSettled.MissingLabels) -contains $m.Label)
+            $m.Active = (($script:SwPendingIds -contains $m.Id) -and -not $missing)
+        }
+        if ($script:SwVerifyMismatch) {
+            $hit = @($script:SwDesk | Where-Object { $_.Active } | Select-Object -First 1)
+            if ($hit.Count -gt 0) { $hit[0].Rotation = $(if ($hit[0].Rotation -eq 1) { 2 } else { 1 }) }
+        }
         return $script:SwSettled
     }
 
@@ -157,10 +194,110 @@ Test-Case 'switch: the set is already right, so the topology is not rebuilt' {
     Assert-True (-not ($script:SwCalls -match '^topology')) 'and no topology rebuild either'
     Assert-True (-not ($script:SwCalls -contains 'settle')) 'nothing to wait for'
     Assert-True (-not ($script:SwCalls -contains 'windows:save')) 'windows did not move, so they were not snapshotted'
-    # The layout and the modes are checked anyway: the set can match while the desk is in pieces — after
-    # DisplaySwitch /extend, for instance.
-    Assert-True ($script:SwCalls -contains 'layout') 'the layout is still checked'
-    Assert-Equal 'hook:before,layout,lastMode,applied,hook:after' ($script:SwCalls -join ',') 'and that is the whole of it'
+    Assert-True (-not ($script:SwCalls -contains 'layout')) 'the saved offsets are not flattened into a row'
+    Assert-True (-not ($script:SwCalls -match '^best:')) 'maximize refresh does not rewrite the live modes'
+    Assert-Equal 'hook:before,lastMode,applied,hook:after' ($script:SwCalls -join ',') 'and that is the whole of it'
+}
+
+Test-Case 'switch: all returns to the original physical desk after a solo mode' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwDesk[2].Width = 1080; $script:SwDesk[2].Height = 1920; $script:SwDesk[2].Hz = 75
+    $script:SwDesk[2].X = 2560; $script:SwDesk[2].Y = -180
+    $script:SwDesk[2].Rotation = 4; $script:SwDesk[2].RateNum = 75; $script:SwDesk[2].RateDen = 1
+    $script:SwSettings = New-SwitchSettings
+
+    [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet)
+    Assert-Equal 4 $script:SwDesk[2].Rotation 'the first solo switch keeps flipped portrait'
+    Assert-Equal 1080 $script:SwDesk[2].Width 'and its portrait resolution'
+
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
+    Assert-Equal 'path-ug' (@($script:SwDesk | Where-Object { $_.Primary })[0].Id) 'the original primary returned'
+    Assert-Equal 2560 $script:SwDesk[2].X 'the original horizontal offset returned'
+    Assert-Equal (-180) $script:SwDesk[2].Y 'the original vertical offset returned'
+    Assert-Equal 4 $script:SwDesk[2].Rotation 'the original flipped portrait returned'
+    Assert-Equal 75 $script:SwDesk[2].RateNum 'the original rational rate returned'
+
+    $before = @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
+    Assert-Equal $before @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'repeated All is a physical no-op'
+}
+
+Test-Case 'switch: a failed exact restore cannot poison the baseline after restart' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+
+    $baselineDesk = New-SwitchDesk
+    $baselineDesk[2].Width = 1080; $baselineDesk[2].Height = 1920; $baselineDesk[2].Hz = 75
+    $baselineDesk[2].Rotation = 4; $baselineDesk[2].RateNum = 75; $baselineDesk[2].RateDen = 1
+    $baseline = New-DesktopSnapshot -State $baselineDesk
+    $script:SwStore.Snapshots[$baseline.Key] = $baseline
+    $script:SwStore.PendingKey = $baseline.Key
+    $script:SwVerifyMismatch = $true
+
+    $first = Switch-DisplayMode -ModeKey 'all' -Quiet
+    Assert-Equal 'partial' $first.Outcome 'the unverified restore is a partial result'
+    Assert-Equal 4 $script:SwStore.Snapshots[$baseline.Key].Displays[2].Rotation 'bad observed geometry did not replace the baseline'
+    Assert-Equal $baseline.Key $script:SwStore.PendingKey 'the persistent retry guard remains'
+
+    $script:SwVerifyMismatch = $false
+    $second = Switch-DisplayMode -ModeKey 'all' -Quiet
+    Assert-Equal 'done' $second.Outcome 'the next process can retry the saved baseline'
+    Assert-Equal '' $script:SwStore.PendingKey 'verified success clears the guard'
+    Assert-Equal 4 $script:SwDesk[2].Rotation 'the saved portrait rotation wins over the failed observation'
+}
+
+Test-Case 'switch: a failed first solo restore retries from the trusted larger desk' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwDesk[2].Width = 1080; $script:SwDesk[2].Height = 1920; $script:SwDesk[2].Hz = 75
+    $script:SwDesk[2].Rotation = 4; $script:SwDesk[2].RateNum = 75; $script:SwDesk[2].RateDen = 1
+    $script:SwSettings = New-SwitchSettings
+    $soloKey = Get-DesktopSetKey -DevicePaths @('path-xg')
+    $script:SwVerifyMismatch = $true
+
+    $first = Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet
+    Assert-Equal 'partial' $first.Outcome 'the first unverified solo is a partial result'
+    Assert-True $script:SwStore.UnsafeKeys.ContainsKey($soloKey) 'the unseen subset is guarded'
+    Assert-True (-not $script:SwStore.Snapshots.ContainsKey($soloKey)) 'the damaged subset was not learned'
+
+    $script:SwVerifyMismatch = $false
+    $second = Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet
+    Assert-Equal 'done' $second.Outcome 'the guarded set can be retried'
+    Assert-Equal 4 $script:SwDesk[2].Rotation 'the trusted larger desk supplies flipped portrait again'
+    Assert-True (-not $script:SwStore.UnsafeKeys.ContainsKey($soloKey)) 'verified retry clears the guard'
+}
+
+Test-Case 'switch: automatic reapply restores the saved desk instead of adopting drift' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $baselineDesk = New-SwitchDesk
+    $baselineDesk[2].Width = 1080; $baselineDesk[2].Height = 1920; $baselineDesk[2].Hz = 75
+    $baselineDesk[2].Rotation = 4; $baselineDesk[2].RateNum = 75; $baselineDesk[2].RateDen = 1
+    $baseline = New-DesktopSnapshot -State $baselineDesk
+    $script:SwStore.Snapshots[$baseline.Key] = $baseline
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet -Automatic
+
+    Assert-True $r.Ok 'automatic restoration completes'
+    Assert-True $script:SwFullExact 'it uses the exact CCD request'
+    Assert-Equal 4 $script:SwDesk[2].Rotation 'saved rotation wins over Windows drift'
+    Assert-Equal 75 $script:SwDesk[2].Hz 'saved refresh wins over maximize refresh'
+}
+
+Test-Case 'switch: a baseline write failure refuses before the desk or hooks change' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    function Write-DesktopSnapshotStore { param($Store) throw 'disk is read-only' }
+
+    $failed = ''
+    try { [void](Switch-DisplayMode -ModeKey 'all' -Quiet) } catch { $failed = $_.Exception.Message }
+
+    Assert-True ($failed -like '*snapshotWriteFailed*') 'the safe refusal reaches the caller'
+    Assert-Equal 0 $script:SwCalls.Count 'nothing external ran after persistence failed'
 }
 
 Test-Case 'switch: an automatic switch does not overwrite the mode the human chose' {
@@ -307,16 +444,18 @@ Test-Case 'switch: a combination whose displays are all unplugged keeps the pict
     Assert-Equal 0 $script:SwCalls.Count 'not a single call went out'
 }
 
-Test-Case 'switch: a layout that would not lie down is not reported as success' {
+Test-Case 'switch: a saved desktop that does not verify is not reported as success' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
-    $script:SwLayoutOk = $false
+    $script:SwSettings.primary = 'ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
+    $script:SwVerifyMismatch = $true
 
     $r = Switch-DisplayMode -ModeKey 'all' -Quiet
 
-    Assert-True (-not $r.Ok) 'a silent success on scrambled displays is the worst possible message'
-    Assert-True ($r.Message -like '*positions not arranged*') 'the text says what to do about it'
+    Assert-True (-not $r.Ok) 'a silent success on mismatched physical state is not allowed'
+    Assert-True ($r.Message -like '*verdict.restore*') 'the exact-restore failure reaches the verdict'
     # A person's choice is remembered even so: they asked for this mode specifically.
     Assert-True ($script:SwCalls -contains 'lastMode') 'and the choice is still remembered'
     Assert-Equal 'all' $script:SwSavedMode 'as the mode he asked for'
@@ -461,14 +600,14 @@ Test-Case 'switch: the taskbar is placed even when the settings say nothing abou
     $script:SwSettings = New-SwitchSettings
     $script:SwSettings.layout = @()
     $script:SwSettings.primary = 'ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
     $script:SwLayoutPrimary = ''
 
     $r = Switch-DisplayMode -ModeKey 'all' -Quiet
 
     Assert-True $r.Ok 'the switch is a success'
-    Assert-True ($script:SwCalls -contains 'layout') 'the desk was still asked to place the taskbar'
-    Assert-Equal 'path-uf' $script:SwLayoutPrimary 'and on the display the settings name'
-    Assert-Equal 0 $script:SwLayoutOrder.Count 'with no order to arrange by - only the primary moves'
+    Assert-True ($script:SwCalls -match '^full:') 'the exact request includes the primary'
+    Assert-Equal 'path-uf' $script:SwFullPrimary 'and uses the display the settings explicitly name'
 }
 
 Test-Case 'switch: nothing to anchor is not "already correct"' {
@@ -500,11 +639,13 @@ Test-Case 'switch: with an order, the layout gets it whole' {
     $script:SwDesk = New-SwitchDesk -ThirdActive $false
     $script:SwSettings = New-SwitchSettings
     $script:SwSettings.primary = 'ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
+    $script:SwSettings.layoutOverride = $true
 
     [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
 
-    Assert-Equal 'path-uf' $script:SwLayoutPrimary 'the taskbar display'
-    Assert-Equal 3 $script:SwLayoutOrder.Count 'and all three names, in the order from the settings'
+    Assert-Equal 'path-uf' $script:SwFullPrimary 'the taskbar display'
+    Assert-True (-not $script:SwFullExact) 'a display never observed active still takes the verified fallback road'
 }
 
 # --- the answer a switch gives ----------------------------------------------
@@ -598,6 +739,7 @@ Test-Case 'switch: when none of the wanted displays comes up, the previous set i
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false
     $script:SwSettings = New-SwitchSettings
+    $script:SwSettled = [pscustomobject]@{ Ok = $false; MissingLabels = @('XG27AQDMGR'); ExtraLabels = @() }
     # The ASUS is asked for alone; it never attaches - Get-CcdOutput finds nothing for it.
     function Get-CcdOutput { param([string]$DevicePath) return '' }
 
@@ -605,14 +747,59 @@ Test-Case 'switch: when none of the wanted displays comes up, the previous set i
     try { [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet) } catch { $threw = $_.Exception.Message }
 
     Assert-True ($threw -like '*previous set was put back*') 'the switch says what it did'
-    Assert-Equal 'topology:path-ug+path-uf' (@($script:SwCalls | Where-Object { $_ -like 'topology:*' })[-1]) 'and the two that were on are asked for again'
+    Assert-Equal 'full:path-ug+path-uf' (@($script:SwCalls | Where-Object { $_ -like 'full:*' })[-1]) 'and the complete previous physical desk is asked for again'
     Assert-True (-not ($script:SwCalls -contains 'lastMode')) 'a mode that never came up is not remembered as the choice'
+}
+
+Test-Case 'switch: a topology-only rollback cannot replace the source baseline' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    $source = New-DesktopSnapshot -State $script:SwDesk
+    $script:RollbackExactAttempts = 0
+    $script:SwSettled = [pscustomobject]@{ Ok = $false; MissingLabels = @('XG27AQDMGR'); ExtraLabels = @() }
+    function Get-CcdOutput { param([string]$DevicePath) return '' }
+    function Set-CcdFullConfig {
+        param($Targets, [string]$PrimaryPath, $Order, [switch]$Exact)
+        $script:SwCalls += ('full:' + ((@($Targets) | ForEach-Object { $_.DevicePath }) -join '+'))
+        if (@($Targets).Count -gt 1) {
+            $script:RollbackExactAttempts++
+            if ($script:RollbackExactAttempts -eq 1) { return $false }
+            $ids = @($Targets | ForEach-Object { $_.DevicePath })
+            foreach ($m in @($script:SwDesk)) {
+                $m.Active = ($ids -contains $m.Id)
+                $m.Primary = ($m.Id -eq $PrimaryPath)
+                $t = @($Targets | Where-Object { $_.DevicePath -eq $m.Id } | Select-Object -First 1)
+                if ($t.Count -gt 0) {
+                    $m.X = [int]$t[0].X; $m.Y = [int]$t[0].Y
+                    $m.Rotation = [int]$t[0].Rotation
+                }
+            }
+            return $true
+        }
+        $script:SwPendingIds = @($Targets | ForEach-Object { $_.DevicePath })
+        return $true
+    }
+
+    try { [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet) } catch { }
+
+    Assert-True ($script:SwCalls -contains 'topology:path-ug+path-uf') 'the emergency fallback restored only the source set'
+    Assert-True $script:SwStore.UnsafeKeys.ContainsKey($source.Key) 'its unverified geometry remains guarded'
+    Assert-Equal $source.PrimaryId $script:SwStore.Snapshots[$source.Key].PrimaryId 'the complete source baseline remains intact'
+
+    $script:SwDesk[0].Active = $true; $script:SwDesk[1].Active = $true
+    $script:SwDesk[0].X = 777; $script:SwDesk[1].X = 3337
+    try { [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet) } catch { }
+
+    Assert-Equal 0 $script:SwDesk[0].X 'the next exact rollback uses the trusted source geometry'
+    Assert-True (-not $script:SwStore.UnsafeKeys.ContainsKey($source.Key)) 'only that verified baseline clears the source guard'
 }
 
 Test-Case 'switch: one display that came up is kept - a partial verdict, not a revert' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false
     $script:SwSettings = New-SwitchSettings
+    $script:SwSettled = [pscustomobject]@{ Ok = $false; MissingLabels = @('XG27AQDMGR'); ExtraLabels = @() }
     # Only the ASUS stays silent; the two LGs answer as before.
     function Get-CcdOutput {
         param([string]$DevicePath)

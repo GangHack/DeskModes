@@ -29,6 +29,11 @@ ui-state.json
 # Needed to set a sleeping monitor's mode in one transition.
 display-modes.json
 
+# Exact physical desktops by stable monitor identity. This is machine state: positions, rotation,
+# primary assignment, resolution and the driver's rational refresh rate.
+desktop-layouts.json
+desktop-layouts.json.*.tmp
+
 # The monitors this desk has ever had, by name. What lets the interface offer a display that is
 # switched off at its own button and gone from the bus, and it names the actual monitors in front
 # of one person.

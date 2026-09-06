@@ -68,6 +68,7 @@ $script:SettingsFile = Join-Path $script:TestDir 'settings.json'
 $script:WindowStateFile = Join-Path $script:TestDir 'window-state.json'
 $script:LastModeFile = Join-Path $script:TestDir 'last-mode.json'
 $script:ModeCacheFile = Join-Path $script:TestDir 'display-modes.json'
+$script:DesktopSnapshotsFile = Join-Path $script:TestDir 'desktop-layouts.json'
 # The roster of monitors ever seen. Redirected like the rest: a case that learns an invented desk
 # must not teach the real one, and the real file names the monitors on this actual machine.
 $script:KnownDisplaysFile = Join-Path $script:TestDir 'known-displays.json'
