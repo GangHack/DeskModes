@@ -186,7 +186,14 @@ native APIs or extracted production functions; no hardware mutation is part of t
 Integrated verification in Windows PowerShell 5.1 passed: 77 scripts parsed, 104 encoding
 checks, PSScriptAnalyzer 1.25.0 clean, 303 English keys with complete translations, and
 2,312 assertions. The relocated transition-recovery cases also pass with the switch suite
-selected independently via `tests/run-tests.ps1 -File 29`.
+selected independently via `tests/run-tests.ps1 -File 29` (235 assertions).
 
 The assigned software corrections are complete. Actual driver timing, DDC and real monitor
 switching remain outside this acceptance boundary; no release, tag or push was performed.
+
+Portable smoke verification used committed source `bbb936c`: `tools/pack.ps1` produced
+25 program files, SHA256 `8ac956b2f554cd2211ad3bd4b697bb2874aab35a19247647eac82b659d9dbc2c`.
+The unpacked temporary copy generated all 20 EN/RU fake preview PNGs; combo editors and the
+Russian timer were inspected. Its CLI diagnostics command produced parseable JSON through a
+fresh PowerShell 5.1 process. Rendering and diagnostic state remained in the temporary copy.
+These checks do not constitute interactive UI or real display-switching acceptance.
