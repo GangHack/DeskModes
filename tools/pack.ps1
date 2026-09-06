@@ -116,6 +116,16 @@ if ($ExpectVersion -and $ExpectVersion -ne $version) {
 # a refusal that leaves rubbish behind. -ExpectVersion is what tells a release from a local build —
 # only the workflow passes it, and only for a tag.
 if ($ExpectVersion) {
+    # A dated older heading can still coexist with new unversioned features. Packaging those
+    # under the old notes silently publishes a different product than the release describes.
+    $pending = $false
+    foreach ($line in [System.IO.File]::ReadAllLines((Join-Path $root 'CHANGELOG.md'))) {
+        if ($line -match '^##\s+Unreleased\s*$') { $pending = $true; continue }
+        if ($line -match '^##\s+') { $pending = $false }
+        if ($pending -and $line.Trim() -and $line -notmatch '^#+\s') {
+            throw 'CHANGELOG.md still has Unreleased content. Assign it to a version before tagging.'
+        }
+    }
     $heading = (Get-ChangelogSection -Version $version).Heading
     if (-not $heading) { throw "CHANGELOG.md has no section for $version." }
     if ($heading -notmatch '\d{4}-\d{2}-\d{2}') {
@@ -132,6 +142,7 @@ if ($LASTEXITCODE -ne 0 -or $listed.Count -eq 0) {
 
 if (-not $AllowDirty) {
     $dirty = @(& git -C $root status --porcelain)
+    if ($LASTEXITCODE -ne 0) { throw 'git status failed; the working tree could not be verified as clean.' }
     if ($dirty.Count -gt 0) {
         throw ("The working tree is dirty, so the archive would not be reproducible:`n" +
                ($dirty -join "`n") + "`n`nCommit first, or pass -AllowDirty.")
