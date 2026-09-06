@@ -60,6 +60,7 @@
     'behavior.language.auto'      = 'Windows folgen'
     'behavior.startup'            = 'Mit Windows starten'
     'behavior.startup.hint'       = 'Das Infobereich-Symbol und die Tastenkürzel sind nach einem Neustart wieder da.'
+    'settings.startupFailed'      = 'Die Einstellungen wurden gespeichert, aber Mit Windows starten konnte nicht geändert werden. Versuchen Sie es erneut oder prüfen Sie den Autostart-Ordner; Details stehen im Protokoll.'
     'behavior.notifications'      = 'Benachrichtigungen'
     'behavior.notifications.hint' = 'Nach dem Umschalten eine Benachrichtigung zeigen.'
     'behavior.back'               = 'Zurück zum vorigen Modus'

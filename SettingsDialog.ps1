@@ -3763,6 +3763,18 @@ function Get-EditorPictureNames {
     return @($names)
 }
 
+# The display rows carry labels because those are what a person reads and what a newly remembered
+# value is written under. A hand-edited map may instead use the Monitor ID, which the switch accepts
+# on equal terms with the label, so matching an existing entry needs the same second name.
+function Get-EditorDisplayShortId {
+    param($Editor, [string]$Name)
+
+    foreach ($display in @($Editor.State)) {
+        if ($display -and [string]$display.Label -eq $Name) { return [string]$display.ShortId }
+    }
+    return ''
+}
+
 # Which entry of the editor's map stands for one display, or '' when nothing is remembered for it.
 #
 # A preset is keyed by A PIECE OF A NAME, not by the whole one: that is what Get-PicturePlan
@@ -3781,8 +3793,9 @@ function Get-PictureKeyFor {
 
     if (-not $Name -or -not $Editor.Picture) { return '' }
     if ($Editor.Picture.Contains($Name)) { return [string]$Name }
+    $shortId = Get-EditorDisplayShortId -Editor $Editor -Name $Name
     foreach ($key in @($Editor.Picture.Keys)) {
-        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId '') { return [string]$key }
+        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId) { return [string]$key }
     }
     return ''
 }
@@ -4596,8 +4609,9 @@ function Get-HdrKeyFor {
 
     if (-not $Name -or -not $Editor.Hdr) { return '' }
     if ($Editor.Hdr.Contains($Name)) { return [string]$Name }
+    $shortId = Get-EditorDisplayShortId -Editor $Editor -Name $Name
     foreach ($key in @($Editor.Hdr.Keys)) {
-        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId '') { return [string]$key }
+        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId) { return [string]$key }
     }
     return ''
 }
@@ -6014,7 +6028,7 @@ function Read-SettingsFromUi {
     # and NOT leave as defaults — layout and primary have already been lost that way. Every
     # field is carried over except the ones holding form elements, so that each new setting
     # without an element of its own does not bring this bug back.
-    $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'restoreWindows',
+    $fromForm = @('hotkeys', 'maximizeRefresh', 'notifications', 'language', 'restoreWindows',
                   'restoreLastMode', 'stats', 'layout', 'primary', 'layoutOverride',
                   'primaryOverride', 'combos',
                   'audio', 'hooks', 'brightness', 'contrast', 'picture', 'reapply', 'rules')
@@ -6136,6 +6150,14 @@ function Get-DialogModes {
     return $modes
 }
 
+function Show-SettingsWarning {
+    param([string]$Text)
+
+    [void][System.Windows.MessageBox]::Show(
+        $Text, 'DeskModes', [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
 # Returns the changed settings, or $null if it was cancelled. The window takes its icon off
 # the disk itself (Register-WindowTheme): WPF wants an ImageSource, not a GDI icon.
 function Show-SettingsDialog {
@@ -6161,7 +6183,8 @@ function Show-SettingsDialog {
 
     # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
     # from the settings: the shortcut could have been deleted by hand.
-    $ui.StartupBox.IsChecked = (Test-RunAtStartup)
+    $startupWasEnabled = [bool](Test-RunAtStartup)
+    $ui.StartupBox.IsChecked = $startupWasEnabled
     # And the display timeout from Windows, for the same reason: it is the system's, not ours.
     Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
     # Both of those were just set from outside, and neither is a person's edit. Taken again so
@@ -6180,23 +6203,28 @@ function Show-SettingsDialog {
         # $null travels back, so the tray keeps living with the settings it had: memory, disk and the
         # registered shortcuts stay one and the same thing.
         if (-not (Save-DisplaySettings $updated)) {
-            [void][System.Windows.MessageBox]::Show(
+            Show-SettingsWarning -Text (
                 "Could not write settings.json - nothing was saved." + [environment]::NewLine +
-                "Check that the folder DeskModes sits in can be written to. Details are in the log.",
-                'DeskModes', [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Warning)
+                "Check that the folder DeskModes sits in can be written to. Details are in the log.")
             return $null
         }
-        Set-RunAtStartup ([bool]$ui.StartupBox.IsChecked)
+        $startupWanted = [bool]$ui.StartupBox.IsChecked
+        if ($startupWanted -ne $startupWasEnabled) {
+            try { Set-RunAtStartup -Enabled $startupWanted }
+            catch {
+                # settings.json is already durable. A shortcut failure is one setting left behind,
+                # not grounds to make the tray keep the old settings and disagree with the file.
+                Write-DisplayLog "settings dialog: settings saved, but startup could not be changed - $($_.Exception.Message)"
+                Show-SettingsWarning -Text (Get-Text -Key 'settings.startupFailed')
+            }
+        }
         # Everything of ours is saved by now, so this is a warning about one row and not a failed
         # save: the settings still travel back to the tray. Said in a box all the same - the
         # dropdown is showing a number Windows did not take, and only the log would know.
         if (-not (Save-UiSleepMinutes -Ui $ui)) {
-            [void][System.Windows.MessageBox]::Show(
+            Show-SettingsWarning -Text (
                 "Windows would not change when the displays go dark." + [environment]::NewLine +
-                "Everything else was saved. Set it in Settings - System - Power; details are in the log.",
-                'DeskModes', [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Warning)
+                "Everything else was saved. Set it in Settings - System - Power; details are in the log.")
         }
         return $updated
     }

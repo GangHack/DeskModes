@@ -194,6 +194,22 @@ Test-Case 'language: the drop-down hands back a code and never the language''s o
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'language: changing the drop-down survives the full form read and marks the window edited' {
+    $settings = New-TestSettings
+    $settings.language = 'en'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal $false (Test-UiEdited -Ui $ui) 'the window starts untouched'
+        Set-UiLanguageBox -Ui $ui -Settings ([ordered]@{ language = 'ru' })
+        Assert-True (Test-UiEdited -Ui $ui) 'the changed language is an edit'
+
+        $got = Read-SettingsFromUi -Ui $ui -Settings $settings
+        Assert-True $got.Ok 'the whole form can be read'
+        Assert-Equal 'ru' ([string]$got.Settings.language) 'and the selected language reaches the settings'
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'language: the setting travels through settings.json and back' {
     $file = Join-Path $script:TestDir 'settings.json'
     '{ "language": "uk" }' | Set-Content -Path $file -Encoding UTF8

@@ -126,6 +126,27 @@ Test-Case 'hdr: the editor shows a row per display, and a choice lands in the mo
     finally { $ed.Window.Close(); $script:ActiveEditor = $null }
 }
 
+Test-Case 'hdr: a per-display answer written by Monitor ID survives both Saves' {
+    $settings = Get-DefaultSettings
+    $settings.hdr['all'] = [ordered]@{ 'GSM5BB3' = $false }
+    $ui = New-DialogUi -Settings $settings -State $script:DlgState
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'all' })[0]
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -Hdr $ui.Hdr -Dark $false
+        try {
+            Assert-Equal 'GSM5BB3' (Get-HdrKeyFor -Editor $ed -Name 'LG ULTRAGEAR') 'the row finds the Monitor ID'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-Equal $false ([bool]$got.Mode.Hdr['GSM5BB3']) 'the editor keeps the answer under that ID'
+
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal $false ([bool]$updated.hdr['all']['GSM5BB3']) 'the settings Save keeps it too'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'hdr: a combination renamed takes its HDR along, and one removed takes it away' {
     $settings = Get-DefaultSettings
     $settings.combos['Game'] = [ordered]@{ displays = @('LG ULTRAGEAR'); primary = '' }

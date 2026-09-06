@@ -55,3 +55,71 @@ Test-Case 'startup shortcut: a stale working directory counts as disabled' {
 Test-Case 'startup shortcut: an unreadable shortcut counts as disabled without breaking settings' {
     Assert-True (-not (Invoke-StartupShortcutFixture -Unreadable)) 'an unreadable shortcut cannot be verified as enabled'
 }
+
+Test-Case 'settings Save: a startup failure warns but returns the settings already committed' {
+    $script:SavedSettings = $null
+    $script:StartupCalls = 0
+    $script:SettingsWarning = ''
+    $window = [pscustomobject]@{}
+    $window | Add-Member -MemberType ScriptMethod -Name ShowDialog -Value {
+        $script:SettingsSaveUi.StartupBox.IsChecked = $true
+        return $true
+    }
+    $window | Add-Member -MemberType ScriptMethod -Name Close -Value { }
+    $updated = Get-DefaultSettings
+    $updated.language = 'ru'
+    $script:SettingsSaveUi = [pscustomobject]@{
+        Window = $window; Result = $updated
+        StartupBox = [pscustomobject]@{ IsChecked = $true }
+    }
+
+    function Get-DialogModes { param($State, $Settings) return @() }
+    function New-SettingsWindow { param($Modes, $Settings, $State, $Positions, [string]$Page) return $script:SettingsSaveUi }
+    function Test-RunAtStartup { return $false }
+    function Get-DisplaySleepMinutes { return 10 }
+    function Set-UiSleepMinutes { param($Ui, [int]$Minutes) }
+    function Set-UiBaseline { param($Ui) }
+    function Update-UiFooter { param($Ui) }
+    function Save-DisplaySettings { param($Settings) $script:SavedSettings = $Settings; return $true }
+    function Set-RunAtStartup { param([bool]$Enabled) $script:StartupCalls++; throw 'fictional Startup folder refusal' }
+    function Save-UiSleepMinutes { param($Ui) return $true }
+    function Show-SettingsWarning { param([string]$Text) $script:SettingsWarning = $Text }
+
+    try {
+        [void](Initialize-Language -Code 'ru')
+        $got = Show-SettingsDialog -State @() -Settings (Get-DefaultSettings)
+        Assert-True ($got -eq $updated) 'the tray receives the object written to settings.json'
+        Assert-True ($script:SavedSettings -eq $updated) 'the settings were committed before the shortcut failed'
+        Assert-Equal 1 $script:StartupCalls 'the requested startup change was attempted once'
+        Assert-Equal (Get-Text -Key 'settings.startupFailed') $script:SettingsWarning 'the warning follows the active language'
+        Assert-True ($script:SettingsWarning -notmatch '^\[') 'the warning key exists'
+    }
+    finally { [void](Initialize-Language -Code 'en') }
+}
+
+Test-Case 'settings Save: an unchanged startup choice is not rewritten' {
+    $script:StartupCalls = 0
+    $window = [pscustomobject]@{}
+    $window | Add-Member -MemberType ScriptMethod -Name ShowDialog -Value { return $true }
+    $window | Add-Member -MemberType ScriptMethod -Name Close -Value { }
+    $updated = Get-DefaultSettings
+    $script:SettingsSaveUi = [pscustomobject]@{
+        Window = $window; Result = $updated
+        StartupBox = [pscustomobject]@{ IsChecked = $true }
+    }
+
+    function Get-DialogModes { param($State, $Settings) return @() }
+    function New-SettingsWindow { param($Modes, $Settings, $State, $Positions, [string]$Page) return $script:SettingsSaveUi }
+    function Test-RunAtStartup { return $true }
+    function Get-DisplaySleepMinutes { return 10 }
+    function Set-UiSleepMinutes { param($Ui, [int]$Minutes) }
+    function Set-UiBaseline { param($Ui) }
+    function Update-UiFooter { param($Ui) }
+    function Save-DisplaySettings { param($Settings) return $true }
+    function Set-RunAtStartup { param([bool]$Enabled) $script:StartupCalls++ }
+    function Save-UiSleepMinutes { param($Ui) return $true }
+
+    $got = Show-SettingsDialog -State @() -Settings (Get-DefaultSettings)
+    Assert-True ($got -eq $updated) 'the committed settings still return'
+    Assert-Equal 0 $script:StartupCalls 'the current valid shortcut is left alone'
+}

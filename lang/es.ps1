@@ -59,6 +59,7 @@
     'behavior.language.auto'      = 'Seguir a Windows'
     'behavior.startup'            = 'Arrancar con Windows'
     'behavior.startup.hint'       = 'El icono de la bandeja y los atajos vuelven tras reiniciar.'
+    'settings.startupFailed'      = 'La configuración se guardó, pero no se pudo cambiar Arrancar con Windows. Inténtalo de nuevo o comprueba la carpeta Inicio; los detalles están en el registro.'
     'behavior.notifications'      = 'Avisos'
     'behavior.notifications.hint' = 'Mostrar un aviso después de cambiar.'
     'behavior.back'               = 'Volver al modo anterior'

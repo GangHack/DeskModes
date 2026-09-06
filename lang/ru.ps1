@@ -65,6 +65,7 @@
     'behavior.language.auto'      = 'Как в Windows'
     'behavior.startup'            = 'Запускать вместе с Windows'
     'behavior.startup.hint'       = 'Значок в трее и горячие клавиши вернутся после перезагрузки.'
+    'settings.startupFailed'      = 'Настройки сохранены, но параметр запуска вместе с Windows изменить не удалось. Повторите попытку или проверьте папку автозагрузки; подробности — в журнале.'
     'behavior.notifications'      = 'Уведомления'
     'behavior.notifications.hint' = 'Показывать уведомление после переключения.'
     'behavior.back'               = 'Назад к прошлому режиму'

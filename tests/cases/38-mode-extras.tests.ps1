@@ -597,6 +597,28 @@ Test-Case 'picture: a preset written as a piece of a name is shown and kept' {
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'picture: a preset written by Monitor ID survives the editor and settings Save' {
+    $settings = New-TestSettings
+    $settings.picture = [ordered]@{ 'all' = [ordered]@{ 'GSM5BB3' = '0x15:45' } }
+    $ui = New-DialogUi -Settings $settings -State $script:DlgState
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'all' })[0]
+        $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState `
+                                   -Picture $ui.Picture -Dark $false
+        try {
+            Assert-Equal 'GSM5BB3' (Get-PictureKeyFor -Editor $ed -Name 'LG ULTRAGEAR') 'the row finds the Monitor ID'
+            $got = Read-ModeFromUi -Editor $ed
+            Assert-Equal '0x15:45' ([string]$got.Mode.Picture['GSM5BB3']) 'the editor keeps its key and value'
+
+            Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal '0x15:45' ([string]$updated.picture['all']['GSM5BB3']) 'the settings Save keeps it too'
+        }
+        finally { $ed.Window.Close(); $script:ActiveEditor = $null }
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'picture: a rename carries the presets, and a deletion takes them away' {
     $settings = New-TestSettings -Combos @{ 'Work' = @('LG ULTRAFINE') }
     $settings.picture = [ordered]@{ 'combo:Work' = [ordered]@{ 'LG ULTRAFINE' = '0x15:45' } }

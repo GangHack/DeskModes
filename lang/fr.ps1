@@ -59,6 +59,7 @@
     'behavior.language.auto'      = 'Suivre Windows'
     'behavior.startup'            = 'Démarrer avec Windows'
     'behavior.startup.hint'       = 'L''icône de la zone de notification et les raccourcis reviennent après un redémarrage.'
+    'settings.startupFailed'      = 'Les paramètres ont été enregistrés, mais Démarrer avec Windows n''a pas pu être modifié. Réessayez ou vérifiez le dossier Démarrage ; les détails figurent dans le journal.'
     'behavior.notifications'      = 'Notifications'
     'behavior.notifications.hint' = 'Afficher une notification après un basculement.'
     'behavior.back'               = 'Revenir au mode précédent'

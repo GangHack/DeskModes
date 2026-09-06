@@ -64,6 +64,7 @@
     'behavior.dayToDay'           = 'Day to day'
     'behavior.startup'            = 'Start with Windows'
     'behavior.startup.hint'       = 'The tray icon and the shortcuts come back after a reboot.'
+    'settings.startupFailed'      = 'Settings were saved, but Start with Windows could not be changed. Try again or check the Startup folder; details are in the log.'
     'behavior.notifications'      = 'Notifications'
     'behavior.notifications.hint' = 'Show a notification after switching.'
     'behavior.back'               = 'Back to the previous mode'
