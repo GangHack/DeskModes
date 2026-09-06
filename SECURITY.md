@@ -1,4 +1,4 @@
-﻿# Security
+# Security
 
 ## Reporting a vulnerability
 
@@ -12,7 +12,7 @@ together with it.
 ## What is supported
 
 The latest release. There are no maintained older branches — this is a single
-folder of scripts, and updating means replacing it.
+folder of scripts. Exit the tray and back up the folder before replacing program files.
 
 ## What this tool actually is
 
@@ -22,10 +22,11 @@ Worth knowing before you look for a hole, because it narrows the surface a lot:
   telemetry, no update check.
 - **Nothing is installed.** No service, no scheduled task, no registry keys of its
   own, no elevation. Startup, if you turn it on, is a shortcut in your own
-  Startup folder. Deleting the folder uninstalls it.
+  Startup folder. Disable startup and exit the tray before deleting the program folder.
 - **It runs as you**, with your privileges, and changes only display
   configuration, and — when you ask for it — the default playback device and
-  monitor brightness over DDC/CI.
+  monitor brightness/picture settings over DDC/CI, HDR and display sleep timeout.
+  Explicit sleep/shutdown timers can also change the machine power state.
 
 ## Where it does trust its input
 

@@ -22,11 +22,11 @@ body:
   - type: textarea
     id: status
     attributes:
-      label: Output of the status command
+      label: Diagnostic summary or status output
       description: >
-        Run `status.cmd`, or `.\Set-Display.ps1 status`, and paste all of it.
-        Its first line carries the version, the Windows build and the PowerShell
-        version — that is exactly what is needed here.
+        Run `diagnostics.cmd` for a fresh JSON snapshot, or use Settings → About → Copy diagnostics.
+        Review it before posting. It includes versions and display modes, without settings,
+        hooks, full device paths or diary data. Existing `status.cmd` output is also useful.
       render: text
     validations:
       required: true

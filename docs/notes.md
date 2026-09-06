@@ -1,4 +1,4 @@
-﻿# DeskModes — engineering notes
+# DeskModes — engineering notes
 
 This is an **engineering diary**, not documentation. The description of the project, its
 installation and its settings are in the [README](../README.md); what is here is what has no
@@ -2858,3 +2858,45 @@ tester with an HDR monitor.
 A collision worth a sentence: the C# constant `SET_ADVANCED_COLOR_STATE` and a struct of the same
 name cannot share the class, and `Add-Type` says so only at test time. The struct is
 `ADVANCED_COLOR_STATE`.
+
+## Release preparation and instance identity (2026-09-06)
+
+A pre-release review reproduced two failures without hardware: reversing two identical
+monitors reassigned ordinal solo keys, and checking only one instance in the mode editor
+saved a model name that matched both. Sorting the list would fix only the first symptom;
+a disappearing twin would still renumber the survivor.
+
+Duplicate models now receive a 64-bit prefix of a SHA256 connection-path fingerprint in
+their Label, with the raw hardware name kept in Model. The roster preserves each such
+label after one instance leaves the bus, including a fresh process reading a singleton.
+A fingerprint pattern matches exactly; it cannot fall back to the other twin. A new
+connection after a port change requires reselection. No EDID capabilities query was added.
+
+The same identity reaches combo membership, brightness/HDR/picture targets, layout and
+primary selection. Bare shared short IDs and ambiguous explicit primary matches now
+refuse instead of choosing the first panel. Existing Model+ShortId keys migrate only when
+unique; ambiguous model-only and ordinal keys remain for manual reassignment.
+
+Settings now finish writing a same-directory temporary file before File.Replace publishes
+it, retaining the previous readable settings as .bak. Damaged content remains .bad and
+never replaces a valid backup. Recovery can still return the backup in memory if the
+folder refuses repair. A locked destination regression checks that failed saves preserve
+both original files. A null backup argument must be [NullString]::Value in PowerShell 5.1;
+a plain $null is converted to an empty path and the replacement fails.
+
+Startup status reads the shortcut target, arguments and working directory. Existence alone
+reported a moved program as enabled. Enabling startup from the new folder repairs it.
+
+The release packer now refuses a failed git status and pending Unreleased content on the
+tagged path. Local candidate builds remain possible before the release date is set.
+The initial release notes were consolidated, with the development history retained separately.
+
+Diagnostic JSON is formatted from an allowlist in Diagnostics.ps1, not by attempting to
+scrub the full log. It contains runtime versions and raw model/display-mode data, without
+hooks, settings, device paths, aliases or diary content. The About button copies its opening
+snapshot; diagnostics.cmd reads a fresh one.
+
+Final review also covered a monitor without a friendly name: Get-DisplayState can use its
+device path as Model. Diagnostics now suppresses that fallback; the regression verifies the
+normal manufacturer name still survives. Migration gathers every mode reference, including
+preferences without hotkeys, rules and reconnect actions. Per-field conflicts remain intact.

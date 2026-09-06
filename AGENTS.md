@@ -49,7 +49,9 @@ survives until somebody runs them by hand. That is what gate one is for.
 
 ## Cutting a release
 
-Three things by hand, the rest by machine:
+The first release's version heading remains undated until the hardware review is complete.
+`tools/pack.ps1` without `-ExpectVersion` can build a local candidate; tagging requires the date
+and no pending `Unreleased` content. Three things by hand, the rest by machine:
 
 1. Bump `$script:Version` in `DisplayCore.ps1`.
 2. Date the version's heading in `CHANGELOG.md` — `## 1.1.0 — 2026-09-14`. The heading
@@ -211,7 +213,10 @@ Most of these are written up in `docs/notes.md`, section "Dead ends not to go ba
   so — a remembered monitor is a name, not a target to set.
 - **`DISPLAY1` / `DISPLAY2` / `DISPLAY3` are not a monitor's identity.** Windows hands
   those names out by position, and they move between monitors across a reboot or a
-  hotplug. Identity is the device path (`Id`) or the short Monitor ID.
+  hotplug. The short Monitor ID names a model/input, not an individual panel. Identical
+  models use a connection fingerprint in `Label`, kept in the roster by `Set-DisplayIdentity`;
+  `Model` stays the raw name. A fingerprint selector matches exactly and never falls back to
+  another panel by model name. Moving ports can require explicit reselection.
 - **`Set-StrictMode` was tried on 2026-08-24 and rejected.** Both `2.0` and `Latest`
   break settings parsing, which is built on "the key may be missing". Do not try again.
 - **`Local\DeskModesSwitch` is taken by two things, not one.** `Switch-DisplayMode` holds
@@ -346,14 +351,25 @@ value of this project, and no fake reproduces them.
   this repository — every one of them resolves through `$PSScriptRoot` or `%~dp0`, which
   is why the folder can be moved or renamed at no cost. Keep it that way. What a move
   does break is outside the repository: the startup shortcut stores an absolute path
-  (`Set-RunAtStartup`, `DisplayCore.ps1:5186`) and so does any shortcut pinned to
-  `Displays.cmd`. `Test-RunAtStartup` only checks that the `.lnk` exists, so a stale one
-  reads as enabled and silently starts nothing — re-run `Set-RunAtStartup $true` from the
-  new location.
+  (`Set-RunAtStartup`) and so does any shortcut pinned to `Displays.cmd`.
+  `Test-RunAtStartup` checks the executable, arguments and working directory. After a move,
+  enable startup again in Settings to rebuild the shortcut; pinned shortcuts remain external.
 - **Do not commit generated files.** `native-*.dll`, `settings.json`, `last-mode.json`,
   `display-modes.json`, `known-displays.json`, `window-state.json`, `ui-state.json`,
-  `activity.json`, `stats.html` and `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
+  `activity.json`, `stats.html`, `settings.json.bak`, `settings.json.*.tmp` and `last-run.log` belong to the machine, not to the code, and are all in `.gitignore`. So do
   `DeskModes-*.zip`, its `.sha256` and `release-notes.md` — `tools/pack.ps1` builds all
   three out of what is already committed. The screenshots under `docs/images/` are the
   exception that is *not* generated-and-ignored: they are committed, because README needs
   them and GitHub cannot run a renderer.
+
+## Support snapshots and settings recovery
+
+`Diagnostics.ps1` formats only an explicit version/display field allowlist. Never replace it
+with a serialization of settings, the complete state or the log: hooks, aliases, device paths
+and diary data are not part of a support snapshot. The CLI gets fresh state; About copies the
+window's opening snapshot. Nothing is transmitted.
+
+`Save-DisplaySettings` completes a temporary file beside settings.json before replacing it.
+The previous readable object becomes settings.json.bak; corrupt primary bytes must never
+overwrite that backup. Read-SettingsFile preserves settings.json.bad and recovers a readable
+backup. PowerShell 5.1 requires [NullString]::Value for File.Replace with no backup destination.

@@ -1,4 +1,4 @@
-﻿# Contributing
+# Contributing
 
 Thanks for looking. This is a small, opinionated tool, and the fastest way to get
 a change in is to know the two files that answer most questions before you ask
@@ -25,8 +25,9 @@ to find them again.
 .\tools\check.ps1
 ```
 
-Four gates, non-zero exit on any failure: every script parses, every `.ps1` is
-UTF-8 with BOM and CRLF, PSScriptAnalyzer is clean, and the test suite passes.
+Five gates, non-zero exit on any failure: every script parses, every `.ps1` is
+UTF-8 with BOM and CRLF, PSScriptAnalyzer is clean when available, translation keys agree,
+and the test suite passes. CI requires the analyzer.
 Nothing else counts as verification — in particular, "the tests passed" is not
 enough, because two scripts in this repository are dot-sourced by nothing and a
 typo in them survives until somebody runs them by hand.
