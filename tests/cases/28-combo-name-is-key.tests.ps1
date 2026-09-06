@@ -26,7 +26,7 @@ Test-Case 'orphan: a new combination with that name is shown what it inherits' {
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
                                    -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
-            Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'nothing to inherit until there is a name'
+            Assert-Equal (Get-NoHotkeyText) $ed.HotkeyBox.Text 'nothing to inherit until there is a name'
             Assert-Equal 'none' ([string]$ed.Brightness.Model.Kind) 'and no brightness either'
 
             $ed.NameBox.Text = 'Movie'
@@ -121,7 +121,7 @@ Test-Case 'orphan: renaming a combination onto that name does not wipe the short
                                    -Hotkeys $ui.Hotkeys -Levels $ui.Levels -Contrast $ui.Contrast `
                                    -Audio $ui.Audio -Hooks $ui.Hooks -Dark $false
         try {
-            Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'Work has no shortcut of its own'
+            Assert-Equal (Get-NoHotkeyText) $ed.HotkeyBox.Text 'Work has no shortcut of its own'
             $ed.NameBox.Text = 'Movie'
             Assert-Equal 'Ctrl+Alt+F4' $ed.HotkeyBox.Text 'the shortcut of the name it moves into is shown'
             $got = Read-ModeFromUi -Editor $ed

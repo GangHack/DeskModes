@@ -8,6 +8,7 @@
     },
     "maximizeRefresh": true,
     "notifications": true,
+    "language": "auto",
     "layout": [
         "DELL U2720Q",
         "LG ULTRAGEAR"

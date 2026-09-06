@@ -9,6 +9,25 @@ in the tray menu — that line is the right thing to paste into a bug report.
 
 ## Unreleased
 
+### It speaks your language
+
+- **Russian, Ukrainian, Spanish, French and German**, following Windows unless you say otherwise.
+  Settings -> Behavior -> Language picks one, and `"language"` in `settings.json` holds the same
+  choice. Every window, the tray menu, the notifications and the diary page are translated.
+- **`last-run.log` stays English whatever the windows say.** Every message you read is built twice
+  - once for you, once in English for the file - so `done:` and `ERROR:` lines go on matching a
+  grep, a commit and an issue, which is the whole reason the log exists. The log also names a mode
+  by its key rather than by its title now, for the same reason. The command line is English too:
+  it is a scripting surface, and its output gets parsed.
+- **Another language is a file, not a change to the code.** `lang\<code>.ps1` returns a table of
+  key -> text, carries its own name for the drop-down and its own plural rule, and appears in the
+  Language list by being there. English is loaded underneath every translation, so a file that is
+  behind falls back to it rather than showing blanks - and `tools\check.ps1` says how complete
+  each one is.
+- **Nothing that shows text has a fixed width any more.** The footer buttons and the timer's own
+  button grow with their label instead of clipping it: "Sleep" is five characters and the German
+  for it is sixteen.
+
 ### A quieter icon
 
 - **The tray icon is graphite and white now**, not blue: two monitors, the front one lit and the

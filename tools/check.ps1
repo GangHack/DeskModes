@@ -205,7 +205,89 @@ else {
     }
 }
 
-# --- 4. tests ---------------------------------------------------------------
+# --- 4. the language files --------------------------------------------------
+# A missing key is not a crash: Get-Text hands back "[the.key]" and the window opens with a
+# label nobody can read. That is exactly the kind of failure that ships, so it is caught here
+# instead. Two directions, both of them silent otherwise:
+#
+#   a key the code asks for and English does not have  - the label reads "[balloon.saved]";
+#   a key a translation has and English does not       - a line somebody translated that no
+#                                                        window will ever show, usually a
+#                                                        typo in the key.
+#
+# A translation that is merely INCOMPLETE is not a failure - it falls back to English on the
+# missing keys, which is the whole point of the fallback - but the count is printed, because
+# a language that is at 60% is worth knowing about before a release.
+#
+# Only the keys spelled out in the source are checked. A handful are built (`'timer.set.' +
+# $Action`), and those are named below rather than left to a regex that would have to guess.
+
+Write-CheckHead 'language'
+
+$langDir = Join-Path $root 'lang'
+$english = Join-Path $langDir 'en.ps1'
+if (-not (Test-Path -LiteralPath $english)) {
+    Write-CheckFail 'lang\en.ps1 is missing - there is nothing to fall back to'
+}
+else {
+    $en = & $english
+
+    # The keys nothing spells out. Each one is a suffix pinned to the two actions the timer
+    # has; if a third ever appears, this list is where it announces itself.
+    $built = @()
+    foreach ($stem in 'timer.set', 'timer.moved', 'timer.lastMinute', 'tray.timer',
+                      'menu.timer.in', 'menu.timer.armed', 'timer.caption', 'timer.start') {
+        foreach ($action in 'shutdown', 'sleep') { $built += ($stem + '.' + $action) }
+    }
+
+    # The language files themselves are the answer, not the question; and tests\ asks for keys
+    # that are MEANT not to exist ("[no.such.key]" is what a missing one has to look like).
+    $tests = Join-Path $root 'tests'
+    $asked = @{}
+    foreach ($file in @($code | Where-Object { $_ -notlike (Join-Path $langDir '*') -and
+                                               $_ -notlike (Join-Path $tests '*') })) {
+        $body = Get-Content -LiteralPath $file -Raw -Encoding UTF8
+        # Named by the function and not by -Key alone: half a dozen other functions here take a
+        # -Key too, and Invoke-ReapplyMode -Key 'all' is not a string anybody translates.
+        foreach ($m in [regex]::Matches($body, "(?:Get-Text|Get-PluralText|New-DisplayMessage|New-DisplayRefusal)\s+-Key\s+'([A-Za-z0-9_.]+)'")) {
+            $asked[$m.Groups[1].Value] = $true
+        }
+        foreach ($m in [regex]::Matches($body, '%%T:([A-Za-z0-9_.]+)%%')) {
+            $asked[$m.Groups[1].Value] = $true
+        }
+    }
+    foreach ($key in $built) { $asked[$key] = $true }
+
+    $langBad = 0
+    foreach ($key in @($asked.Keys | Sort-Object)) {
+        if (-not $en.Contains($key)) {
+            $langBad++
+            Write-CheckFail ("lang\en.ps1 - nothing for '{0}', and the window would show it in brackets" -f $key)
+        }
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $langDir -Filter '*.ps1' -File | Sort-Object Name)) {
+        $code2 = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        if ($code2 -eq 'en') { continue }
+        $map = & $file.FullName
+        foreach ($key in @($map.Keys | Sort-Object)) {
+            if ($key -like '_*') { continue }
+            if (-not $en.Contains($key)) {
+                $langBad++
+                Write-CheckFail ("lang\{0}.ps1 - '{1}' is in no window: English has no such key" -f $code2, $key)
+            }
+        }
+        $wanted = @($en.Keys | Where-Object { $_ -notlike '_*' })
+        $done = @($wanted | Where-Object { $map.Contains($_) }).Count
+        $note = "{0} - {1} of {2} strings" -f $file.Name, $done, $wanted.Count
+        if ($done -lt $wanted.Count) { Write-CheckWarn ($note + ' (the rest falls back to English)') }
+        else { Write-CheckOk $note }
+    }
+
+    if ($langBad -eq 0) { Write-CheckOk ("every key the code asks for is in en.ps1 ({0} of them)" -f $asked.Count) }
+}
+
+# --- 5. tests ---------------------------------------------------------------
 # In a child process rather than by dot-sourcing: the runner ends with exit, and in this same
 # process it would have taken check.ps1 with it and never let the total be printed.
 # powershell.exe explicitly: the tool lives in Windows PowerShell 5.1, and it has to be

@@ -106,6 +106,9 @@ if (-not $script:AppMutex.WaitOne(0)) {
 }
 
 $script:Settings = Get-DisplaySettings
+# Before the first menu, the first balloon and the first window: everything below asks Get-Text,
+# and Get-Text with nobody having said otherwise follows Windows rather than the setting.
+[void](Initialize-Language -Code $script:Settings.language)
 
 # Settings are reached only through these functions. Event handlers are created with
 # .GetNewClosure() inside other blocks, and a $script:Settings reference inside them
@@ -221,7 +224,7 @@ function Invoke-ModeWatch {
         $fixed = @(Restore-BestModes)
         if ($fixed.Count -gt 0) {
             Update-StateCache
-            Show-Balloon 'Refresh rate restored' (($fixed -join ', ') + ' - Windows had dropped it.')
+            Show-Balloon (Get-Text -Key 'balloon.refresh') (Get-Text -Key 'balloon.refresh.body' -Values @(($fixed -join ', ')))
         }
     }
     catch {
@@ -550,7 +553,7 @@ function Invoke-Mode {
     if ($Key -eq $script:BackHotkeyName) {
         $Key = [string](Get-PreviousModeKey)
         if (-not $Key) {
-            Show-Balloon 'Nothing to go back to' 'No mode has been left yet in this folder.' 'Warning'
+            Show-Balloon (Get-Text -Key 'balloon.noBack') (Get-Text -Key 'balloon.noBack.body') 'Warning'
             return
         }
     }
@@ -573,7 +576,7 @@ function Invoke-Mode {
         $script:ReapplyPending = $null
     }
 
-    $tray.Text = "$script:AppName - switching..."
+    $tray.Text = "$script:AppName - " + (Get-Text -Key 'tray.switching')
     # The answer, in one variable and in one vocabulary. A refusal leaves Switch-DisplayMode as an
     # exception, so the catch below turns that into the same shape (New-SwitchFailure): whoever reads the
     # outcome afterwards must not have to know which of the two roads it arrived by.
@@ -589,22 +592,22 @@ function Invoke-Mode {
         # to list them here one by one.
         $result = Switch-DisplayMode -ModeKey $Key -KeepMode:$keep -Quiet -Automatic:$Auto
         if ($result.Skipped) {
-            Show-Balloon 'Skipped' $result.Message 'Warning'
+            Show-Balloon (Get-Text -Key 'balloon.skipped') $result.Message 'Warning'
         }
         elseif ($result.Message -and $result.Ok) {
             # -Silent: the set of screens was right anyway, and the layout was all that got
             # fixed. A "Displays switched" balloon on every power-on would be announcing
             # work that never happened.
-            if (-not $Silent) { Show-Balloon 'Displays switched' $result.Message }
+            if (-not $Silent) { Show-Balloon (Get-Text -Key 'balloon.switched') $result.Message }
         }
         elseif ($result.Message) {
             # A partial failure is a failure too: a monitor that never came up would drop
             # out of the green summary silently.
-            Show-Balloon 'Switched with problems' $result.Message 'Warning'
+            Show-Balloon (Get-Text -Key 'balloon.partial') $result.Message 'Warning'
         }
         else {
             # An empty summary means the monitor we wanted never attached at all.
-            Show-Balloon 'Nothing came up' "None of that mode's displays responded. Check the cable and Deep Sleep Mode in the monitor's menu." 'Warning'
+            Show-Balloon (Get-Text -Key 'balloon.nothingUp') (Get-Text -Key 'balloon.nothingUp.body') 'Warning'
         }
     }
     catch {
@@ -612,7 +615,7 @@ function Invoke-Mode {
         # is why it goes into the balloon whole and into the result beside it. Only when the switch itself
         # is what threw, though — see $result above.
         if ($null -eq $result) { $result = New-SwitchFailure -ModeKey $Key -Message $_.Exception.Message }
-        Show-Balloon 'Failed' $_.Exception.Message 'Error'
+        Show-Balloon (Get-Text -Key 'balloon.failed') $_.Exception.Message 'Error'
     }
     finally {
         # Nothing at all came back: Switch-DisplayMode always answers, so this is belt and braces, and the
@@ -689,7 +692,7 @@ function Invoke-StartupRestore {
         return
     }
 
-    Write-DisplayLog ("startup: restoring '{0}', chosen at {1}" -f $mode.Title, $last.When)
+    Write-DisplayLog ("startup: restoring '{0}', chosen at {1}" -f $mode.Key, $last.When)
     Invoke-Mode $last.Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 }
 
@@ -754,7 +757,7 @@ function Invoke-ReapplyMode {
         return
     }
 
-    Write-DisplayLog ("reapply: {0} -> '{1}'" -f $Reason, $mode.Title)
+    Write-DisplayLog ("reapply: {0} -> '{1}'" -f $Reason, $mode.Key)
     Invoke-Mode $Key -Auto -Silent:(Test-DeskMatchesMode -Mode $mode -State $state)
 
     # The desk is assembled — nothing to keep. The test used to be "did it move at all", and a monitor
@@ -915,7 +918,10 @@ function Get-PowerRemaining {
 # that was set, and the tooltip has to show it (Format-Duration will show "0 s").
 function Update-TrayText {
     if ($script:PowerDeadline) {
-        $tray.Text = '{0} - {1} in {2}' -f $script:AppName, $script:PowerAction, (Format-Duration (Get-PowerRemaining))
+        # A key per action rather than the action's word dropped into a hole: "shutdown" and
+        # "sleep" are verbs, and a language that declines them cannot take them ready-made.
+        $tray.Text = '{0} - {1}' -f $script:AppName,
+                     (Get-Text -Key ('tray.timer.' + $script:PowerAction) -Values @((Format-Duration (Get-PowerRemaining))))
     }
     else { $tray.Text = $script:AppName }
 }
@@ -930,8 +936,8 @@ function Start-PowerTimer {
     $script:PowerTicker.Start()
     Write-DisplayLog ("power: {0} scheduled in {1} min" -f $Action, $Minutes)
     Update-TrayText
-    Show-Balloon 'Timer set' ('The computer will {0} in {1}, {2}. Cancel it from this menu.' -f $Action,
-                              (Format-DurationShort $Minutes), (Get-TimerTargetText -Minutes $Minutes)) -Always
+    Show-Balloon (Get-Text -Key 'timer.set') (Get-Text -Key ('timer.set.' + $Action) `
+                 -Values @((Format-DurationShort $Minutes), (Get-TimerTargetText -Minutes $Minutes))) -Always
 }
 
 function Stop-PowerTimer {
@@ -942,7 +948,7 @@ function Stop-PowerTimer {
     $script:PowerTicker.Stop()
     Write-DisplayLog 'power: timer cancelled'
     Update-TrayText
-    if (-not $Quiet) { Show-Balloon 'Timer cancelled' 'The computer stays on.' -Always }
+    if (-not $Quiet) { Show-Balloon (Get-Text -Key 'timer.cancelled') (Get-Text -Key 'timer.cancelled.body') -Always }
 }
 
 # Move a timer that is already set instead of setting it again: "another fifteen minutes"
@@ -967,8 +973,8 @@ function Add-PowerTime {
 
     Write-DisplayLog ("power: {0} moved by {1} min, {2} left" -f $script:PowerAction, $Minutes, (Format-Duration $left))
     Update-TrayText
-    Show-Balloon 'Timer moved' ('The computer will {0} in {1}, {2}.' -f $script:PowerAction,
-                                (Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0)))) -Always
+    Show-Balloon (Get-Text -Key 'timer.moved') (Get-Text -Key ('timer.moved.' + $script:PowerAction) `
+                 -Values @((Format-Duration $left), (Get-TimerTargetText -Minutes ([int][math]::Round($left / 60.0))))) -Always
 }
 
 # Where the picker opens from: from what is left, if this timer is already set (the person
@@ -997,7 +1003,7 @@ $script:PowerTicker.add_Tick({
 
     if (-not $script:PowerWarned -and $left -le 60) {
         $script:PowerWarned = $true
-        Show-Balloon 'One minute left' ('The computer will {0} in a minute. Cancel it from the tray menu.' -f $script:PowerAction) 'Warning'
+        Show-Balloon (Get-Text -Key 'timer.lastMinute') (Get-Text -Key ('timer.lastMinute.' + $script:PowerAction)) 'Warning'
     }
     if ($left -le 0) {
         $action = $script:PowerAction
@@ -1100,7 +1106,7 @@ function Register-Hotkeys {
 
     if ($failed.Count -gt 0) {
         Write-DisplayLog ('tray: could not claim ' + ($failed -join ', '))
-        Show-Balloon 'Some shortcuts are taken' (($failed -join ', ') + " - another program already holds these. Those modes still work from the tray menu.") 'Warning'
+        Show-Balloon (Get-Text -Key 'balloon.hotkeysTaken') (Get-Text -Key 'balloon.hotkeysTaken.body' -Values @(($failed -join ', '))) 'Warning'
     }
     Write-DisplayLog ('tray: shortcuts registered: ' + $script:HotkeyMap.Count)
 }
@@ -1123,8 +1129,12 @@ function Open-SettingsWindow {
                        -Settings (Get-ActiveSettings) -Page $Page
         if ($updated) {
             Set-ActiveSettings $updated
+            # The menu is built on every open and the balloon below is about to be shown, so both
+            # land in the new language at once. The window itself does not: it is still up, in the
+            # language it was built in, and that is what the row's caption says will happen.
+            [void](Initialize-Language -Code $updated.language)
             Register-Hotkeys
-            Show-Balloon 'Settings saved' 'Shortcuts reloaded.'
+            Show-Balloon (Get-Text -Key 'balloon.saved') (Get-Text -Key 'balloon.saved.body')
         }
     }
     catch {
@@ -1186,14 +1196,14 @@ $menu.add_Opening({
     $state = @(Get-CachedDesk)
 
     if ($state) {
-        Add-MenuHeader -Text 'DISPLAYS' -Scale $scale
+        Add-MenuHeader -Text (Get-Text -Key 'menu.displays') -Scale $scale
         foreach ($m in $state) {
             $dot = 'unplugged'
-            if ($m.Disconnected)  { $what = 'not connected' }
-            elseif ($m.Active)    { $what = '{0} x {1} @ {2} Hz' -f $m.Width, $m.Height, $m.Hz; $dot = 'on' }
-            else                  { $what = 'off'; $dot = 'off' }
+            if ($m.Disconnected)  { $what = Get-Text -Key 'display.notConnected' }
+            elseif ($m.Active)    { $what = Get-Text -Key 'display.resolution' -Values @($m.Width, $m.Height, $m.Hz); $dot = 'on' }
+            else                  { $what = Get-Text -Key 'display.off'; $dot = 'off' }
             $suffix = ''
-            if ($m.Primary) { $suffix = '   - primary' }
+            if ($m.Primary) { $suffix = '   - ' + (Get-Text -Key 'menu.primary') }
 
             $line = New-Object System.Windows.Forms.ToolStripMenuItem ('{0}    {1}{2}' -f $m.Label, $what, $suffix)
             $line.Enabled = $false
@@ -1202,7 +1212,7 @@ $menu.add_Opening({
             # A disagreement with the best mode is worth seeing at once: usually it is a
             # DisplayPort link that degraded, not a setting.
             if ($m.Active -and $m.BestMode -and $m.Hz -lt $m.BestMode.Hz) {
-                $line.Text += ('   (below {0} Hz)' -f $m.BestMode.Hz)
+                $line.Text += '   ' + (Get-Text -Key 'menu.belowHz' -Values @($m.BestMode.Hz))
                 $dot = 'below'
             }
             $line.Image = Get-StatusDot -Kind $dot -Scale $scale
@@ -1211,7 +1221,7 @@ $menu.add_Opening({
         # The rows above name the displays; this shows which is which. Only when something is on -
         # a badge needs a screen to lie on.
         if (@($state | Where-Object { $_.Active }).Count -gt 0) {
-            $whichItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Which is which...'
+            $whichItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.whichIsWhich')
             $whichItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
             $whichItem.add_Click({
                 try { Show-DisplayBadges -State (Get-CachedState) }
@@ -1228,7 +1238,7 @@ $menu.add_Opening({
     $activeKey = $null
     if ($state) { $activeKey = Get-ActiveModeKey -State $state -Modes $modes }
 
-    Add-MenuHeader -Text 'SWITCH TO' -Scale $scale
+    Add-MenuHeader -Text (Get-Text -Key 'menu.switchTo') -Scale $scale
     foreach ($mode in $modes) {
         $item = New-Object System.Windows.Forms.ToolStripMenuItem
         $item.Text = $mode.Title
@@ -1241,7 +1251,7 @@ $menu.add_Opening({
 
         if (-not $mode.Available) {
             $item.Enabled = $false
-            $item.Text += '   (not connected)'
+            $item.Text += '   ' + (Get-Text -Key 'menu.notConnected')
         }
         if ($mode.Key -eq $activeKey) {
             $item.Checked = $true
@@ -1259,14 +1269,15 @@ $menu.add_Opening({
     if ($previousKey) {
         $previous = @($modes | Where-Object { $_.Key -eq $previousKey })
         $backItem = New-Object System.Windows.Forms.ToolStripMenuItem
-        $backItem.Text = 'Back to ' + $(if ($previous.Count -gt 0) { $previous[0].Title } else { Get-ModeTitleFromKey $previousKey })
+        $backItem.Text = Get-Text -Key 'menu.backTo' -Values @(
+            $(if ($previous.Count -gt 0) { $previous[0].Title } else { Get-ModeTitleFromKey $previousKey }))
         $backItem.Tag = $script:BackHotkeyName
         $backItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
         $backCombo = (Get-ActiveSettings).hotkeys[$script:BackHotkeyName]
         if ($backCombo) { $backItem.ShortcutKeyDisplayString = $backCombo }
         if ($previous.Count -eq 0 -or -not $previous[0].Available) {
             $backItem.Enabled = $false
-            $backItem.Text += '   (not connected)'
+            $backItem.Text += '   ' + (Get-Text -Key 'menu.notConnected')
         }
         $backItem.add_Click({ Invoke-Mode $this.Tag }.GetNewClosure())
         [void]$menu.Items.Add($backItem)
@@ -1278,13 +1289,15 @@ $menu.add_Opening({
     # both here and in the icon's tooltip — a timer you cannot find out about is a frightening
     # one. Next to every amount is the time on the clock: "in two hours" is something a person
     # checks against their own plans not in minutes but in "what time will that be".
-    foreach ($spec in @(@{ Action = 'shutdown'; Title = 'Shut down' }, @{ Action = 'sleep'; Title = 'Sleep' })) {
+    # No Title beside the action any more: what the item says is a key per action, because
+    # "Shut down in 20 min" is one sentence in a language that declines its verbs.
+    foreach ($spec in @(@{ Action = 'shutdown' }, @{ Action = 'sleep' })) {
         $action = [string]$spec.Action
         $armed = ($script:PowerDeadline -and $script:PowerAction -eq $action)
         $left = $(if ($armed) { Get-PowerRemaining } else { 0 })
         $parent = New-Object System.Windows.Forms.ToolStripMenuItem
-        $parent.Text = $(if ($armed) { '{0} in {1}' -f $spec.Title, (Format-Duration $left) }
-                         else { '{0} in...' -f $spec.Title })
+        $parent.Text = $(if ($armed) { Get-Text -Key ('menu.timer.armed.' + $action) -Values @((Format-Duration $left)) }
+                         else { Get-Text -Key ('menu.timer.in.' + $action) })
         $parent.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
         if ($armed) {
             $parent.Checked = $true
@@ -1299,8 +1312,8 @@ $menu.add_Opening({
             # 150%, where four pixels of padding are six.
             foreach ($shift in 15, -15) {
                 $move = New-Object System.Windows.Forms.ToolStripMenuItem
-                $move.Text = $(if ($shift -gt 0) { 'Add {0} minutes' -f $shift }
-                               else { 'Take {0} minutes off' -f [math]::Abs($shift) })
+                $move.Text = $(if ($shift -gt 0) { Get-PluralText -Key 'menu.timer.add' -Count $shift }
+                               else { Get-PluralText -Key 'menu.timer.take' -Count ([math]::Abs($shift)) })
                 $move.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
                 $move.Tag = $shift
                 # There is nothing to take off when less than that is left: the timer must not
@@ -1310,7 +1323,7 @@ $menu.add_Opening({
                 [void]$parent.DropDownItems.Add($move)
             }
 
-            $cancel = New-Object System.Windows.Forms.ToolStripMenuItem 'Cancel the timer'
+            $cancel = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.timer.cancel')
             $cancel.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
             $cancel.add_Click({ Stop-PowerTimer })
             [void]$parent.DropDownItems.Add($cancel)
@@ -1332,7 +1345,7 @@ $menu.add_Opening({
         # Your own time gets a window (Show-TimerDialog in SettingsDialog.ps1): a slider,
         # pills, the wheel and the same time on the clock as the ready-made amounts have. A
         # zero from there means "changed my mind", and then there is nothing to set.
-        $custom = New-Object System.Windows.Forms.ToolStripMenuItem 'Pick a time...'
+        $custom = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.timer.pick')
         $custom.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
         $custom.Tag = $action
         $custom.add_Click({
@@ -1345,7 +1358,7 @@ $menu.add_Opening({
             }
             catch {
                 Write-DisplayLog "timer dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
-                Show-Balloon 'Could not open the timer' 'Details are in the log.' 'Warning'
+                Show-Balloon (Get-Text -Key 'balloon.timerFailed') (Get-Text -Key 'balloon.seeLog') 'Warning'
             }
             # A WPF window, like the settings one, leaves a working set behind it.
             Optimize-TrayMemory
@@ -1354,14 +1367,14 @@ $menu.add_Opening({
         [void]$menu.Items.Add($parent)
     }
 
-    $statsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Statistics...'
+    $statsItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.statistics')
     $statsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     if (-not (Get-ActiveSettings).stats) {
         # The diary is off — the item is visible, but it explains why it is empty instead of
         # opening a page full of zeroes.
-        $statsItem.Text = 'Statistics (diary is off)'
+        $statsItem.Text = Get-Text -Key 'menu.statisticsOff'
         $statsItem.add_Click({
-            Show-Balloon 'The diary is off' 'Turn on "Keep a diary" in Settings, and statistics appear as the day goes.' 'Warning'
+            Show-Balloon (Get-Text -Key 'balloon.diaryOff') (Get-Text -Key 'balloon.diaryOff.body') 'Warning'
         })
     }
     else {
@@ -1374,7 +1387,7 @@ $menu.add_Opening({
             }
             catch {
                 Write-DisplayLog "stats: the diary window failed - $($_.Exception.Message)"
-                Show-Balloon 'Could not open the diary' $_.Exception.Message 'Error'
+                Show-Balloon (Get-Text -Key 'balloon.diaryFailed') $_.Exception.Message 'Error'
             }
             # A WPF window, like the settings one, leaves a working set behind it.
             Optimize-TrayMemory
@@ -1384,20 +1397,20 @@ $menu.add_Opening({
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-    $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
+    $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.settings')
     $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $settingsItem.add_Click({ Open-SettingsWindow })
     [void]$menu.Items.Add($settingsItem)
 
-    $logItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open log'
+    $logItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.openLog')
     $logItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $logItem.add_Click({
         if (Test-Path $script:LogFile) { Start-Process notepad.exe $script:LogFile }
-        else { Show-Balloon 'No log yet' 'It appears after the first switch.' -Always }
+        else { Show-Balloon (Get-Text -Key 'balloon.noLog') (Get-Text -Key 'balloon.noLog.body') -Always }
     })
     [void]$menu.Items.Add($logItem)
 
-    $folderItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Open folder'
+    $folderItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.openFolder')
     $folderItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $folderItem.add_Click({ Start-Process explorer.exe $script:ToolRoot })
     [void]$menu.Items.Add($folderItem)
@@ -1407,14 +1420,14 @@ $menu.add_Opening({
     # The name comes from $script:AppName rather than being spelled out: the same name is in
     # the icon's tooltip, in error captions and in the first-run greeting, and a name that
     # drifted is the first thing a person notices in a bug report.
-    $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem "About $script:AppName"
+    $aboutItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.about' -Values @($script:AppName))
     $aboutItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $aboutItem.add_Click({ Open-SettingsWindow -Page 'about' })
     [void]$menu.Items.Add($aboutItem)
 
     [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-    $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem 'Exit'
+    $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.exit')
     $exitItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $exitItem.add_Click({ [System.Windows.Forms.Application]::Exit() })
     [void]$menu.Items.Add($exitItem)
@@ -1583,7 +1596,7 @@ $script:StartupTimer.add_Tick({
     # show, while the Settings window would have stood across the startup.
     if ($script:FirstRun) {
         try {
-            Show-Balloon $script:AppName 'Right-click the icon for your displays and Settings.'
+            Show-Balloon $script:AppName (Get-Text -Key 'balloon.firstRun')
             Open-SettingsWindow
         }
         catch { Write-DisplayLog "startup: first-run welcome failed - $($_.Exception.Message)" }

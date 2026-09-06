@@ -403,12 +403,17 @@ function Get-ActivityStreak {
 # "3 h 20 min" — for the report. Its own, not Format-Duration from DisplayCore: there
 # the seconds are needed for a countdown, here they only get in the way.
 function Format-ActivitySpan {
-    param([int]$Seconds)
+    param(
+        [int]$Seconds,
+        # 'en' for the console report, which stays English whatever the window speaks.
+        [string]$Language = ''
+    )
 
     if ($Seconds -le 0) { return '-' }
     $minutes = [int][math]::Round($Seconds / 60)
-    if ($minutes -lt 60) { return ('{0} min' -f $minutes) }
-    return ('{0} h {1:00} min' -f [int][math]::Floor($minutes / 60), ($minutes % 60))
+    if ($minutes -lt 60) { return (Get-Text -Key 'unit.minutes' -Values @($minutes) -Language $Language) }
+    return (Get-Text -Key 'unit.hoursMinutesPadded' -Language $Language `
+                     -Values @([int][math]::Floor($minutes / 60), ($minutes % 60)))
 }
 
 # The console report. A pure function: it hands back an array of lines and prints
@@ -428,12 +433,14 @@ function Format-ActivityReport {
     $out += ''
     $out += ('Diary  {0} .. {1}   {2} day(s) recorded' -f $Report.From, $Report.To, $Report.DaysRecorded)
     $out += ''
-    $out += ('  at the computer   {0}   ({1} a day on average)' -f (Format-ActivitySpan $Report.Active), (Format-ActivitySpan $Report.AverageDay))
-    $out += ('  longest session   {0}' -f (Format-ActivitySpan $Report.Longest))
+    # -Language 'en' throughout this function: it is the command line's report, and the command
+    # line stays English (see the note on Get-Text).
+    $out += ('  at the computer   {0}   ({1} a day on average)' -f (Format-ActivitySpan $Report.Active -Language 'en'), (Format-ActivitySpan $Report.AverageDay -Language 'en'))
+    $out += ('  longest session   {0}' -f (Format-ActivitySpan $Report.Longest -Language 'en'))
     $out += ('  mode switches     {0}' -f $Report.Switches)
     if ($Report.UsualStart) { $out += ('  usual day         {0} .. {1}' -f $Report.UsualStart, $Report.UsualEnd) }
     if ($Report.BusiestHour -ge 0) { $out += ('  busiest hour      {0:00}:00' -f $Report.BusiestHour) }
-    if ($Report.BestDay) { $out += ('  longest day       {0}   {1}' -f $Report.BestDay, (Format-ActivitySpan $Report.BestDayActive)) }
+    if ($Report.BestDay) { $out += ('  longest day       {0}   {1}' -f $Report.BestDay, (Format-ActivitySpan $Report.BestDayActive -Language 'en')) }
     $out += ('  days in a row     {0}' -f $Report.Streak)
 
     foreach ($section in @(
@@ -453,7 +460,7 @@ function Format-ActivityReport {
             $bar = '#' * [int][math]::Round($r.Share / 5)
             # The width of the time column fits "12 h 00 min" whole: at ten marks the
             # three-hour rows slid out of line against the two-digit ones.
-            $out += ('  {0,-28} {1,11}  {2,5}%  {3}' -f $name, (Format-ActivitySpan $r.Seconds), (Format-ActivityPercent $r.Share), $bar)
+            $out += ('  {0,-28} {1,11}  {2,5}%  {3}' -f $name, (Format-ActivitySpan $r.Seconds -Language 'en'), (Format-ActivityPercent $r.Share), $bar)
         }
     }
 
@@ -488,7 +495,9 @@ function Format-ActivityHtmlRows {
         $html += ('<td class="bar"><span style="width:{0}%"></span></td><td class="share">{1}%</td></tr>' -f
                   (Format-ActivityPercent ([math]::Min(100, [double]$r.Share))), (Format-ActivityPercent $r.Share))
     }
-    if (-not $html) { $html = '<tr><td colspan="4" class="dim">nothing yet</td></tr>' }
+    if (-not $html) {
+        $html = '<tr><td colspan="4" class="dim">' + (Format-HtmlText (Get-Text -Key 'diary.nothingYet')) + '</td></tr>'
+    }
     return $html
 }
 
@@ -523,12 +532,13 @@ function New-ActivityHtml {
     }
 
     $facts = @(
-        @{ K = 'at the computer'; V = (Format-ActivitySpan $Report.Active) }
-        @{ K = 'a day on average'; V = (Format-ActivitySpan $Report.AverageDay) }
-        @{ K = 'longest session'; V = (Format-ActivitySpan $Report.Longest) }
-        @{ K = 'mode switches'; V = [string]$Report.Switches }
-        @{ K = 'usual day'; V = $(if ($Report.UsualStart) { $Report.UsualStart + ' .. ' + $Report.UsualEnd } else { '-' }) }
-        @{ K = 'days in a row'; V = [string]$Report.Streak }
+        @{ K = (Get-Text -Key 'diary.card.active');   V = (Format-ActivitySpan $Report.Active) }
+        @{ K = (Get-Text -Key 'diary.card.average');  V = (Format-ActivitySpan $Report.AverageDay) }
+        @{ K = (Get-Text -Key 'diary.card.longest');  V = (Format-ActivitySpan $Report.Longest) }
+        @{ K = (Get-Text -Key 'diary.card.switches'); V = [string]$Report.Switches }
+        @{ K = (Get-Text -Key 'diary.card.usualDay')
+           V = $(if ($Report.UsualStart) { $Report.UsualStart + ' .. ' + $Report.UsualEnd } else { '-' }) }
+        @{ K = (Get-Text -Key 'diary.card.streak');   V = [string]$Report.Streak }
     )
     $cards = ''
     foreach ($f in $facts) {
@@ -541,12 +551,16 @@ function New-ActivityHtml {
     $dim    = $(if ($Dark) { '#9a9a9a' } else { '#6a6a6a' })
     $track  = $(if ($Dark) { '#333333' } else { '#ebebeb' })
 
-    $title = 'DeskModes - diary'
-    $range = '{0} .. {1}, {2} day(s)' -f $Report.From, $Report.To, $Report.DaysRecorded
+    $title = Get-Text -Key 'diary.pageTitle'
+    $range = '{0} .. {1}, {2}' -f $Report.From, $Report.To,
+             (Get-PluralText -Key 'diary.days' -Count ([int]$Report.DaysRecorded))
+    # The page carries the language it is written in: a screen reader and the browser's own
+    # translate offer both read this attribute, and "en" over Russian text is a lie to both.
+    $lang = $script:LangCode
 
     return @"
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>$title</title>
+<html lang="$lang"><head><meta charset="utf-8"><title>$title</title>
 <style>
  :root { --bg:$bg; --panel:$panel; --ink:$ink; --dim:$dim; --track:$track; --accent:$Accent; }
  * { box-sizing: border-box; }
@@ -581,12 +595,12 @@ function New-ActivityHtml {
 <h1>$title</h1>
 <div class="range">$range</div>
 <div class="cards">$cards</div>
-<section><h2>Time of day</h2><div class="hours">$hours</div></section>
-<section><h2>Displays</h2><table>$(Format-ActivityHtmlRows $Report.Displays)</table></section>
-<section><h2>Modes</h2><table>$(Format-ActivityHtmlRows (ConvertTo-ModeTitleRows $Report.Modes))</table></section>
-<section><h2>Apps</h2><table>$(Format-ActivityHtmlRows $Report.Apps 12)</table></section>
-<section><h2>App on display</h2><table>$(Format-ActivityHtmlRows $Report.Pairs 12)</table></section>
-<footer>Window titles are never recorded - only process names. Delete activity.json to forget everything.</footer>
+<section><h2>$(Format-HtmlText (Get-Text -Key 'diary.timeOfDay'))</h2><div class="hours">$hours</div></section>
+<section><h2>$(Format-HtmlText (Get-Text -Key 'displays.heading'))</h2><table>$(Format-ActivityHtmlRows $Report.Displays)</table></section>
+<section><h2>$(Format-HtmlText (Get-Text -Key 'nav.modes'))</h2><table>$(Format-ActivityHtmlRows (ConvertTo-ModeTitleRows $Report.Modes))</table></section>
+<section><h2>$(Format-HtmlText (Get-Text -Key 'diary.apps'))</h2><table>$(Format-ActivityHtmlRows $Report.Apps 12)</table></section>
+<section><h2>$(Format-HtmlText (Get-Text -Key 'diary.appOnDisplay'))</h2><table>$(Format-ActivityHtmlRows $Report.Pairs 12)</table></section>
+<footer>$(Format-HtmlText (Get-Text -Key 'diary.footer'))</footer>
 </div></body></html>
 "@
 }

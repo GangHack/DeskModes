@@ -47,7 +47,8 @@ Test-Case 'rules: a row is named in words, and modes by their titles' {
     Assert-Equal 'back to All displays' (Get-RuleRowSubtitle -Rule $rule) 'and where it comes back to'
 
     $idle = [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = ''; enabled = $true }
-    Assert-Equal "idle for 20 min$($script:UiArrow)All displays" (Get-RuleRowTitle -Rule $idle) 'the other condition'
+    # The window's phrasing, not the log's: Get-RuleRowTitle goes through Get-RuleReasonText.
+    Assert-Equal "nobody at the computer for 20 min$($script:UiArrow)All displays" (Get-RuleRowTitle -Rule $idle) 'the other condition'
     Assert-Equal '' (Get-RuleRowSubtitle -Rule $idle) 'and "wherever it was" needs no line'
 }
 

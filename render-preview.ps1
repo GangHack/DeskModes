@@ -34,6 +34,11 @@
     instead of reading the real one. What the windows look like stops depending on
     which monitors happen to be plugged in.
 
+.PARAMETER Language
+    Which language to draw the windows in ("en", "ru", "uk", ...). Defaults to whatever
+    Windows says, exactly as the real window does. This is how a translation is looked at
+    without changing the setting and reopening every window by hand.
+
 .PARAMETER EditorMode
     Whose editor to render as the second image, by mode key ("all",
     "solo:LG ULTRAFINE", "combo:Work"). Defaults to the first combination - it is
@@ -54,7 +59,8 @@ param(
     [switch]$Fake,
     # Whose editor to render as the second image: a mode key ("all",
     # "solo:LG ULTRAFINE", "combo:Work"). Defaults to the first combination.
-    [string]$EditorMode = ''
+    [string]$EditorMode = '',
+    [string]$Language = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,6 +75,10 @@ if (-not $env:DESKMODES_LOG_FILE) {
 . (Join-Path $PSScriptRoot 'WindowLayout.ps1')
 . (Join-Path $PSScriptRoot 'Activity.ps1')
 . (Join-Path $PSScriptRoot 'SettingsDialog.ps1')
+
+# Before a window is built: every label goes through Get-Text, and Get-Text with nobody having
+# said otherwise follows Windows.
+if ($Language) { [void](Initialize-Language -Code $Language) }
 
 # A real window is kept inside the work area of its monitor: it must not grow off the bottom
 # of the screen. Here the windows are shown at -10000 on purpose, so that nothing flashes on

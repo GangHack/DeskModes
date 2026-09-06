@@ -8,8 +8,8 @@
     just be deleted"). What is needed here is Assert and a non-zero exit code; everything else is a
     dependency we do not want.
 
-    This file only sets a run up: it redirects the log, dot-sources the code under test, walks cases/
-    and prints the total. The checks themselves live alongside:
+    This file only sets a run up: it redirects the log, pins the interface to English, dot-sources
+    the code under test, walks cases/ and prints the total. The checks themselves live alongside:
 
         framework.ps1          Test-Case and the assertions
         fakes.ps1              the fakes that more than one group needs
@@ -54,6 +54,12 @@ $env:DESKMODES_LOG_FILE = Join-Path $script:LogDir 'last-run.log'
 . (Join-Path $root 'WindowLayout.ps1')
 . (Join-Path $root 'Activity.ps1')
 . (Join-Path $root 'SettingsDialog.ps1')
+
+# English, pinned, whatever language the machine is in. Almost every assertion here is a sentence
+# the window would show, and on Russian Windows an unpinned run would fail on all of them at once
+# — which reads like the code is broken rather than like the test forgot to say what it wanted.
+# A case that is ABOUT another language switches and switches back (cases/42-language.tests.ps1).
+[void](Initialize-Language -Code 'en')
 
 # The real settings.json is touched by NOT ONE test.
 $script:TestDir = $script:LogDir   # the same one, created above for the log's sake

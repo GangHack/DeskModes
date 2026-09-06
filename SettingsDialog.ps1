@@ -521,7 +521,7 @@ $script:UiResourcesXaml = @'
                                 <Path x:Name="Star" Width="12" Height="12" Stretch="Uniform"
                                       Fill="{StaticResource DimBrush}" VerticalAlignment="Center"
                                       Data="M 6,0 L 7.6,4.2 L 12,4.4 L 8.6,7.2 L 9.8,11.5 L 6,9 L 2.2,11.5 L 3.4,7.2 L 0,4.4 L 4.4,4.2 Z"/>
-                                <TextBlock x:Name="Lbl" Text="Taskbar" FontSize="12"
+                                <TextBlock x:Name="Lbl" Text="%%T:desk.taskbar%%" FontSize="12"
                                            Foreground="{StaticResource DimBrush}" Margin="5,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
@@ -805,7 +805,7 @@ $script:UiResourcesXaml = @'
 $script:SettingsWindowXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DeskModes - Settings"
+        Title="%%T:win.settings%%"
         Width="880" Height="620" MinWidth="760" MinHeight="520"
         ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -839,31 +839,31 @@ $script:SettingsWindowXaml = @'
                     <ListBoxItem Tag="desk">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE7F4;"/>
-                            <TextBlock Text="Your desk" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.desk%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="modes">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A9;"/>
-                            <TextBlock Text="Modes" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.modes%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="rules">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE945;"/>
-                            <TextBlock Text="Rules" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.rules%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="behavior">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE713;"/>
-                            <TextBlock Text="Behavior" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.behavior%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="diary">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE787;"/>
-                            <TextBlock Text="Diary" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.diary%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                 </ListBox>
@@ -871,7 +871,7 @@ $script:SettingsWindowXaml = @'
                     <ListBoxItem Tag="about">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource NavIcon}" Text="&#xE946;"/>
-                            <TextBlock Text="About" VerticalAlignment="Center"/>
+                            <TextBlock Text="%%T:nav.about%%" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ListBoxItem>
                 </ListBox>
@@ -898,9 +898,9 @@ $script:SettingsWindowXaml = @'
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Style="{StaticResource H1}" Text="Your desk"/>
+                            <TextBlock Style="{StaticResource H1}" Text="%%T:nav.desk%%"/>
                             <TextBlock Style="{StaticResource Hint}" Margin="0"
-                                       Text="Arrange them left to right as they stand; the star marks the display that keeps the taskbar."/>
+                                       Text="%%T:desk.hint%%"/>
                         </StackPanel>
                         <!-- Two commands in the page's head, like Add a combination on the next
                              page. "Copy from Windows" takes the order and the taskbar off the desk
@@ -908,10 +908,10 @@ $script:SettingsWindowXaml = @'
                              one click; "Which is which" puts a badge on every display for a moment,
                              because three cards that all say LG tell nobody which LG. -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                            <Button x:Name="IdentifyBtn" Style="{StaticResource Btn}" Content="Which is which"
-                                    ToolTip="Show each display's name on it for a moment."/>
-                            <Button x:Name="ReadDeskBtn" Style="{StaticResource Btn}" Content="Copy from Windows" Margin="8,0,0,0"
-                                    ToolTip="Copies the arrangement Windows holds right now, right or wrong, and stars the display that has the taskbar. Handy when you have arranged the displays in Windows settings already."/>
+                            <Button x:Name="IdentifyBtn" Style="{StaticResource Btn}" Content="%%T:desk.whichIsWhich%%"
+                                    ToolTip="%%T:desk.whichIsWhich.tip%%"/>
+                            <Button x:Name="ReadDeskBtn" Style="{StaticResource Btn}" Content="%%T:desk.copy%%" Margin="8,0,0,0"
+                                    ToolTip="%%T:desk.copy.tip%%"/>
                         </StackPanel>
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
@@ -933,9 +933,9 @@ $script:SettingsWindowXaml = @'
                             </Border>
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Displays"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:displays.heading%%"/>
                                     <TextBlock Style="{StaticResource Hint}"
-                                               Text="What each one reports about itself. The Monitor ID is the name settings.json and the log use."/>
+                                               Text="%%T:desk.table.hint%%"/>
                                     <Grid x:Name="DisplaysTable"/>
                                 </StackPanel>
                             </Border>
@@ -949,9 +949,9 @@ $script:SettingsWindowXaml = @'
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Margin="0,0,16,0">
-                                        <TextBlock Style="{StaticResource RowTitle}" Text="Displays go to sleep after"/>
+                                        <TextBlock Style="{StaticResource RowTitle}" Text="%%T:desk.sleep%%"/>
                                         <TextBlock x:Name="SleepHint" Style="{StaticResource RowSub}"
-                                                   Text="Windows' own setting, for when the computer is plugged in. Changed on Save."/>
+                                                   Text="%%T:desk.sleep.hint%%"/>
                                     </StackPanel>
                                     <ComboBox x:Name="SleepBox" Grid.Column="1" Style="{StaticResource Select}"
                                               Width="196" Height="30" VerticalAlignment="Center"/>
@@ -973,14 +973,14 @@ $script:SettingsWindowXaml = @'
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Style="{StaticResource H1}" Text="Modes"/>
+                            <TextBlock Style="{StaticResource H1}" Text="%%T:nav.modes%%"/>
                             <TextBlock Style="{StaticResource Hint}" Margin="0"
-                                       Text="Everything you can switch to; Edit opens the one place each mode is set up."/>
+                                       Text="%%T:modes.hint%%"/>
                         </StackPanel>
                         <!-- The command stands in the page's head, not under the list: with a
                              dozen modes, adding one meant scrolling to the bottom first. -->
                         <Button x:Name="AddComboBtn" Grid.Column="1" Style="{StaticResource Btn}"
-                                Content="Add a combination" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                                Content="%%T:modes.add%%" VerticalAlignment="Center" Margin="16,0,0,0"/>
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <!-- Top, not stretched: a card is as tall as what is in it. A list of
@@ -1004,12 +1004,12 @@ $script:SettingsWindowXaml = @'
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Style="{StaticResource H1}" Text="Rules"/>
+                            <TextBlock Style="{StaticResource H1}" Text="%%T:nav.rules%%"/>
                             <TextBlock Style="{StaticResource Hint}" Margin="0"
-                                       Text="Switch by itself when something happens; switch by hand and the rule lets go."/>
+                                       Text="%%T:rules.hint%%"/>
                         </StackPanel>
                         <Button x:Name="AddRuleBtn" Grid.Column="1" Style="{StaticResource Btn}"
-                                Content="Add a rule" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                                Content="%%T:rules.add%%" VerticalAlignment="Center" Margin="16,0,0,0"/>
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <Border Style="{StaticResource Card}" VerticalAlignment="Top">
@@ -1025,8 +1025,8 @@ $script:SettingsWindowXaml = @'
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <StackPanel Margin="24,20,24,10">
-                        <TextBlock Style="{StaticResource H1}" Text="Behavior"/>
-                        <TextBlock Style="{StaticResource Hint}" Margin="0" Text="What DeskModes does on its own."/>
+                        <TextBlock Style="{StaticResource H1}" Text="%%T:nav.behavior%%"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0" Text="%%T:behavior.hint%%"/>
                     </StackPanel>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
@@ -1036,15 +1036,31 @@ $script:SettingsWindowXaml = @'
                                  twice: rows with a switch on the right. -->
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Day to day"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:behavior.dayToDay%%"/>
+                                    <!-- First on the page, and above Start with Windows: somebody who
+                                         cannot read the rest of this window has to be able to find the
+                                         one row that fixes that, and looking for it is exactly what they
+                                         cannot do. -->
                                     <Grid Style="{StaticResource Row}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Start with Windows"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="The tray icon and the shortcuts come back after a reboot."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.language%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.language.hint%%"/>
+                                        </StackPanel>
+                                        <ComboBox x:Name="LanguageBox" Grid.Column="1" Style="{StaticResource Select}"
+                                                  Width="170" Height="30" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.startup%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.startup.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="StartupBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1054,8 +1070,8 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Notifications"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Show a notification after switching."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.notifications%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.notifications.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="NotifyBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1069,15 +1085,15 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Back to the previous mode"/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.back%%"/>
                                             <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
-                                                       Text="A shortcut that returns to the mode you left. The tray menu has it too, named after where it goes."/>
+                                                       Text="%%T:behavior.back.hint%%"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBox x:Name="BackHotkeyBox" Style="{StaticResource Input}" Width="150" Height="30" TextAlignment="Center"/>
                                             <Button x:Name="ClearBackHotkeyBtn" Style="{StaticResource Btn}" Content="&#x00D7;"
                                                     FontSize="15" Width="30" Height="30" Padding="0" Margin="6,0,0,0"
-                                                    ToolTip="Remove this shortcut"/>
+                                                    ToolTip="%%T:hotkey.clear%%"/>
                                         </StackPanel>
                                     </Grid>
                                     <Grid Style="{StaticResource Row}">
@@ -1086,8 +1102,8 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Remember window positions"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Bring windows back where they were, separately for every display set."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.windows%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.windows.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="WindowsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1097,8 +1113,8 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Restore the last mode"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Come back to the mode you chose last, not to whatever Windows picked."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.lastMode%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.lastMode.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="LastModeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1108,9 +1124,9 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Keep a diary"/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.diary%%"/>
                                             <TextBlock Style="{StaticResource RowSub}" TextWrapping="Wrap"
-                                                       Text="Local only &#x00B7; No window titles &#x00B7; Delete activity.json to forget everything."/>
+                                                       Text="%%T:behavior.diary.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="StatsBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1127,7 +1143,7 @@ $script:SettingsWindowXaml = @'
                                          watchdog that should just work" told a person nothing
                                          they could act on — it described the section to whoever
                                          wrote it. The four rows say what they do themselves. -->
-                                    <TextBlock Style="{StaticResource H2}" Text="When Windows rearranges the desk"
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:behavior.reapply%%"
                                                Margin="0,0,0,2"/>
                                     <Grid Style="{StaticResource Row}">
                                         <Grid.ColumnDefinitions>
@@ -1135,8 +1151,8 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Best refresh rate"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Put every display back to its maximum refresh rate when Windows silently drops it."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.refresh%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.refresh.hint%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="RefreshBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1146,7 +1162,7 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild after waking from sleep"/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.onResume%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="ResumeBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1156,7 +1172,7 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Rebuild when a display is unplugged"/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.onUnplug%%"/>
                                         </StackPanel>
                                         <CheckBox x:Name="UnplugBox" Grid.Column="1" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
                                     </Grid>
@@ -1166,8 +1182,8 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="When a display is plugged in, switch to"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Only when the display that appeared belongs to that mode."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:behavior.onPlug%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:behavior.onPlug.hint%%"/>
                                         </StackPanel>
                                         <ComboBox x:Name="PlugModeBox" Grid.Column="1" Style="{StaticResource Select}"
                                                   Width="196" Height="30" VerticalAlignment="Center"/>
@@ -1198,7 +1214,7 @@ $script:SettingsWindowXaml = @'
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Style="{StaticResource H1}" Text="Diary"/>
+                            <TextBlock Style="{StaticResource H1}" Text="%%T:nav.diary%%"/>
                             <!-- NoWrap, and the sentence itself is shorter (see
                                  Get-StatsRangeText). Wrapping, it took a second line and walked
                                  straight into the period pills standing beside it: four pills, a
@@ -1210,8 +1226,8 @@ $script:SettingsWindowXaml = @'
                              are different questions, and both get asked in the same minute. -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                             <StackPanel x:Name="PeriodRow" Orientation="Horizontal" VerticalAlignment="Center"/>
-                            <Button x:Name="PageBtn" Style="{StaticResource Btn}" Content="Open as a page" Margin="8,0,0,0"
-                                    ToolTip="Write the same report to stats.html and open it - a file you can keep or send."/>
+                            <Button x:Name="PageBtn" Style="{StaticResource Btn}" Content="%%T:diary.page%%" Margin="8,0,0,0"
+                                    ToolTip="%%T:diary.page.tip%%"/>
                         </StackPanel>
                     </Grid>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
@@ -1231,7 +1247,7 @@ $script:SettingsWindowXaml = @'
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Style="{StaticResource H2}" Text="Time of day"/>
+                                <TextBlock Style="{StaticResource H2}" Text="%%T:diary.timeOfDay%%"/>
                                 <UniformGrid x:Name="HoursPanel" Grid.Row="1" Rows="1" Columns="24" Height="88"/>
                                 <UniformGrid x:Name="HourLabels" Grid.Row="2" Rows="1" Columns="24" Margin="0,4,0,0"/>
                             </Grid>
@@ -1247,25 +1263,25 @@ $script:SettingsWindowXaml = @'
                             </Grid.RowDefinitions>
                             <Border Style="{StaticResource Card}" Margin="0,0,6,12">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Displays"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:displays.heading%%"/>
                                     <StackPanel x:Name="DisplayRows"/>
                                 </StackPanel>
                             </Border>
                             <Border Grid.Column="1" Style="{StaticResource Card}" Margin="6,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Modes"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:nav.modes%%"/>
                                     <StackPanel x:Name="ModeRows"/>
                                 </StackPanel>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,6,0">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Apps"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:diary.apps%%"/>
                                     <StackPanel x:Name="AppRows"/>
                                 </StackPanel>
                             </Border>
                             <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}" Margin="6,0,0,0">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="App on display"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:diary.appOnDisplay%%"/>
                                     <StackPanel x:Name="PairRows"/>
                                 </StackPanel>
                             </Border>
@@ -1285,9 +1301,9 @@ $script:SettingsWindowXaml = @'
                          the promise, five facts in one sentence that wrapped onto two lines. The
                          version is a row of the card below now, on two short lines of its own. -->
                     <StackPanel Margin="24,20,24,10">
-                        <TextBlock Style="{StaticResource H1}" Text="About"/>
+                        <TextBlock Style="{StaticResource H1}" Text="%%T:nav.about%%"/>
                         <TextBlock Style="{StaticResource Hint}" Margin="0"
-                                   Text="The folder is the program: delete it, and nothing is left behind."/>
+                                   Text="%%T:about.folder%%"/>
                     </StackPanel>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
@@ -1311,8 +1327,8 @@ $script:SettingsWindowXaml = @'
                                             <TextBlock x:Name="VersionHost" Style="{StaticResource RowSub}"/>
                                         </StackPanel>
                                         <Button x:Name="CopyVersionBtn" Grid.Column="1" Style="{StaticResource Btn}"
-                                                Content="Copy" VerticalAlignment="Center" MinWidth="140"
-                                                ToolTip="Copy the version line - it is the first thing a bug report needs."/>
+                                                Content="%%T:common.copy%%" VerticalAlignment="Center" MinWidth="140"
+                                                ToolTip="%%T:about.copy.tip%%"/>
                                     </Grid>
                                     <Grid Style="{StaticResource Row}">
                                         <Grid.ColumnDefinitions>
@@ -1320,10 +1336,10 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Project page"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="Source, releases and the changelog on GitHub."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.project%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.project.hint%%"/>
                                         </StackPanel>
-                                        <Button x:Name="RepoBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="Open"
+                                        <Button x:Name="RepoBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="%%T:common.open%%"
                                                 VerticalAlignment="Center" MinWidth="140"/>
                                     </Grid>
                                     <Grid Style="{StaticResource Row}">
@@ -1332,12 +1348,12 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Something went wrong?"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="The log has every switch with its timing. Attach it to an issue."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.trouble%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.trouble.hint%%"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button x:Name="LogBtn" Style="{StaticResource Btn}" Content="Open the log" MinWidth="140"/>
-                                            <Button x:Name="IssueBtn" Style="{StaticResource Btn}" Content="Report a problem"
+                                            <Button x:Name="LogBtn" Style="{StaticResource Btn}" Content="%%T:about.openLog%%" MinWidth="140"/>
+                                            <Button x:Name="IssueBtn" Style="{StaticResource Btn}" Content="%%T:about.report%%"
                                                     MinWidth="140" Margin="8,0,0,0"/>
                                         </StackPanel>
                                     </Grid>
@@ -1347,10 +1363,10 @@ $script:SettingsWindowXaml = @'
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Where everything lives"/>
-                                            <TextBlock Style="{StaticResource RowSub}" Text="settings.json, the diary and the log sit next to the program."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.where%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.where.hint%%"/>
                                         </StackPanel>
-                                        <Button x:Name="FolderBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="Open the folder"
+                                        <Button x:Name="FolderBtn" Grid.Column="1" Style="{StaticResource Btn}" Content="%%T:about.openFolder%%"
                                                 VerticalAlignment="Center" MinWidth="140"/>
                                     </Grid>
                                 </StackPanel>
@@ -1361,19 +1377,19 @@ $script:SettingsWindowXaml = @'
                                  broken. Nothing to say is better said by saying nothing. -->
                             <Border x:Name="SupportCard" Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="Support DeskModes"/>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:about.support%%"/>
                                     <TextBlock Style="{StaticResource Hint}"
-                                               Text="Free and open, and it stays that way. If it saved you an evening, you can buy the author a coffee."/>
+                                               Text="%%T:about.support.hint%%"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource RowTitle}" Text="Donate"/>
-                                            <TextBlock x:Name="DonateHint" Style="{StaticResource RowSub}" Text="Opens the donation page in your browser."/>
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.donate%%"/>
+                                            <TextBlock x:Name="DonateHint" Style="{StaticResource RowSub}" Text="%%T:about.donate.tip%%"/>
                                         </StackPanel>
-                                        <Button x:Name="DonateBtn" Grid.Column="1" Style="{StaticResource BtnAccent}" Content="Donate"
+                                        <Button x:Name="DonateBtn" Grid.Column="1" Style="{StaticResource BtnAccent}" Content="%%T:about.donate%%"
                                                 VerticalAlignment="Center" MinWidth="140"/>
                                     </Grid>
                                 </StackPanel>
@@ -1393,8 +1409,8 @@ $script:SettingsWindowXaml = @'
             <Border Grid.Row="1" Background="{StaticResource FooterBrush}"
                     BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="24,10">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="84" IsDefault="True"/>
-                    <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84" Margin="8,0,0,0" IsCancel="True"/>
+                    <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
+                    <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
                 </StackPanel>
             </Border>
         </Grid>
@@ -1405,7 +1421,7 @@ $script:SettingsWindowXaml = @'
 $script:ModeEditorXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DeskModes - Mode"
+        Title="%%T:win.mode%%"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -1417,28 +1433,28 @@ $script:ModeEditorXaml = @'
     <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="20,14,20,14">
-            <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="84" IsDefault="True"/>
-            <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84" Margin="8,0,0,0" IsCancel="True"/>
+            <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
+            <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
         </StackPanel>
         <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto">
             <!-- 430 and not 400: every hint in here wraps, and thirty points of width is a line
                  saved on most of them. The editor is the tallest window in the program - it is
                  cheaper to widen it than to let it grow downwards. -->
             <StackPanel Margin="20,16,20,0" Width="430">
-                <TextBlock x:Name="HeadTitle" Style="{StaticResource H1}" Text="Mode"/>
+                <TextBlock x:Name="HeadTitle" Style="{StaticResource H1}" Text="%%T:editor.mode%%"/>
                 <TextBlock x:Name="HeadHint" Style="{StaticResource Hint}"/>
                 <StackPanel x:Name="ComboPart" Margin="0,10,0,0">
-                    <TextBlock Style="{StaticResource H2}" Text="Name"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.name%%"/>
                     <TextBox x:Name="NameBox" Style="{StaticResource Input}" Margin="0,4,0,0"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Displays" Margin="0,14,0,0"/>
-                    <TextBlock Style="{StaticResource Hint}" Text="Tick every display this combination switches on."/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:displays.heading%%" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="%%T:editor.displays.hint%%"/>
                     <StackPanel x:Name="MembersPanel"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Taskbar" Margin="0,14,0,0"/>
-                    <TextBlock Style="{StaticResource Hint}" Text="Which display keeps the taskbar while this combination is on."/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:desk.taskbar%%" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="%%T:editor.taskbar.hint%%"/>
                     <ComboBox x:Name="PrimaryBox" Style="{StaticResource Select}" Height="30"/>
                 </StackPanel>
-                <TextBlock Style="{StaticResource H2}" Text="Shortcut" Margin="0,14,0,0"/>
-                <TextBlock Style="{StaticResource Hint}" Text="Optional - the mode still works from the tray; click the box and press Ctrl, Alt, Shift or Win plus another key."/>
+                <TextBlock Style="{StaticResource H2}" Text="%%T:editor.shortcut%%" Margin="0,14,0,0"/>
+                <TextBlock Style="{StaticResource Hint}" Text="%%T:editor.shortcut.hint%%"/>
                 <!-- The cross is a bordered square the height of the field beside it. As a
                      BtnSubtle 26 wide it was a bare glyph floating off the field's centre - the
                      multiplication sign is centred on the maths axis rather than on the text
@@ -1447,7 +1463,7 @@ $script:ModeEditorXaml = @'
                     <TextBox x:Name="HotkeyBox" Style="{StaticResource Input}" Width="150" Height="30" TextAlignment="Center"/>
                     <Button x:Name="ClearHotkeyBtn" Style="{StaticResource Btn}" Content="&#x00D7;"
                             FontSize="15" Width="30" Height="30" Padding="0" Margin="6,0,0,0"
-                            ToolTip="Remove this shortcut"/>
+                            ToolTip="%%T:hotkey.clear%%"/>
                 </StackPanel>
                 <!-- Everything a mode does to the HARDWARE, folded away. What a mode IS
                      stays above: its name, its displays, where the taskbar goes and the keys
@@ -1458,7 +1474,7 @@ $script:ModeEditorXaml = @'
                      from the name just typed (see Sync-EditorInheritance) - a setting nobody
                      can see is the one bug this whole change exists to close. -->
                 <Button x:Name="MoreBtn" Style="{StaticResource Disclose}"
-                        Margin="0,16,0,0" Content="Brightness, sound and commands"/>
+                        Margin="0,16,0,0" Content="%%T:editor.more%%"/>
                 <StackPanel x:Name="MorePanel" Visibility="Collapsed">
                     <!-- "Ask the monitors" stands beside the Brightness heading rather than
                          between the contrast rows and the picture preset, where it used to sit:
@@ -1470,12 +1486,12 @@ $script:ModeEditorXaml = @'
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource H2}" Text="Brightness" VerticalAlignment="Center"/>
+                        <TextBlock Style="{StaticResource H2}" Text="%%T:editor.brightness%%" VerticalAlignment="Center"/>
                         <Button x:Name="LevelTestBtn" Grid.Column="1" Style="{StaticResource BtnSmall}"
-                                Content="Ask the monitors" VerticalAlignment="Center"/>
+                                Content="%%T:editor.ask%%" VerticalAlignment="Center"/>
                     </Grid>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Set brightness with this mode. &quot;Ask the monitors&quot; walks the cable once and says which of yours answer - for brightness and contrast both."/>
+                               Text="%%T:editor.brightness.hint%%"/>
                     <!-- Collapsed while it has nothing to say: an empty TextBlock still spends
                          its Margin, so two of these left a double gap in the middle of the
                          window whenever nobody had pressed the button (see Set-UiNote). -->
@@ -1492,9 +1508,9 @@ $script:ModeEditorXaml = @'
                                    VerticalAlignment="Center" Margin="12,0,0,0"/>
                     </Grid>
                     <StackPanel x:Name="LevelRowsPanel" Margin="0,6,0,0"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Contrast" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.contrast%%" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="The same, down the same channel in the cable. Fewer monitors answer for contrast than for brightness."/>
+                               Text="%%T:editor.contrast.hint%%"/>
                     <ComboBox x:Name="ContrastKindBox" Style="{StaticResource Select}" Height="30"/>
                     <Grid x:Name="ContrastOnePanel" Margin="0,10,0,0" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
@@ -1510,29 +1526,29 @@ $script:ModeEditorXaml = @'
                          which preset is the vendor's business, and on this desk one monitor calls
                          two different numbers "Gamer 1". What is remembered is the number the
                          monitor is holding at the moment the button is pressed. -->
-                    <TextBlock Style="{StaticResource H2}" Text="Picture preset" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.picture%%" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Set the monitor the way you want it for this mode with its own buttons, then press Remember."/>
+                               Text="%%T:editor.picture.hint%%"/>
                     <StackPanel x:Name="PicturePanel"/>
                     <TextBlock x:Name="PictureNote" Style="{StaticResource RowSub}" Margin="0,8,0,0"
                                TextWrapping="Wrap" Visibility="Collapsed"/>
                     <!-- Windows' own HDR switch, per display. "Leave alone" is the default and
                          costs nothing on a switch; a display that cannot do HDR is left alone
                          whatever is chosen, and the log says so. -->
-                    <TextBlock Style="{StaticResource H2}" Text="HDR" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.hdr%%" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Turn HDR on or off when this mode comes on. A display that cannot do HDR is left as it is."/>
+                               Text="%%T:editor.hdr.hint%%"/>
                     <StackPanel x:Name="HdrPanel"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Playback device" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.audio%%" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Make this the default output when the mode comes on. Part of the name is enough; empty leaves the sound alone."/>
+                               Text="%%T:editor.audio.hint%%"/>
                     <ComboBox x:Name="AudioBox" Style="{StaticResource SelectEdit}" Height="30"/>
-                    <TextBlock Style="{StaticResource H2}" Text="Commands" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:editor.hooks%%" Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Run something around the switch. The command is started and not waited for - switching never hangs on it."/>
-                    <TextBlock Style="{StaticResource RowSub}" Text="Before switching" Margin="0,0,0,3"/>
+                               Text="%%T:editor.hooks.hint%%"/>
+                    <TextBlock Style="{StaticResource RowSub}" Text="%%T:editor.before%%" Margin="0,0,0,3"/>
                     <TextBox x:Name="HookBeforeBox" Style="{StaticResource Input}"/>
-                    <TextBlock Style="{StaticResource RowSub}" Text="After switching" Margin="0,8,0,3"/>
+                    <TextBlock Style="{StaticResource RowSub}" Text="%%T:editor.after%%" Margin="0,8,0,3"/>
                     <TextBox x:Name="HookAfterBox" Style="{StaticResource Input}"/>
                 </StackPanel>
             </StackPanel>
@@ -1544,7 +1560,7 @@ $script:ModeEditorXaml = @'
 $script:RuleEditorXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DeskModes - Rule"
+        Title="%%T:win.rule%%"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="%%BG%%" Foreground="%%TEXT%%"
@@ -1556,15 +1572,15 @@ $script:RuleEditorXaml = @'
     <DockPanel LastChildFill="True">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="20,14,20,14">
-            <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="Save" Width="84" IsDefault="True"/>
-            <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84" Margin="8,0,0,0" IsCancel="True"/>
+            <Button x:Name="OkBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
+            <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
         </StackPanel>
         <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20,16,20,0" Width="430">
-                <TextBlock Style="{StaticResource H1}" Text="Rule"/>
+                <TextBlock Style="{StaticResource H1}" Text="%%T:rule.heading%%"/>
                 <TextBlock Style="{StaticResource Hint}"
-                           Text="While the condition holds, the desk stays in that mode. Switch by hand and the rule lets go until the condition comes round again."/>
-                <TextBlock Style="{StaticResource H2}" Text="When"/>
+                           Text="%%T:rule.hint%%"/>
+                <TextBlock Style="{StaticResource H2}" Text="%%T:rule.when%%"/>
                 <ComboBox x:Name="WhenBox" Style="{StaticResource Select}" Height="30"/>
                 <!-- The two conditions want different questions, so only one panel is up at a
                      time. Both are built: swapping visibility keeps what was typed in the other
@@ -1575,15 +1591,15 @@ $script:RuleEditorXaml = @'
                      them had headings, so the window had two kinds of label for one kind of
                      field. -->
                 <StackPanel x:Name="ProcessPanel" Margin="0,14,0,0">
-                    <TextBlock Style="{StaticResource H2}" Text="Program"/>
-                    <TextBlock Style="{StaticResource Hint}" Text="The process name, with or without .exe."/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:rule.process%%"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="%%T:rule.process.hint%%"/>
                     <!-- Editable: the list is what is running now and what the diary has seen, and a
                          rule is often written for a game that is doing neither at that moment. -->
                     <ComboBox x:Name="ProcessBox" Style="{StaticResource SelectEdit}" Height="30"/>
                 </StackPanel>
                 <StackPanel x:Name="IdlePanel" Margin="0,14,0,0" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource H2}" Text="Idle for"/>
-                    <TextBlock Style="{StaticResource Hint}" Text="Minutes with nobody at the keyboard or the mouse."/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:rule.idle%%"/>
+                    <TextBlock Style="{StaticResource Hint}" Text="%%T:rule.idle.hint%%"/>
                     <TextBox x:Name="MinutesBox" Style="{StaticResource Input}" Width="90" Height="30"
                              HorizontalAlignment="Left"/>
                 </StackPanel>
@@ -1593,22 +1609,36 @@ $script:RuleEditorXaml = @'
                      that is off right now can be ticked - the desk it describes is usually not the
                      one in front of you while you write the rule. -->
                 <StackPanel x:Name="DisplaysPanel" Margin="0,14,0,0" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource H2}" Text="Connected displays"/>
+                    <TextBlock Style="{StaticResource H2}" Text="%%T:rule.displays%%"/>
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Exactly these, and no others. Connected is enough - one that is switched off still counts."/>
+                               Text="%%T:rule.displays.hint%%"/>
                     <StackPanel x:Name="DisplaysChecks"/>
                 </StackPanel>
-                <TextBlock Style="{StaticResource H2}" Text="Switch to" Margin="0,14,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="%%T:rule.mode%%" Margin="0,14,0,0"/>
                 <ComboBox x:Name="ModeBox" Style="{StaticResource Select}" Height="30"/>
-                <TextBlock Style="{StaticResource H2}" Text="Go back to" Margin="0,14,0,0"/>
+                <TextBlock Style="{StaticResource H2}" Text="%%T:rule.back%%" Margin="0,14,0,0"/>
                 <TextBlock Style="{StaticResource Hint}"
-                           Text="Where the desk goes when the condition ends."/>
+                           Text="%%T:rule.back.hint%%"/>
                 <ComboBox x:Name="BackBox" Style="{StaticResource Select}" Height="30"/>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
 </Window>
 '@
+
+# The markup holds keys rather than sentences, and this is where the sentences arrive. Escaped on
+# the way in, because a translation is prose: an apostrophe, a quote or an ampersand inside an XML
+# attribute takes the whole window down at parse time, and the window that dies is the one nobody
+# who reads that language can open.
+function Expand-UiText {
+    param([string]$Text)
+
+    return [regex]::Replace($Text, '%%T:([A-Za-z0-9_.]+)%%', {
+        param($m)
+        $value = Get-Text -Key $m.Groups[1].Value
+        return $value.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
+    })
+}
 
 # Parse the markup, substituting the palette. The shared resources arrive on the %%RES%% token.
 function Convert-UiXaml {
@@ -1618,6 +1648,9 @@ function Convert-UiXaml {
     foreach ($key in $Palette.Keys) {
         $text = $text.Replace('%%' + $key + '%%', [string]$Palette[$key])
     }
+    # After the palette: a palette value is a colour and can hold no text token, whereas a
+    # translation could easily hold a %% of its own and must not be read as one.
+    $text = Expand-UiText -Text $text
     $root = [System.Windows.Markup.XamlReader]::Parse($text)
     Register-WheelPassThrough -Root $root
     return $root
@@ -1840,13 +1873,13 @@ function New-UiTextBlock {
     return $t
 }
 
-# What stands in the field when there is no shortcut. As one constant: the text is compared in
-# several places, and copies that drifted apart would silently turn "no binding" into "a binding
-# that could not be parsed".
-$script:NoHotkeyText = 'no shortcut'
+# What stands in the field when there is no shortcut. Asked for rather than kept in a variable:
+# a $script: constant is filled at dot-source time, which is before the settings have said what
+# language this is, and the window would open holding the previous one.
+function Get-NoHotkeyText { return (Get-Text -Key 'hotkey.none') }
 # The hint in an empty field while it has focus: "press the keys" has to be said at the moment
 # a person is looking at the field, not a paragraph further up.
-$script:PressKeysText = 'press the keys'
+function Get-PressKeysText { return (Get-Text -Key 'hotkey.press') }
 
 # Taking a key combination: we catch PreviewKeyDown and wait for a main key while the modifiers
 # are held. WPF's ModifierKeys bits
@@ -1863,11 +1896,11 @@ function Register-HotkeyCapture {
     # would be left with an error message in a field that has no binding.
     $Box.add_GotFocus({
         param($sender, $e)
-        if (-not (ConvertFrom-HotkeyString $sender.Text)) { $sender.Text = $script:PressKeysText }
+        if (-not (ConvertFrom-HotkeyString $sender.Text)) { $sender.Text = (Get-PressKeysText) }
     })
     $Box.add_LostFocus({
         param($sender, $e)
-        if (-not (ConvertFrom-HotkeyString $sender.Text)) { $sender.Text = $script:NoHotkeyText }
+        if (-not (ConvertFrom-HotkeyString $sender.Text)) { $sender.Text = (Get-NoHotkeyText) }
     })
 
     $Box.add_PreviewKeyDown({
@@ -1892,19 +1925,19 @@ function Register-HotkeyCapture {
 
         if ($key -eq [System.Windows.Input.Key]::Back -or
             $key -eq [System.Windows.Input.Key]::Delete) {
-            $sender.Text = $script:NoHotkeyText
+            $sender.Text = (Get-NoHotkeyText)
             return
         }
 
         if ($mods -eq 0) {
-            $sender.Text = 'needs Ctrl / Alt / Shift'
+            $sender.Text = (Get-Text -Key 'hotkey.needsMods')
             return
         }
 
         $vk = [System.Windows.Input.KeyInterop]::VirtualKeyFromKey($key)
         $text = Format-HotkeyString -Modifiers $mods -Vk $vk
         if (ConvertFrom-HotkeyString $text) { $sender.Text = $text }
-        else { $sender.Text = 'unsupported key' }
+        else { $sender.Text = (Get-Text -Key 'hotkey.unsupported') }
     })
 }
 
@@ -1921,7 +1954,7 @@ function Register-HotkeyClearButton {
     $Box.Tag = $Button
 
     $Button.add_Click({
-        $this.Tag.Text = $script:NoHotkeyText
+        $this.Tag.Text = (Get-NoHotkeyText)
         $this.IsEnabled = $false
     })
     # The cross's state follows the field: the shortcut could have been assigned or cleared with
@@ -1959,8 +1992,8 @@ function Get-ModeSubtitle {
             if ($Mode.Primary) { $text += '   ' + $script:UiStar + ' ' + $Mode.Primary }
             return $text
         }
-        'all'    { return 'Every connected display' }
-        'orphan' { return 'Gone from your desk - what was set for it is kept until you remove it' }
+        'all'    { return (Get-Text -Key 'modes.allSub') }
+        'orphan' { return (Get-Text -Key 'modes.orphanSub') }
     }
     return ''
 }
@@ -2135,7 +2168,7 @@ function Update-UiFooter {
     if (-not $Ui -or -not $Ui.SaveBtn -or -not $Ui.CancelBtn) { return }
     $quiet = (($Ui.Page -eq 'diary' -or $Ui.Page -eq 'about') -and -not (Test-UiEdited -Ui $Ui))
     $Ui.SaveBtn.Visibility = $(if ($quiet) { 'Collapsed' } else { 'Visible' })
-    $Ui.CancelBtn.Content = $(if ($quiet) { 'Close' } else { 'Cancel' })
+    $Ui.CancelBtn.Content = $(if ($quiet) { Get-Text -Key 'common.close' } else { Get-Text -Key 'common.cancel' })
 }
 
 function Set-UiPage {
@@ -2169,6 +2202,46 @@ function Set-UiPage {
 # The display-sleep row, filled from what Windows says. -1 is "it would not say": the row then
 # says so and cannot be used, because a dropdown that shows "Never" over a setting nobody could
 # read is a lie a person would act on.
+# The language drop-down: every file under lang\ by its own name for itself, and "Follow Windows"
+# first. The codes ride on the items' Tag - the visible text is the language's own word for
+# itself and is nobody's key.
+function Set-UiLanguageBox {
+    param($Ui, $Settings)
+
+    $box = $Ui.LanguageBox
+    if (-not $box) { return }
+    $box.Items.Clear()
+
+    $auto = New-Object System.Windows.Controls.ComboBoxItem
+    $auto.Content = Get-Text -Key 'behavior.language.auto'
+    $auto.Tag = 'auto'
+    [void]$box.Items.Add($auto)
+
+    $want = [string]$(if ($Settings) { $Settings.language } else { 'auto' })
+    if (-not $want) { $want = 'auto' }
+    $box.SelectedItem = $auto
+
+    foreach ($entry in (Get-LanguageChoices).GetEnumerator()) {
+        $item = New-Object System.Windows.Controls.ComboBoxItem
+        $item.Content = [string]$entry.Value
+        $item.Tag = [string]$entry.Key
+        [void]$box.Items.Add($item)
+        if ([string]$entry.Key -eq $want.ToLowerInvariant()) { $box.SelectedItem = $item }
+    }
+}
+
+# The code the drop-down is on. Never the visible text: that is the language's own name for
+# itself and would land in settings.json as "Українська".
+function Get-UiLanguage {
+    param($Ui)
+
+    $item = $(if ($Ui.LanguageBox) { $Ui.LanguageBox.SelectedItem } else { $null })
+    if (-not $item) { return 'auto' }
+    $code = [string]$item.Tag
+    if (-not $code) { return 'auto' }
+    return $code
+}
+
 function Set-UiSleepMinutes {
     param($Ui, [int]$Minutes)
 
@@ -2177,7 +2250,7 @@ function Set-UiSleepMinutes {
     $Ui.SleepBox.Items.Clear()
     if ($Minutes -lt 0) {
         $Ui.SleepBox.IsEnabled = $false
-        $Ui.SleepHint.Text = 'Windows would not say. Change it in Settings - System - Power.'
+        $Ui.SleepHint.Text = (Get-Text -Key 'desk.sleep.unknown')
         return
     }
     $Ui.SleepBox.IsEnabled = $true
@@ -2274,6 +2347,7 @@ function New-SettingsWindow {
         StartupBox        = $win.FindName('StartupBox')
         RefreshBox        = $win.FindName('RefreshBox')
         NotifyBox         = $win.FindName('NotifyBox')
+        LanguageBox       = $win.FindName('LanguageBox')
         WindowsBox        = $win.FindName('WindowsBox')
         LastModeBox       = $win.FindName('LastModeBox')
         StatsBox          = $win.FindName('StatsBox')
@@ -2387,10 +2461,12 @@ function New-SettingsWindow {
     $ui.BackHotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
     Register-HotkeyCapture -Box $ui.BackHotkeyBox
     $parsedBack = ConvertFrom-HotkeyString $backText
-    $ui.BackHotkeyBox.Text = $(if ($parsedBack) { $parsedBack.Text } else { $script:NoHotkeyText })
+    $ui.BackHotkeyBox.Text = $(if ($parsedBack) { $parsedBack.Text } else { (Get-NoHotkeyText) })
     $clearBack = $win.FindName('ClearBackHotkeyBtn')
     $clearBack.IsEnabled = [bool]$parsedBack
     Register-HotkeyClearButton -Box $ui.BackHotkeyBox -Button $clearBack
+
+    Set-UiLanguageBox -Ui $ui -Settings $Settings
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
     $ui.NotifyBox.IsChecked   = [bool]$Settings.notifications
@@ -2429,7 +2505,7 @@ function New-SettingsWindow {
     if (-not $script:DonateUrl) {
         $ui.SupportCard.Visibility = 'Collapsed'
         $ui.DonateBtn.IsEnabled = $false
-        $ui.DonateHint.Text = 'There is no address yet - the button lights up when there is one.'
+        $ui.DonateHint.Text = (Get-Text -Key 'about.donate.none')
     }
 
     # The window is built — from this point on the handlers find it here.
@@ -2569,7 +2645,7 @@ function Set-EditorMoreVisible {
     param($Editor, [bool]$Open)
 
     Set-DisclosureOpen -Button $Editor.MoreBtn -Panel $Editor.MorePanel `
-                       -Label 'Brightness, sound and commands' -Open $Open
+                       -Label (Get-Text -Key 'editor.more') -Open $Open
 }
 
 # Is anything set behind the editor's fold? A pure question over the controls, so the answer is
@@ -2742,9 +2818,9 @@ function Add-DeskCard {
     $sub.TextTrimming = 'CharacterEllipsis'
     $sub.Foreground = $win.FindResource('DimBrush')
     $sub.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
-    if (-not $connected)      { $sub.Text = 'not connected' }
-    elseif ($Display.Active)  { $sub.Text = '{0} x {1} @ {2} Hz' -f $Display.Width, $Display.Height, $Display.Hz }
-    else                      { $sub.Text = 'off' }
+    if (-not $connected)      { $sub.Text = (Get-Text -Key 'display.notConnected') }
+    elseif ($Display.Active)  { $sub.Text = (Get-Text -Key 'display.resolution' -Values @($Display.Width, $Display.Height, $Display.Hz)) }
+    else                      { $sub.Text = (Get-Text -Key 'display.off') }
     # The size is drawn into the card and said in words on hover. Not in the caption itself: that
     # line is already the longest thing on the card, and it is the first to be trimmed.
     $inches = Get-DisplayInches -Display $Display
@@ -2785,8 +2861,7 @@ function Add-DeskCard {
     if (-not $connected) {
         $mini.Opacity = 0.45
         $name.Opacity = 0.6
-        $outer.ToolTip = "$Label is remembered from your settings and keeps its place in the row. " +
-                         'Plug it back in and it comes to life.'
+        $outer.ToolTip = Get-Text -Key 'desk.card.remembered' -Values @($Label)
     }
 
     # The size in pixels, for the desk preview. From a monitor that is on we take what it shows
@@ -2875,13 +2950,13 @@ function Update-DisplaysTable {
     $win = $Ui.Window
     $rows = @()
     foreach ($m in @($Ui.State | Where-Object { $_ })) {
-        $now = 'off'
-        if ($m.Disconnected) { $now = 'not connected' }
+        $now = Get-Text -Key 'display.off'
+        if ($m.Disconnected) { $now = Get-Text -Key 'display.notConnected' }
         elseif ($m.Active)   {
-            $now = '{0} x {1} @ {2} Hz' -f $m.Width, $m.Height, $m.Hz
+            $now = Get-Text -Key 'display.resolution' -Values @($m.Width, $m.Height, $m.Hz)
             # The same star the card above draws, and not a dash and the word: the two are the
             # same fact in the same window, and reading them as two took a moment every time.
-            if ($m.Primary) { $now += '   ' + $script:UiStar + ' taskbar' }
+            if ($m.Primary) { $now += '   ' + $script:UiStar + ' ' + (Get-Text -Key 'desk.taskbar.lower') }
         }
         $inches = Get-DisplayInches -Display $m
         $native = '-'
@@ -2905,7 +2980,10 @@ function Update-DisplaysTable {
         $grid.ColumnDefinitions.Add($col)
     }
 
-    $titles = @('Display', 'Monitor ID', 'Size', 'Native', 'Now')
+    # Monitor ID is not translated on purpose: it is the name settings.json and the log call a
+    # display by, and a person who reads it here has to be able to find it there.
+    $titles = @((Get-Text -Key 'table.display'), 'Monitor ID',
+                (Get-Text -Key 'table.size'), (Get-Text -Key 'table.native'), (Get-Text -Key 'table.now'))
     $line = 0
     foreach ($cell in 0..4) {
         $head = New-Object System.Windows.Controls.TextBlock
@@ -3279,9 +3357,9 @@ function Get-LevelKindTitle {
     param([string]$Kind, [string]$Noun)
 
     switch ($Kind) {
-        'none' { return "leave the $Noun alone" }
-        'one'  { return 'one level for every display of this mode' }
-        'each' { return 'a level for each display' }
+        'none' { return (Get-Text -Key 'level.none' -Values @($Noun)) }
+        'one'  { return (Get-Text -Key 'level.one') }
+        'each' { return (Get-Text -Key 'level.each') }
     }
     return $Kind
 }
@@ -3713,7 +3791,7 @@ function Add-LevelRow {
         else {
             $row.Model.Map.Remove($row.Name)
             $row.Slider.IsEnabled = $false
-            $row.Value.Text = 'off'
+            $row.Value.Text = Get-Text -Key 'display.off'
             $row.Value.Foreground = $row.Window.FindResource('DimBrush')
         }
     })
@@ -3760,7 +3838,7 @@ function Add-AudioDeviceItems {
 function Invoke-LevelProbe {
     param($Editor)
 
-    Set-UiNote -Block $Editor.LevelNote -Text 'asking...'
+    Set-UiNote -Block $Editor.LevelNote -Text (Get-Text -Key 'probe.asking')
     # And it has to be PAINTED before we go to the bus. WPF draws when the handler gives the thread
     # back, and the query below holds it for tenths of a second — up to a second on a bus that has to be
     # asked three times. Without this pump the word "asking" appeared together with the answer, that is,
@@ -3774,7 +3852,7 @@ function Invoke-LevelProbe {
     $answers = @()
     try { $answers = @(Get-MonitorLevels) }
     catch {
-        Set-UiNote -Block $Editor.LevelNote -Text "could not ask the monitors - $($_.Exception.Message)"
+        Set-UiNote -Block $Editor.LevelNote -Text (Get-Text -Key 'probe.failed' -Values @($_.Exception.Message))
         return
     }
 
@@ -3790,18 +3868,18 @@ function Invoke-LevelProbe {
     foreach ($a in $answers) {
         $label = $(if ($byOutput.Contains([string]$a.Device)) { $byOutput[[string]$a.Device] } else { [string]$a.Device })
         $can = @()
-        if ($a.CanBrightness) { $can += ('brightness {0}' -f $a.Brightness) }
-        if ($a.CanContrast)   { $can += ('contrast {0}' -f $a.Contrast) }
+        if ($a.CanBrightness) { $can += (Get-Text -Key 'probe.brightness' -Values @($a.Brightness)) }
+        if ($a.CanContrast)   { $can += (Get-Text -Key 'probe.contrast' -Values @($a.Contrast)) }
         if ($can.Count -gt 0) { $good += ('{0} ({1})' -f $label, ($can -join ', ')) } else { $bad += $label }
     }
 
     $parts = @()
-    if ($good.Count -gt 0) { $parts += 'answers: ' + ($good -join ', ') }
-    if ($bad.Count -gt 0)  { $parts += 'no answer: ' + ($bad -join ', ') }
-    if ($parts.Count -eq 0) { $parts += 'nobody answered - only displays that are ON can be asked' }
+    if ($good.Count -gt 0) { $parts += (Get-Text -Key 'probe.answers' -Values @(($good -join ', '))) }
+    if ($bad.Count -gt 0)  { $parts += (Get-Text -Key 'probe.noAnswer' -Values @(($bad -join ', '))) }
+    if ($parts.Count -eq 0) { $parts += (Get-Text -Key 'probe.nobody') }
     # We always say something about the sleeping ones: they are not in the answer at all, and
     # without this line it would look as though the monitor cannot do it.
-    Set-UiNote -Block $Editor.LevelNote -Text (($parts -join '; ') + '. Sleeping displays cannot be asked.')
+    Set-UiNote -Block $Editor.LevelNote -Text (($parts -join '; ') + '. ' + (Get-Text -Key 'probe.sleeping'))
 }
 
 # --- a mode: editing one ----------------------------------------------------
@@ -4006,20 +4084,17 @@ function Set-ModeEditorHeader {
         # The name and the membership are edited below, in fields of their own: all the heading
         # has left to say is what this thing even is. For a combo that already exists there is
         # nothing left to explain — the hint goes, and the window gets a line shorter.
-        $headTitle.Text = $(if ($Combo) { 'Combination' } else { 'New combination' })
+        $headTitle.Text = $(if ($Combo) { Get-Text -Key 'editor.combo' } else { Get-Text -Key 'editor.newCombo' })
         if ($Combo) { $headHint.Visibility = 'Collapsed' }
         else {
-            $headHint.Text = 'A named set of displays with its own tray entry, optional shortcut and brightness.'
+            $headHint.Text = Get-Text -Key 'editor.comboHint'
         }
     }
     else {
         $Window.FindName('ComboPart').Visibility = 'Collapsed'
-        $headTitle.Text = $(if ($Mode) { [string]$Mode.Title } else { 'Mode' })
-        $headHint.Text = $(if ($Kind -eq 'all') {
-            'Every display at once, with its own shortcut and brightness.'
-        } else {
-            'One display on and the rest off, with its own shortcut and brightness.'
-        })
+        $headTitle.Text = $(if ($Mode) { [string]$Mode.Title } else { Get-Text -Key 'editor.mode' })
+        $headHint.Text = $(if ($Kind -eq 'all') { Get-Text -Key 'editor.allHint' }
+                           else { Get-Text -Key 'editor.soloHint' })
     }
 
     $Window.Title = 'DeskModes - ' + $headTitle.Text
@@ -4077,7 +4152,7 @@ function Add-ComboMemberChecks {
         $checks += $cb
     }
 
-    [void]$primaryBox.Items.Add('Follow the usual rules')
+    [void]$primaryBox.Items.Add((Get-Text -Key 'editor.usualRules'))
     foreach ($cb in $checks) { [void]$primaryBox.Items.Add([string]$cb.Tag) }
     $primaryBox.SelectedIndex = 0
     if ($Combo -and $Combo.Primary) {
@@ -4138,7 +4213,7 @@ function Sync-EditorInheritance {
     $shown = ConvertFrom-HotkeyString $Editor.HotkeyBox.Text
     if (-not $shown -or ($Editor.AutoHotkey -and $shown.Text -eq $Editor.AutoHotkey)) {
         $Editor.AutoHotkey = $(if ($inherited) { $inherited.Text } else { '' })
-        $Editor.HotkeyBox.Text = $(if ($inherited) { $inherited.Text } else { $script:NoHotkeyText })
+        $Editor.HotkeyBox.Text = $(if ($inherited) { $inherited.Text } else { (Get-NoHotkeyText) })
     }
 
     # Brightness and contrast by the same rule, from the map each card was built with.
@@ -4222,8 +4297,8 @@ function Get-PictureRowText {
     param([string]$Setting)
 
     $one = ConvertFrom-PictureSetting $Setting
-    if (-not $one) { return 'Not remembered' }
-    return 'Remembered'
+    if (-not $one) { return (Get-Text -Key 'picture.notRemembered') }
+    return (Get-Text -Key 'picture.remembered')
 }
 
 # Rebuilt whenever the model changes: the rows are three states of one thing, and rebuilding is
@@ -4240,8 +4315,8 @@ function Update-PicturePanel {
     if ($names.Count -eq 0) {
         # Only a combo is ticked; the rest take their displays from the desk, and telling their
         # owner to tick something would send them looking for a control that is not there.
-        $empty = $(if ($Editor.Kind -eq 'combo') { 'Tick a display first.' }
-                   else { 'This mode has no display to remember one for.' })
+        $empty = $(if ($Editor.Kind -eq 'combo') { Get-Text -Key 'editor.tickFirst' }
+                   else { Get-Text -Key 'picture.noDisplay' })
         [void]$panel.Children.Add((New-UiTextBlock -Text $empty -Style 'RowSub' -Window $win))
         return
     }
@@ -4279,7 +4354,7 @@ function Update-PicturePanel {
 
         $remember = New-Object System.Windows.Controls.Button
         $remember.Style = $win.FindResource('BtnSmall')
-        $remember.Content = $(if ($setting) { 'Update' } else { 'Remember' })
+        $remember.Content = $(if ($setting) { Get-Text -Key 'picture.update' } else { Get-Text -Key 'picture.remember' })
         # Which display a button answers for is on the button itself: this window's handlers hold
         # no closures (see the note about .GetNewClosure() above).
         $remember.Tag = $name
@@ -4292,7 +4367,7 @@ function Update-PicturePanel {
         if ($setting) {
             $forget = New-Object System.Windows.Controls.Button
             $forget.Style = $win.FindResource('BtnSmall')
-            $forget.Content = 'Forget'
+            $forget.Content = Get-Text -Key 'picture.forget'
             $forget.Margin = New-Object System.Windows.Thickness 8, 0, 0, 0
             # The KEY the row was drawn from, not the display's name: forgetting has to take away
             # the entry that is actually there, which for a hand-written one is a piece of a name.
@@ -4317,7 +4392,11 @@ function Update-PicturePanel {
 # One row per display of the mode, a dropdown of three answers: leave alone, on, off. Nothing to ask
 # the monitor - this is Windows' switch - so the row has no button, only the choice.
 
-$script:HdrChoices = @('Leave alone', 'On', 'Off')
+# A function and not a constant, for the reason Get-NoHotkeyText is one: a $script: array is
+# filled at dot-source time, before the settings have said what language this is.
+function Get-HdrChoices {
+    return @((Get-Text -Key 'hdr.leaveAlone'), (Get-Text -Key 'hdr.on'), (Get-Text -Key 'hdr.off'))
+}
 
 function Get-HdrFingerprint {
     param($Map)
@@ -4361,8 +4440,8 @@ function Update-HdrPanel {
 
     $names = @(Get-EditorPictureNames -Editor $Editor)
     if ($names.Count -eq 0) {
-        $empty = $(if ($Editor.Kind -eq 'combo') { 'Tick a display first.' }
-                   else { 'This mode has no display to set it on.' })
+        $empty = $(if ($Editor.Kind -eq 'combo') { Get-Text -Key 'editor.tickFirst' }
+                   else { Get-Text -Key 'hdr.noDisplay' })
         [void]$panel.Children.Add((New-UiTextBlock -Text $empty -Style 'RowSub' -Window $win))
         return
     }
@@ -4388,7 +4467,7 @@ function Update-HdrPanel {
             $box.Style = $win.FindResource('Select')
             $box.Width = 150
             $box.Height = 30
-            foreach ($choice in $script:HdrChoices) { [void]$box.Items.Add($choice) }
+            foreach ($choice in (Get-HdrChoices)) { [void]$box.Items.Add($choice) }
             $box.SelectedIndex = $(if (-not $key) { 0 } elseif ([bool]$Editor.Hdr[$key]) { 1 } else { 2 })
             # The display's name rides on the box: the handler holds no closure (see the note about
             # .GetNewClosure() above) and finds the editor in $script:ActiveEditor.
@@ -4424,7 +4503,7 @@ function Read-PictureForDisplay {
         if ([string]$m.Label -eq $Display) { $device = [string]$m.Output; break }
     }
     if (-not $device) {
-        Set-UiNote -Block $Editor.PictureNote -Text "$Display is not on the desk right now."
+        Set-UiNote -Block $Editor.PictureNote -Text (Get-Text -Key 'picture.notOnDesk' -Values @($Display))
         return
     }
 
@@ -4433,7 +4512,7 @@ function Read-PictureForDisplay {
         if ([string]$one.Device -eq $device -and $one.Answered) { $found = $one; break }
     }
     if (-not $found) {
-        Set-UiNote -Block $Editor.PictureNote -Text "$Display did not answer. Is it on, and is DDC/CI on in its menu?"
+        Set-UiNote -Block $Editor.PictureNote -Text (Get-Text -Key 'picture.noAnswer' -Values @($Display))
         return
     }
 
@@ -4444,7 +4523,7 @@ function Read-PictureForDisplay {
     $old = Get-PictureKeyFor -Editor $Editor -Name $Display
     if ($old -and $old -ne $Display) { $Editor.Picture.Remove($old) }
     $Editor.Picture[$Display] = Format-PictureSetting -Code ([int]$found.Code) -Value ([int]$found.Value)
-    Set-UiNote -Block $Editor.PictureNote -Text "$Display remembered as it looks now."
+    Set-UiNote -Block $Editor.PictureNote -Text (Get-Text -Key 'picture.done' -Values @($Display))
     Update-PicturePanel -Editor $Editor
 }
 
@@ -4519,7 +4598,7 @@ function New-ModeEditorWindow {
     $hotkeyBox.Cursor = [System.Windows.Input.Cursors]::Hand
     Register-HotkeyCapture -Box $hotkeyBox
     $parsedHotkey = ConvertFrom-HotkeyString $hotkeyText
-    $hotkeyBox.Text = $(if ($parsedHotkey) { $parsedHotkey.Text } else { $script:NoHotkeyText })
+    $hotkeyBox.Text = $(if ($parsedHotkey) { $parsedHotkey.Text } else { (Get-NoHotkeyText) })
 
     $clearHotkey = $win.FindName('ClearHotkeyBtn')
     $clearHotkey.IsEnabled = [bool]$parsedHotkey
@@ -4595,9 +4674,9 @@ function New-ModeEditorWindow {
     # handlers above. The editor is modal, so one place is enough.
     $script:ActiveEditor = $ed
 
-    $ed.Brightness = New-LevelGroup -Editor $ed -Prefix 'Level' -Noun 'brightness' `
+    $ed.Brightness = New-LevelGroup -Editor $ed -Prefix 'Level' -Noun (Get-Text -Key 'noun.brightness') `
                                     -Source $Levels -Model $level
-    $ed.Contrast   = New-LevelGroup -Editor $ed -Prefix 'Contrast' -Noun 'contrast' `
+    $ed.Contrast   = New-LevelGroup -Editor $ed -Prefix 'Contrast' -Noun (Get-Text -Key 'noun.contrast') `
                                     -Source $Contrast -Model $contrastLevel
     Initialize-LevelGroup -Group $ed.Brightness
     Initialize-LevelGroup -Group $ed.Contrast
@@ -4743,13 +4822,13 @@ function Read-ModeFromUi {
     if ($Editor.PrimaryBox.SelectedIndex -gt 0) { $prim = [string]$Editor.PrimaryBox.SelectedItem }
 
     $problem = ''
-    if (-not $name) { $problem = 'Give the combination a name - it becomes its menu entry.' }
+    if (-not $name) { $problem = Get-Text -Key 'editor.needName' }
     elseif (@($Editor.TakenNames | Where-Object { $_ -and $_ -ieq $name }).Count -gt 0) {
         $problem = "A combination called '$name' already exists."
     }
-    elseif ($chosen.Count -eq 0) { $problem = 'Tick at least one display.' }
+    elseif ($chosen.Count -eq 0) { $problem = Get-Text -Key 'editor.needDisplay' }
     elseif ($prim -and $chosen -notcontains $prim) {
-        $problem = 'The taskbar display must be one of the ticked displays.'
+        $problem = Get-Text -Key 'editor.taskbarMember'
     }
     if ($problem) { return [pscustomobject]@{ Ok = $false; Mode = $null; Problem = $problem } }
 
@@ -4848,14 +4927,15 @@ function Invoke-ModeEditor {
 # The short truth about a mode's brightness goes into the row's caption. Otherwise a setting
 # hidden behind an Edit button is invisible until every mode has been opened in turn.
 function Get-LevelSummary {
-    param($Model, [string]$Noun = 'brightness')
+    param($Model, [string]$Noun = '')
 
     if (-not $Model) { return '' }
+    if (-not $Noun) { $Noun = Get-Text -Key 'noun.brightness' }
     switch ([string]$Model.Kind) {
-        'one'  { return $Noun + ' ' + [string][int]$Model.Value }
+        'one'  { return (Get-Text -Key 'summary.level' -Values @($Noun, [int]$Model.Value)) }
         'each' {
             if (-not $Model.Map -or $Model.Map.Count -eq 0) { return '' }
-            return $Noun + ' per display'
+            return (Get-Text -Key 'summary.levelEach' -Values @($Noun))
         }
     }
     return ''
@@ -4869,20 +4949,21 @@ function Get-ModeRowSubtitle {
 
     $key = [string]$Mode.Key
     $parts = @(Get-ModeSubtitle -Mode $Mode)
-    if ($Ui.Levels.Contains($key))   { $parts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun 'brightness' }
-    if ($Ui.Contrast.Contains($key)) { $parts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun 'contrast' }
+    if ($Ui.Levels.Contains($key))   { $parts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun (Get-Text -Key 'noun.brightness') }
+    if ($Ui.Contrast.Contains($key)) { $parts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun (Get-Text -Key 'noun.contrast') }
     if ($Ui.Picture.Contains($key)) {
         # "picture" and not "picture preset": this caption is the one thing on the row that gets
         # trimmed, and the word "preset" is eight characters saying what the section it comes
         # from is called.
         $count = @($Ui.Picture[$key].Keys).Count
-        $parts += $(if ($count -eq 1) { 'picture' } else { "picture on $count displays" })
+        $parts += $(if ($count -eq 1) { Get-Text -Key 'summary.picture' }
+                    else { Get-PluralText -Key 'summary.pictureOn' -Count $count })
     }
     # The device's name is not printed: it is long enough to push the row into a second line,
     # and the row's job is to say that the setting is there at all.
-    if ($Ui.Hdr.Contains($key))      { $parts += 'HDR' }
-    if ($Ui.Audio.Contains($key))    { $parts += 'audio' }
-    if ($Ui.Hooks.Contains($key))    { $parts += 'command' }
+    if ($Ui.Hdr.Contains($key))      { $parts += (Get-Text -Key 'summary.hdr') }
+    if ($Ui.Audio.Contains($key))    { $parts += (Get-Text -Key 'summary.audio') }
+    if ($Ui.Hooks.Contains($key))    { $parts += (Get-Text -Key 'summary.hook') }
     return (@($parts | Where-Object { $_ }) -join $script:UiDot)
 }
 
@@ -5041,7 +5122,7 @@ function Update-ModesPanel {
         # everything else about the mode. Its space is always taken, otherwise the buttons would
         # jump along the row from one binding to the next.
         $shortcut = [string]$(if ($Ui.Hotkeys.Contains($key)) { $Ui.Hotkeys[$key] } else { '' })
-        $keyText = New-UiTextBlock -Text $(if ($shortcut) { $shortcut } else { $script:NoHotkeyText }) `
+        $keyText = New-UiTextBlock -Text $(if ($shortcut) { $shortcut } else { (Get-NoHotkeyText) }) `
                                    -Style 'RowSub' -Window $win
         # 96 is what the longest combination anybody binds ("Ctrl+Shift+F12") needs; the field it
         # replaced reserved 110.
@@ -5057,7 +5138,7 @@ function Update-ModesPanel {
         # flat Edit/Remove for captions and could not find how to delete a combo.
         if ($mode.Kind -ne 'orphan') {
             $edit = New-Object System.Windows.Controls.Button
-            $edit.Content = 'Edit'
+            $edit.Content = Get-Text -Key 'common.edit'
             $edit.Style = $win.FindResource('BtnSmall')
             $edit.VerticalAlignment = 'Center'
             # Which mode a button answers for is on the button itself: this window's handlers
@@ -5078,7 +5159,7 @@ function Update-ModesPanel {
         # but a key. A monitor mode and "all" are not deletable: they exist as long as the desk does.
         if ($mode.Kind -eq 'combo' -or $mode.Kind -eq 'orphan') {
             $remove = New-Object System.Windows.Controls.Button
-            $remove.Content = 'Remove'
+            $remove.Content = Get-Text -Key 'common.remove'
             $remove.Style = $win.FindResource('BtnSmall')
             $remove.VerticalAlignment = 'Center'
             # To the LEFT of Edit, in the column before it: an absent Remove then costs its own
@@ -5128,7 +5209,7 @@ function Update-PlugModeBox {
     try {
         $box.Items.Clear()
         $none = New-Object System.Windows.Controls.ComboBoxItem
-        $none.Content = 'do nothing'
+        $none.Content = Get-Text -Key 'behavior.onPlug.nothing'
         $none.Tag = ''
         [void]$box.Items.Add($none)
 
@@ -5164,10 +5245,13 @@ function Update-PlugModeBox {
 # back, so what a person edits here and what the tray reads every fifteen seconds are one thing
 # rather than two that have to be kept in step.
 
-$script:RuleWhenTitles = [ordered]@{
-    process  = 'a program is running'
-    idle     = 'nobody is at the computer'
-    displays = 'these displays are connected'
+# A function and not a constant, for the reason Get-HdrChoices is one.
+function Get-RuleWhenTitles {
+    return [ordered]@{
+        process  = (Get-Text -Key 'rule.when.process')
+        idle     = (Get-Text -Key 'rule.when.idle')
+        displays = (Get-Text -Key 'rule.when.displays')
+    }
 }
 
 function Import-RuleSettings {
@@ -5184,8 +5268,9 @@ function Get-RuleRowTitle {
     param($Rule)
 
     $mode = [string]$Rule['mode']
-    $where = $(if ($mode) { Get-ModeTitleFromKey $mode } else { 'nowhere' })
-    return (Format-RuleReason -Rule $Rule) + $script:UiArrow + $where
+    $where = $(if ($mode) { Get-ModeTitleFromKey $mode } else { Get-Text -Key 'rule.nowhere' })
+    # Get-RuleReasonText and not Format-RuleReason: that one is the log's phrasing and stays English.
+    return (Get-RuleReasonText -Rule $Rule) + $script:UiArrow + $where
 }
 
 # And the second line: where it puts the desk back. Empty means "wherever it was", which is the
@@ -5195,7 +5280,7 @@ function Get-RuleRowSubtitle {
 
     $back = [string]$Rule['back']
     if (-not $back) { return '' }
-    return 'back to ' + (Get-ModeTitleFromKey $back)
+    return Get-Text -Key 'rule.backTo' -Values @((Get-ModeTitleFromKey $back))
 }
 
 function Update-RulesPanel {
@@ -5208,7 +5293,7 @@ function Update-RulesPanel {
     if (@($Ui.Rules).Count -eq 0) {
         # An empty list has to SAY it is empty: a blank space above a button reads like something
         # that failed to load.
-        $none = New-UiTextBlock -Text 'Nothing yet - the desk changes only when you say so.' `
+        $none = New-UiTextBlock -Text (Get-Text -Key 'rules.empty') `
                                 -Style 'RowSub' -Window $win
         $none.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
         [void]$Ui.RulesPanel.Children.Add($none)
@@ -5269,7 +5354,7 @@ function Update-RulesPanel {
         })
 
         $edit = New-Object System.Windows.Controls.Button
-        $edit.Content = 'Edit'
+        $edit.Content = Get-Text -Key 'common.edit'
         $edit.Style = $win.FindResource('BtnSmall')
         $edit.VerticalAlignment = 'Center'
         $edit.Tag = $rule
@@ -5283,7 +5368,7 @@ function Update-RulesPanel {
         })
 
         $remove = New-Object System.Windows.Controls.Button
-        $remove.Content = 'Remove'
+        $remove.Content = Get-Text -Key 'common.remove'
         $remove.Style = $win.FindResource('BtnSmall')
         $remove.VerticalAlignment = 'Center'
         $remove.Margin = New-Object System.Windows.Thickness 0, 0, 8, 0
@@ -5334,7 +5419,7 @@ function Set-RuleModeItems {
     $found = $false
     foreach ($mode in @($Modes)) {
         $item = New-Object System.Windows.Controls.ComboBoxItem
-        $item.Content = [string]$mode.Title + $(if ($mode.Available) { '' } else { '   (not connected)' })
+        $item.Content = [string]$mode.Title + $(if ($mode.Available) { '' } else { '   ' + (Get-Text -Key 'menu.notConnected') })
         $item.Tag = [string]$mode.Key
         [void]$Box.Items.Add($item)
         if ($Selected -and [string]$mode.Key -eq $Selected) { $Box.SelectedItem = $item; $found = $true }
@@ -5342,7 +5427,7 @@ function Set-RuleModeItems {
 
     if ($Selected -and -not $found) {
         $item = New-Object System.Windows.Controls.ComboBoxItem
-        $item.Content = (Get-ModeTitleFromKey $Selected) + '   (not connected)'
+        $item.Content = (Get-ModeTitleFromKey $Selected) + '   ' + (Get-Text -Key 'menu.notConnected')
         $item.Tag = $Selected
         [void]$Box.Items.Add($item)
         $Box.SelectedItem = $item
@@ -5437,9 +5522,10 @@ function New-RuleEditorWindow {
 
     $ed.Busy = $true
     try {
-        foreach ($when in @($script:RuleWhenTitles.Keys)) {
+        $whenTitles = Get-RuleWhenTitles
+        foreach ($when in @($whenTitles.Keys)) {
             $item = New-Object System.Windows.Controls.ComboBoxItem
-            $item.Content = [string]$script:RuleWhenTitles[$when]
+            $item.Content = [string]$whenTitles[$when]
             $item.Tag = [string]$when
             [void]$ed.WhenBox.Items.Add($item)
             if ([string]$Rule['when'] -eq $when) { $ed.WhenBox.SelectedItem = $item }
@@ -5453,7 +5539,7 @@ function New-RuleEditorWindow {
 
         Set-RuleModeItems -Box $ed.ModeBox -Modes $Modes -Selected ([string]$Rule['mode'])
         Set-RuleModeItems -Box $ed.BackBox -Modes $Modes -Selected ([string]$Rule['back']) `
-                          -Empty 'wherever the desk was'
+                          -Empty (Get-Text -Key 'rule.whereverWas')
     }
     finally { $ed.Busy = $false }
 
@@ -5563,20 +5649,20 @@ function Read-RuleFromUi {
     $displays = @($Editor.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
 
     $problem = ''
-    if (-not $mode) { $problem = 'Choose the mode this rule switches to.' }
+    if (-not $mode) { $problem = Get-Text -Key 'rule.needMode' }
     elseif ($when -eq 'process' -and -not $process) {
-        $problem = 'Name the program to watch for - "cs2" or "cs2.exe", as it appears in Task Manager.'
+        $problem = Get-Text -Key 'rule.needProcess'
     }
     elseif ($when -eq 'idle' -and $minutes -lt 1) {
-        $problem = 'Give the idle time in whole minutes, at least one.'
+        $problem = Get-Text -Key 'rule.needMinutes'
     }
     elseif ($when -eq 'displays' -and $displays.Count -eq 0) {
-        $problem = 'Tick the displays that make up this desk - at least one.'
+        $problem = Get-Text -Key 'rule.needDisplays'
     }
     # "Go back to" where it already is would mean the rule undoes itself the moment the condition
     # ends and then fires again — a desk that flickers every fifteen seconds.
     elseif ($back -and $back -eq $mode) {
-        $problem = 'A rule cannot go back to the mode it switches to. Leave it as "wherever the desk was".'
+        $problem = Get-Text -Key 'rule.backIsMode'
     }
     if ($problem) { return [pscustomobject]@{ Ok = $false; Rule = $null; Problem = $problem } }
 
@@ -5731,6 +5817,7 @@ function Read-SettingsFromUi {
     $updated.hotkeys = $newHotkeys
     $updated.maximizeRefresh = [bool]$Ui.RefreshBox.IsChecked
     $updated.notifications = [bool]$Ui.NotifyBox.IsChecked
+    $updated.language = Get-UiLanguage -Ui $Ui
     $updated.restoreWindows = [bool]$Ui.WindowsBox.IsChecked
     $updated.restoreLastMode = [bool]$Ui.LastModeBox.IsChecked
     $updated.stats = [bool]$Ui.StatsBox.IsChecked
@@ -5928,7 +6015,8 @@ function Get-BadgeText {
         if ($Display.Hz -gt 0) { $mode += ' @ {0} Hz' -f $Display.Hz }
         $line = $(if ($line) { $line + $script:UiDot + $mode } else { $mode })
     }
-    if ($Display.Primary) { $line = $(if ($line) { $line + $script:UiDot + 'taskbar' } else { 'taskbar' }) }
+    $mark = Get-Text -Key 'desk.taskbar.lower'
+    if ($Display.Primary) { $line = $(if ($line) { $line + $script:UiDot + $mark } else { $mark }) }
     return [pscustomobject]@{ Title = [string]$Display.Label; Line = $line }
 }
 
@@ -6071,7 +6159,7 @@ $script:TimerWindowXaml = @'
      right now and stands at 248. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DeskModes - Timer"
+        Title="%%T:win.timer%%"
         Width="330" Height="248"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen" Topmost="True"
@@ -6094,8 +6182,8 @@ $script:TimerWindowXaml = @'
                  then Cancel). This popup had them the other way round, so the button under the
                  cursor after four windows of muscle memory was the one that cancels. -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <Button x:Name="StartBtn" Style="{StaticResource BtnAccent}" Width="124" IsDefault="True"/>
-                <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="Cancel" Width="84"
+                <Button x:Name="StartBtn" Style="{StaticResource BtnAccent}" MinWidth="124" IsDefault="True"/>
+                <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84"
                         Margin="8,0,0,0" IsCancel="True"/>
             </StackPanel>
         </StackPanel>
@@ -6189,7 +6277,7 @@ function Clear-TimerValue {
     param($Ui)
 
     $Ui.Minutes = 0
-    $Ui.TargetText.Text = 'minutes, or 1h30 - up to {0}' -f (Format-DurationShort $script:TimerMaxMinutes)
+    $Ui.TargetText.Text = Get-Text -Key 'timer.hint' -Values @((Format-DurationShort $script:TimerMaxMinutes))
     $Ui.StartBtn.IsEnabled = $false
 }
 
@@ -6226,8 +6314,9 @@ function New-TimerWindow {
         Result     = 0
     }
 
-    $win.FindName('CaptionText').Text = $(if ($Action -eq 'sleep') { 'SLEEP IN' } else { 'SHUT DOWN IN' })
-    $ui.StartBtn.Content = $(if ($Action -eq 'sleep') { 'Sleep' } else { 'Shut down' })
+    # A key per action, as everywhere the timer speaks: the caption and the button are a verb.
+    $win.FindName('CaptionText').Text = Get-Text -Key ('timer.caption.' + $Action)
+    $ui.StartBtn.Content = Get-Text -Key ('timer.start.' + $Action)
 
     # The slider travels by STEP NUMBER, not by minutes: the steps are uneven (see
     # Get-TimerSteps), and an even travel of the handle is the only way to offer both "in five
@@ -6378,13 +6467,16 @@ function Show-TimerDialog {
 #   * The period is chosen HERE, not in the settings. "Today" and "all of it" are different
 #     questions, and both get asked in the same minute.
 
-$script:StatsPeriods = @(
-    [pscustomobject]@{ Days = 1;  Title = 'Today' }
-    [pscustomobject]@{ Days = 7;  Title = '7 days' }
-    [pscustomobject]@{ Days = 30; Title = '30 days' }
-    # Nought days is "everything there is" — see Get-ActivityReport.
-    [pscustomobject]@{ Days = 0;  Title = 'All' }
-)
+# A function and not a constant, for the reason Get-HdrChoices is one.
+function Get-StatsPeriods {
+    return @(
+        [pscustomobject]@{ Days = 1;  Title = (Get-Text -Key 'diary.today') }
+        [pscustomobject]@{ Days = 7;  Title = (Get-PluralText -Key 'diary.days' -Count 7) }
+        [pscustomobject]@{ Days = 30; Title = (Get-PluralText -Key 'diary.days' -Count 30) }
+        # Nought days is "everything there is" - see Get-ActivityReport.
+        [pscustomobject]@{ Days = 0;  Title = (Get-Text -Key 'diary.all') }
+    )
+}
 
 # How many rows a section shows. Five, not ten: four sections share one page, height is what a
 # sixth row costs, and the tail of a top list is noise.
@@ -6407,7 +6499,7 @@ function Get-StatsRangeText {
     if (-not $Report -or [int]$Report.DaysRecorded -eq 0) {
         # Not "turn the diary on": by the time this window is open it IS on (the tray offers
         # nothing else). An empty report here means nothing has been counted yet.
-        return 'Nothing counted for this period yet.'
+        return (Get-Text -Key 'diary.empty')
     }
     if ([string]$Report.From -eq [string]$Report.To) { return [string]$Report.From }
     # Short, because of what it stands next to: four period pills and a button share that strip,
@@ -6417,7 +6509,7 @@ function Get-StatsRangeText {
     # all is the first thing worth knowing - and the sentence it used to be is on hover
     # (Update-StatsView), which is where this window puts every caption it has had to cut.
     return ('{0} .. {1}' -f $Report.From, $Report.To) + '  ' + [string][char]0x00B7 + '  ' +
-           ('{0} days' -f $Report.DaysRecorded)
+           (Get-PluralText -Key 'diary.days' -Count ([int]$Report.DaysRecorded))
 }
 
 # The same fact spelled out, for the tooltip: "7 days" says the number and not what it counts,
@@ -6427,8 +6519,7 @@ function Get-StatsRangeTitle {
 
     if (-not $Report -or [int]$Report.DaysRecorded -eq 0) { return Get-StatsRangeText -Report $Report }
     if ([string]$Report.From -eq [string]$Report.To) { return [string]$Report.From }
-    return '{0} .. {1}, and {2} of those days have something in them' -f
-           $Report.From, $Report.To, $Report.DaysRecorded
+    return Get-Text -Key 'diary.rangeTitle' -Values @($Report.From, $Report.To, $Report.DaysRecorded)
 }
 
 # One fact, big: the number first, what it is underneath. The caption carries a ToolTip of its
@@ -6571,7 +6662,7 @@ function Update-StatsRows {
     $Panel.Children.Clear()
     $list = @($Rows | Select-Object -First $script:StatsTopRows)
     if ($list.Count -eq 0) {
-        [void]$Panel.Children.Add((New-UiTextBlock -Text 'nothing yet' -Style 'RowSub' -Window $Ui.Window))
+        [void]$Panel.Children.Add((New-UiTextBlock -Text (Get-Text -Key 'diary.nothingYet') -Style 'RowSub' -Window $Ui.Window))
         return
     }
     foreach ($row in $list) {
@@ -6645,13 +6736,13 @@ function Update-StatsView {
 
     $Ui.CardsPanel.Children.Clear()
     foreach ($fact in @(
-        @{ V = (Format-ActivitySpan $report.Active);     K = 'at the computer' }
-        @{ V = (Format-ActivitySpan $report.AverageDay); K = 'a day on average' }
-        @{ V = (Format-ActivitySpan $report.Longest);    K = 'longest session' }
-        @{ V = [string]$report.Switches;                 K = 'mode switches' }
+        @{ V = (Format-ActivitySpan $report.Active);     K = (Get-Text -Key 'diary.card.active') }
+        @{ V = (Format-ActivitySpan $report.AverageDay); K = (Get-Text -Key 'diary.card.average') }
+        @{ V = (Format-ActivitySpan $report.Longest);    K = (Get-Text -Key 'diary.card.longest') }
+        @{ V = [string]$report.Switches;                 K = (Get-Text -Key 'diary.card.switches') }
         @{ V = $(if ($report.UsualStart) { '{0}-{1}' -f $report.UsualStart, $report.UsualEnd } else { '-' })
-           K = 'usual day' }
-        @{ V = [string]$report.Streak;                   K = 'days in a row' })) {
+           K = (Get-Text -Key 'diary.card.usualDay') }
+        @{ V = [string]$report.Streak;                   K = (Get-Text -Key 'diary.card.streak') })) {
         [void]$Ui.CardsPanel.Children.Add(
             (New-StatsCard -Window $win -Value ([string]$fact.V) -Caption ([string]$fact.K)))
     }
@@ -6703,7 +6794,7 @@ function New-StatsUi {
     # added a second time would be eight.
     $win.FindName('PeriodRow').Children.Clear()
     $chips = @()
-    foreach ($period in $script:StatsPeriods) {
+    foreach ($period in (Get-StatsPeriods)) {
         $chip = New-Object System.Windows.Controls.Button
         $chip.Content = $period.Title
         # Which period a pill stands for is on the pill itself: this window's handlers hold no
@@ -6739,8 +6830,8 @@ function New-StatsUi {
             catch {
                 Write-DisplayLog "stats: the page failed - $($_.Exception.Message)"
                 [void][System.Windows.MessageBox]::Show(
-                    "Could not write stats.html." + [environment]::NewLine +
-                    "Check that the folder DeskModes sits in can be written to. Details are in the log.",
+                    (Get-Text -Key 'diary.pageFailed') + [environment]::NewLine +
+                    (Get-Text -Key 'diary.pageFailedHint'),
                     'DeskModes', [System.Windows.MessageBoxButton]::OK,
                     [System.Windows.MessageBoxImage]::Warning)
             }

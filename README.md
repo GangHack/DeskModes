@@ -38,6 +38,9 @@ Every one of these exists because the naive version broke on a real desk:
   1440×1080 three times a minute.
 - **Remembers window positions per set.** Come back to a layout and your windows come back
   with it.
+- **Speaks your language.** English, Russian, Ukrainian, Spanish, French and German,
+  following Windows unless you say otherwise (Settings -> Behavior -> Language). The log
+  stays English whatever the windows say - it is the thing you attach to a bug report.
 - **Remembers the last set across a reboot.** Windows brings up whatever it feels like
   after a restart, not what you had chosen.
 - **Rebuilds the desk when the world changes.** Woke up from sleep, monitor unplugged,
@@ -259,6 +262,7 @@ Written by the Settings window, and safe to edit by hand. See
 | `brightness`, `contrast` | mode key → a number for every display of the mode, or `{ display → number }`. Edited in the mode editor |
 | `hdr` | mode key → `true`/`false` for every display of the mode, or `{ display → true/false }`. A display not mentioned is left as it is. Edited in the mode editor |
 | `stats` | keep the diary. Off by default |
+| `language` | `"auto"` to follow Windows, or a code with a file under `lang\` (`"en"`, `"ru"`, `"uk"`, `"es"`, `"fr"`, `"de"`). Edited in Settings |
 | `audio` | mode key → part of a playback device name. Edited in the mode editor |
 
 Names are matched by substring, in either direction: `UltraGear` finds `LG ULTRAGEAR`, and
@@ -667,6 +671,7 @@ break the "nothing is installed on your system" promise.
 | `SettingsDialog.ps1` | the windows (WPF, themed after the system): Settings, the mode editor, the rule editor, the timer popup and the diary, separate so they can be built in isolation |
 | `WindowLayout.ps1` | window-position snapshots per display set |
 | `Activity.ps1` | the diary and its report |
+| `lang\*.ps1` | the interface, one file per language (`en`, `ru`, `uk`, `es`, `fr`, `de`). Drop another `code.ps1` beside them and it appears in the Language list - no code to change |
 | `Set-Display.ps1` | the command line |
 | `tests\run-tests.ps1` | the test runner: `framework.ps1`, `fakes.ps1`, and one file per group in `cases\` |
 | `tests\live.ps1` | the same questions asked of your real desk, by hand (`-ReadOnly` changes nothing) |

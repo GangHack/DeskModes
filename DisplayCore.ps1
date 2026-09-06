@@ -138,6 +138,9 @@ function Get-DefaultSettings {
         hotkeys         = [ordered]@{}
         maximizeRefresh = $true
         notifications   = $true
+        # The interface's language: a code with a file under lang\, or "auto" — follow Windows.
+        # The log is not covered by this and never will be; see Get-Text.
+        language        = 'auto'
         # The physical order of the monitors on the desk, left to right. The layout in
         # Windows is built along it, so that the cursor crosses between screens the same
         # way they really stand. Names can be written in parts: "UltraGear" will find
@@ -369,6 +372,7 @@ function Get-DisplaySettings {
         if ($null -ne $raw.stats)           { $s.stats           = [bool]$raw.stats }
         if ($null -ne $raw.layout)          { $s.layout          = @($raw.layout | ForEach-Object { [string]$_ }) }
         if ($null -ne $raw.primary)         { $s.primary         = [string]$raw.primary }
+        if ($null -ne $raw.language)        { $s.language        = [string]$raw.language }
 
         foreach ($field in 'hotkeys', 'audio') {
             if (-not $raw.$field) { continue }
@@ -455,6 +459,203 @@ function Save-DisplaySettings {
         Write-DisplayLog "warn: could not save the settings - $($_.Exception.Message)"
         return $false
     }
+}
+
+# --- the language -----------------------------------------------------------
+# The interface speaks the person's language; the log does not, ever. That split is the whole rule:
+# last-run.log is read by whoever is taking a failure apart, and a line that changed language with
+# the window cannot be matched against a grep, a commit or an issue. So every message a person
+# reads is formatted twice - once for them, once in English for the log - and -Language is how the
+# second one is asked for.
+#
+# One file per language under lang\, each returning a hashtable of key -> text. English is loaded
+# first and the chosen language laid over it, so a key nobody has translated yet shows its English
+# text rather than an empty label: a half-finished translation is a worse thing to ship than a
+# mixed one. A file also carries its own name for the drop-down (_name) and its own plural rule
+# (_plural), so a new language is a new file and nothing else - no list in the code to remember.
+
+$script:LangDir = Join-Path $PSScriptRoot 'lang'
+$script:LangFallback = 'en'
+$script:LangCode = ''
+# code -> the English map with that language laid over it. Built once per language and kept: the
+# tray menu asks for a dozen strings on every open, and re-reading two files there would be a
+# file system round trip inside a menu's Opening handler.
+$script:LangMaps = @{}
+
+# code -> the language's own name for itself, for the drop-down. Read off the files rather than
+# written down here, and sorted by code so the list does not depend on how the disk feels.
+function Get-LanguageChoices {
+    $found = [ordered]@{}
+    if (-not (Test-Path $script:LangDir)) { return $found }
+    foreach ($file in @(Get-ChildItem -Path $script:LangDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
+                        Sort-Object Name)) {
+        $code = [System.IO.Path]::GetFileNameWithoutExtension($file.Name).ToLowerInvariant()
+        $map = Import-LanguageFile -Code $code
+        if (-not $map) { continue }
+        $name = [string]$map['_name']
+        if (-not $name) { $name = $code }
+        $found[$code] = $name
+    }
+    return $found
+}
+
+# The file's hashtable, or $null. A language file is data and must never bring the application
+# down: a syntax error in a translation somebody edited by hand costs that language, not the tray.
+function Import-LanguageFile {
+    param([string]$Code)
+
+    if (-not $Code) { return $null }
+    $path = Join-Path $script:LangDir ($Code + '.ps1')
+    if (-not (Test-Path $path)) { return $null }
+    try {
+        $map = & $path
+        if ($map -is [hashtable] -or $map -is [System.Collections.Specialized.OrderedDictionary]) { return $map }
+        Write-DisplayLog ('lang: {0}.ps1 did not hand back a table, ignoring it' -f $Code)
+    }
+    catch {
+        Write-DisplayLog ('lang: could not read {0}.ps1 - {1}' -f $Code, $_.Exception.Message)
+    }
+    return $null
+}
+
+# What "auto" means, and what an unknown code falls back to. Two letters and not the full culture:
+# ru-RU, ru-UA and ru-KZ are one translation, and pretending otherwise would need three files.
+function Resolve-LanguageCode {
+    param([string]$Wanted)
+
+    if (-not $Wanted -or $Wanted -eq 'auto') {
+        # The UI culture and not the culture: a person can be on English Windows with Russian dates,
+        # and it is the language of the interface that is being asked about here.
+        $Wanted = [System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName
+    }
+    $Wanted = $Wanted.ToLowerInvariant()
+    if (Test-Path (Join-Path $script:LangDir ($Wanted + '.ps1'))) { return $Wanted }
+    return $script:LangFallback
+}
+
+# English with one language laid over it. Nothing here reads the settings: the caller says which
+# language, and Initialize-Language is the one place that turns the setting into a code.
+function Get-LanguageMap {
+    param([string]$Code)
+
+    if (-not $Code) {
+        if (-not $script:LangCode) { [void](Initialize-Language) }
+        $Code = $script:LangCode
+    }
+    $Code = $Code.ToLowerInvariant()
+    if ($script:LangMaps.ContainsKey($Code)) { return $script:LangMaps[$Code] }
+
+    $merged = @{}
+    foreach ($step in $script:LangFallback, $Code) {
+        $map = Import-LanguageFile -Code $step
+        if (-not $map) { continue }
+        foreach ($key in @($map.Keys)) { $merged[$key] = $map[$key] }
+    }
+    $script:LangMaps[$Code] = $merged
+    return $merged
+}
+
+# Which language the interface is in from here on. Called with the setting at startup and again
+# when it is changed, so a window built afterwards is in the new language.
+function Initialize-Language {
+    param([string]$Code)
+
+    $script:LangCode = Resolve-LanguageCode -Wanted $Code
+    [void](Get-LanguageMap -Code $script:LangCode)
+    return $script:LangCode
+}
+
+# The interface's text by key. Loads on the first ask rather than at dot-source time: Set-Display.ps1
+# switches displays and never asks for a word of this.
+#
+# Arguments go in through -f, which takes the decimal separator from the CURRENT culture. Anything
+# numeric must therefore arrive already formatted (Format-DisplayStamp and friends) rather than as
+# a number - the same rule the log lives by, for the same reason.
+function Get-Text {
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [object[]]$Values,
+        # 'en' for a line on its way to the log. Left empty, the language a person chose.
+        [string]$Language = ''
+    )
+
+    $map = Get-LanguageMap -Code $Language
+    $text = $map[$Key]
+    # The key itself, in brackets, and not an empty string: a missing key has to be visible on the
+    # window at a glance, and an empty label looks like a decision somebody made.
+    if ($null -eq $text) { return '[' + $Key + ']' }
+    if ($text -is [array]) { $text = [string]$text[0] }
+    # -not $null and not just truthiness: @(0) is a one-element array whose truth is the truth of
+    # its element, so "0 s" arrived here and left as "{0} s".
+    if ($null -ne $Values -and $Values.Count -gt 0) { return ([string]$text -f $Values) }
+    return [string]$text
+}
+
+# One, two or five - the form the count needs. English wants two forms and Russian three, so the
+# rule travels with the translation (_plural in the file) rather than living in a switch here that
+# every new language would have to be added to.
+function Get-PluralText {
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][int]$Count,
+        [string]$Language = ''
+    )
+
+    $map = Get-LanguageMap -Code $Language
+    $forms = $map[$Key]
+    if ($null -eq $forms) { return '[' + $Key + ']' }
+    if ($forms -isnot [array]) { return ([string]$forms -f $Count) }
+
+    $index = 0
+    $rule = $map['_plural']
+    if ($rule -is [scriptblock]) {
+        try { $index = [int](& $rule $Count) } catch { $index = 0 }
+    }
+    elseif ($Count -ne 1) { $index = 1 }
+    if ($index -lt 0 -or $index -ge $forms.Count) { $index = $forms.Count - 1 }
+    return ([string]$forms[$index] -f $Count)
+}
+
+# The same fact for the person and for the log. Every message that reaches a balloon, a window or
+# the command line is built through this: .Text is what they read, .Log is the English of it, and
+# the two are one sentence in two languages rather than two sentences that will drift apart.
+function New-DisplayMessage {
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [object[]]$Values,
+        # What the log gets in place of -Values, when the values themselves are for a person. A
+        # mode's title is the case this exists for: "Only LG ULTRAGEAR" is the right thing to read
+        # and the wrong thing to grep for, so the log is handed the mode's key instead.
+        [object[]]$LogValues
+    )
+
+    if ($null -eq $LogValues) { $LogValues = $Values }
+    return [pscustomobject]@{
+        Key  = $Key
+        Text = (Get-Text -Key $Key -Values $Values)
+        Log  = (Get-Text -Key $Key -Values $LogValues -Language $script:LangFallback)
+    }
+}
+
+# A refusal a person will read, built so that the log keeps the English of it. The English line is
+# written HERE and the exception is marked as already written down, so the catch at the bottom of
+# Switch-DisplayMode adds nothing and the ERROR: line stays greppable whatever the window speaks.
+# It is thrown at the call site rather than here, because a function that leaves by throwing and
+# says so only in its comment is a function whose callers read as if they carry on.
+function New-DisplayRefusal {
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [object[]]$Values,
+        [object[]]$LogValues
+    )
+
+    $message = New-DisplayMessage -Key $Key -Values $Values -LogValues $LogValues
+    Write-DisplayLog ('ERROR: ' + $message.Log)
+    $refusal = New-Object System.InvalidOperationException($message.Text)
+    # Not an exception type of our own: one marked field is enough to tell "we said this on purpose"
+    # from "something fell over", and a new type would have to live in the embedded C# block.
+    $refusal.Data['dm.logged'] = $true
+    return $refusal
 }
 
 # --- the last chosen mode ---------------------------------------------------
@@ -3848,7 +4049,9 @@ function Get-DisplayModes {
 
         $modes += [pscustomobject]@{
             Key       = 'solo:' + $name
-            Title     = 'Only ' + $m.Label
+            # The title is for a person and changes with the language; the KEY is what settings.json,
+            # the log and every comparison use, and it never does. Nothing may be looked up by title.
+            Title     = (Get-Text -Key 'mode.solo' -Values @($m.Label))
             Kind      = 'solo'
             Label     = $m.Label
             ShortId   = $m.ShortId
@@ -3898,7 +4101,7 @@ function Get-DisplayModes {
 
     $modes += [pscustomobject]@{
         Key       = 'all'
-        Title     = 'All displays'
+        Title     = (Get-Text -Key 'mode.all')
         Kind      = 'all'
         Primary   = $null
         Available = (@($State | Where-Object { -not $_.Disconnected }).Count -gt 0)
@@ -3915,9 +4118,9 @@ function Get-ModeTitleFromKey {
     param([Parameter(Mandatory)][string]$Key)
 
     switch -Regex ($Key) {
-        '^solo:(.+)$'  { return 'Only ' + $Matches[1] }
+        '^solo:(.+)$'  { return (Get-Text -Key 'mode.solo' -Values @($Matches[1])) }
         '^combo:(.+)$' { return $Matches[1] }
-        '^all$'        { return 'All displays' }
+        '^all$'        { return (Get-Text -Key 'mode.all') }
         default        { return $Key }
     }
 }
@@ -4125,22 +4328,29 @@ function Get-ActiveModeKey {
 function Format-SwitchResult {
     param([string[]]$Summary = @(), [string[]]$Failed = @(), [string[]]$Refused = @(), [bool]$LayoutFailed = $false)
 
-    $text = (@($Summary) -join ', ')
-    $parts = @()
-    if (@($Failed).Count -gt 0) {
-        $parts += ('did not come up: ' + (@($Failed) -join ', ') + ' - unplug the cable and plug it back in')
-    }
-    if (@($Refused).Count -gt 0) {
-        $parts += ('Still on: ' + (@($Refused) -join ', ') + ' - Windows would not turn them off')
-    }
-    if ($LayoutFailed) {
-        $parts += 'positions not arranged - Windows refused the layout, press the hotkey to retry'
-    }
-    foreach ($p in $parts) {
-        $text = $(if ($text) { $text + '. ' + $p } else { $p })
+    # Twice over, in the person's language and in English: this verdict is both the balloon a person
+    # reads and the done: line in the log, and the log stays English (see Get-Text).
+    $said = [ordered]@{}
+    foreach ($lang in '', $script:LangFallback) {
+        $text = (@($Summary) -join ', ')
+        $parts = @()
+        if (@($Failed).Count -gt 0) {
+            $parts += (Get-Text -Key 'verdict.failed' -Values @((@($Failed) -join ', ')) -Language $lang)
+        }
+        if (@($Refused).Count -gt 0) {
+            $parts += (Get-Text -Key 'verdict.refused' -Values @((@($Refused) -join ', ')) -Language $lang)
+        }
+        if ($LayoutFailed) {
+            $parts += (Get-Text -Key 'verdict.layout' -Language $lang)
+        }
+        foreach ($p in $parts) {
+            $text = $(if ($text) { $text + '. ' + $p } else { $p })
+        }
+        $said[$lang] = $text
     }
     return [pscustomobject]@{
-        Text = $text
+        Text = $said['']
+        Log  = $said[$script:LangFallback]
         Ok   = (@($Failed).Count -eq 0 -and @($Refused).Count -eq 0 -and -not $LayoutFailed)
     }
 }
@@ -4501,7 +4711,7 @@ function Switch-DisplayMode {
         # Dispose is required here too: in the tray the process lives for weeks, and every skipped
         # switch used to leave a kernel handle behind it.
         $mutex.Dispose()
-        return (New-SwitchResult -ModeKey $ModeKey -Outcome 'busy' -Message 'A switch is already in progress.')
+        return (New-SwitchResult -ModeKey $ModeKey -Outcome 'busy' -Message (Get-Text -Key 'switch.busy'))
     }
 
     # A switch's duration is written into the final done: and stays there forever. Three lines of code
@@ -4544,20 +4754,20 @@ function Switch-DisplayMode {
             # A shortcut can be assigned to a monitor that is not plugged in right now — that is a
             # normal situation and not a breakage, and it has to be said in human terms.
             if ($ModeKey -like 'solo:*') {
-                throw "That display is not connected right now."
+                throw (New-DisplayRefusal -Key 'switch.notConnected')
             }
             # The combo could have been deleted in the settings while the shortcut stayed.
             if ($ModeKey -like 'combo:*') {
-                throw ("The combination '{0}' no longer exists in the settings." -f (Get-ModeTitleFromKey $ModeKey))
+                throw (New-DisplayRefusal -Key 'switch.noCombo' -Values @((Get-ModeTitleFromKey $ModeKey)))
             }
-            throw "Unknown mode '$ModeKey'."
+            throw (New-DisplayRefusal -Key 'switch.unknownMode' -Values @($ModeKey))
         }
 
         $usable = @($monitors | Where-Object { -not $_.Disconnected })
         $wanted = @(Get-ModeMembers -Mode $mode -State $monitors)
 
         if ($wanted.Count -eq 0) {
-            throw "Mode '$($mode.Title)': none of its displays are connected. Nothing was turned off, so you keep a picture."
+            throw (New-DisplayRefusal -Key 'switch.noMembers' -Values @($mode.Title) -LogValues @($mode.Key))
         }
 
         $wantedIds = @($wanted | ForEach-Object { $_.Id })
@@ -4648,7 +4858,7 @@ function Switch-DisplayMode {
                 # It did not work out — the old three-step road. It works, it just blinks: the set
                 # without the modes, and the positions and the refresh rate brought up afterwards.
                 if (-not $full -and -not (Set-CcdTopology -DevicePaths $wantedIds)) {
-                    throw "Windows refused the display configuration for '$($mode.Title)'. Nothing was changed, so you keep a picture."
+                    throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
                 }
                 & $notePhase $phases 'apply'
 
@@ -4739,7 +4949,7 @@ function Switch-DisplayMode {
             $reverted = Set-CcdTopology -DevicePaths @($wasOn | ForEach-Object { $_.Id })
             if ($reverted) { Write-DisplayLog 'revert: the previous set is back' }
             else           { Write-DisplayLog 'revert: Windows refused the previous set as well' }
-            throw ("None of the displays of '{0}' came up, so the previous set was put back. Check the cable and Deep Sleep Mode in the monitor's menu." -f $mode.Title)
+            throw (New-DisplayRefusal -Key 'switch.noneCameUp' -Values @($mode.Title) -LogValues @($mode.Key))
         }
 
         $verdict = Format-SwitchResult -Summary $step.Summary -Failed $step.Failed `
@@ -4750,7 +4960,7 @@ function Switch-DisplayMode {
         $took = $watch.Elapsed.TotalSeconds.ToString('0.0', [cultureinfo]::InvariantCulture)
         $breakdown = Format-PhaseTimes $phases
         if ($breakdown) { $breakdown = ': ' + $breakdown }
-        Write-DisplayLog ("done: {0} ({1} s{2})" -f $text, $took, $breakdown)
+        Write-DisplayLog ("done: {0} ({1} s{2})" -f $verdict.Log, $took, $breakdown)
 
         # We remember the CHOICE, not the result: even if one monitor never came up, the person
         # asked for exactly this mode, and it is the one to put back after the computer is turned
@@ -4777,7 +4987,10 @@ function Switch-DisplayMode {
                     -Refused $refused -Failed $step.Failed -Seconds $watch.Elapsed.TotalSeconds)
     }
     catch {
-        Write-DisplayLog "ERROR: $($_.Exception.Message)"
+        # A refusal we raised ourselves has already put its English into the log (New-DisplayRefusal);
+        # logging $_.Exception.Message here as well would put the SAME line in twice, in the language
+        # of the window. Anything else that fell over says whatever it says, in English, as before.
+        if (-not $_.Exception.Data.Contains('dm.logged')) { Write-DisplayLog "ERROR: $($_.Exception.Message)" }
         throw
     }
     finally {
@@ -5691,7 +5904,26 @@ function Get-RuleDecision {
     return $none
 }
 
-# A line for the log and the balloon: "cs2 is running", "idle for 20 min".
+# The same condition in the person's words, for the rules list in the Settings window. Its own
+# function and not a -Language on the one below, because the log's phrasing is terse on purpose
+# ("idle for 20 min") and a window has room to say it properly.
+function Get-RuleReasonText {
+    param($Rule)
+
+    switch ([string]$Rule.when) {
+        'process'  { return (Get-Text -Key 'reason.process' -Values @([string]$Rule.process)) }
+        'idle'     { return (Get-Text -Key 'reason.idle' -Values @((Format-DurationShort ([int]$Rule.minutes)))) }
+        'displays' {
+            $names = @(@($Rule.displays) | ForEach-Object { [string]$_ } | Where-Object { $_ })
+            if ($names.Count -eq 1) { return (Get-Text -Key 'reason.oneDisplay' -Values @($names[0])) }
+            return (Get-Text -Key 'reason.displays' -Values @(($names -join ', ')))
+        }
+        default    { return [string]$Rule.when }
+    }
+}
+
+# A line for the LOG: "cs2 is running", "idle for 20 min". English, always - the rules are the
+# hardest thing here to work out after the fact, and their lines have to grep.
 function Format-RuleReason {
     param($Rule)
 
@@ -5839,12 +6071,18 @@ function ConvertFrom-DurationText {
     $t = ([string]$Text).Trim().ToLowerInvariant()
     if (-not $t) { return 0 }
 
+    # The English words are ALWAYS accepted, whatever the window speaks: this box is filled from
+    # Format-DurationShort, which now writes the language's own abbreviation, and it is also filled
+    # by a person who may well type "1h30" out of habit. Dropping either half breaks somebody.
+    $h = 'h|hr|hrs|hour|hours' + (Get-Text -Key 'unit.parse.hours')
+    $m = 'm|min|mins|minute|minutes' + (Get-Text -Key 'unit.parse.minutes')
+
     # Hours with minutes: "1h30", "1h 30m", "1:30".
-    if ($t -match '^(\d+)\s*(?:h|hr|hrs|hour|hours|:)\s*(\d+)\s*(?:m|min|mins|minute|minutes)?$') {
+    if ($t -match ('^(\d+)\s*(?:' + $h + '|:)\s*(\d+)\s*(?:' + $m + ')?$')) {
         return [int]$Matches[1] * 60 + [int]$Matches[2]
     }
-    if ($t -match '^(\d+)\s*(?:h|hr|hrs|hour|hours)$') { return [int]$Matches[1] * 60 }
-    if ($t -match '^(\d+)\s*(?:m|min|mins|minute|minutes)?$')     { return [int]$Matches[1] }
+    if ($t -match ('^(\d+)\s*(?:' + $h + ')$')) { return [int]$Matches[1] * 60 }
+    if ($t -match ('^(\d+)\s*(?:' + $m + ')?$')) { return [int]$Matches[1] }
     return 0
 }
 
@@ -5853,10 +6091,12 @@ function Format-Duration {
     param([int]$Seconds)
 
     if ($Seconds -lt 0) { $Seconds = 0 }
-    if ($Seconds -lt 60) { return ('{0} s' -f $Seconds) }
+    if ($Seconds -lt 60) { return (Get-Text -Key 'unit.seconds' -Values @($Seconds)) }
     $minutes = [int][math]::Floor($Seconds / 60)
-    if ($minutes -lt 60) { return ('{0} min' -f $minutes) }
-    return ('{0} h {1:00} min' -f [int][math]::Floor($minutes / 60), ($minutes % 60))
+    if ($minutes -lt 60) { return (Get-Text -Key 'unit.minutes' -Values @($minutes)) }
+    # The minutes are padded to two digits: this one counts down in the tray's tooltip, and a line
+    # whose width jumps between "59 min" and "1 h 0 min" twitches once a minute.
+    return (Get-Text -Key 'unit.hoursMinutesPadded' -Values @([int][math]::Floor($minutes / 60), ($minutes % 60)))
 }
 
 # The same duration, but as it is written on a button: "45 min", "1 h", "1 h 30 min".
@@ -5929,7 +6169,9 @@ function Set-DisplaySleepMinutes {
             return $false
         }
         [void][NativePower]::PowerSetActiveScheme([IntPtr]::Zero, [ref]$scheme)
-        Write-DisplayLog ("power: displays go to sleep after {0}" -f $(if ($Minutes -eq 0) { 'never' } else { Format-DurationShort $Minutes }))
+        # Minutes plainly, and not Format-DurationShort: that one speaks the window's language now,
+        # and this line is the log's.
+        Write-DisplayLog ("power: displays go to sleep after {0}" -f $(if ($Minutes -eq 0) { 'never' } else { "$Minutes min" }))
         return $true
     }
     catch {
@@ -5946,7 +6188,7 @@ $script:SleepChoices = @(0, 1, 2, 5, 10, 15, 20, 30, 45, 60)
 function Get-SleepChoiceTitle {
     param([int]$Minutes)
 
-    if ($Minutes -le 0) { return 'Never' }
+    if ($Minutes -le 0) { return (Get-Text -Key 'sleep.never') }
     return Format-DurationShort $Minutes
 }
 
@@ -5965,11 +6207,11 @@ function Format-DurationShort {
     param([int]$Minutes)
 
     if ($Minutes -lt 0) { $Minutes = 0 }
-    if ($Minutes -lt 60) { return ('{0} min' -f $Minutes) }
+    if ($Minutes -lt 60) { return (Get-Text -Key 'unit.minutes' -Values @($Minutes)) }
     $hours = [int][math]::Floor($Minutes / 60)
     $rest = $Minutes % 60
-    if ($rest -eq 0) { return ('{0} h' -f $hours) }
-    return ('{0} h {1} min' -f $hours, $rest)
+    if ($rest -eq 0) { return (Get-Text -Key 'unit.hours' -Values @($hours)) }
+    return (Get-Text -Key 'unit.hoursMinutes' -Values @($hours, $rest))
 }
 
 # The slider steps in the timer window. Not an even step: "in five minutes" and "in eight hours"
@@ -6037,8 +6279,10 @@ function Get-TimerTargetText {
     param([int]$Minutes, [datetime]$Now = (Get-Date))
 
     $at = $Now.AddMinutes($Minutes)
-    $text = 'at ' + $at.ToString('HH:mm', [cultureinfo]::InvariantCulture)
-    if ($at.Date -gt $Now.Date) { $text += ' tomorrow' }
+    # The clock face itself still goes through InvariantCulture: 24-hour HH:mm is the only form
+    # this window has room for, and a locale that would rather write 9:05 PM is not asked.
+    $text = Get-Text -Key 'timer.at' -Values @($at.ToString('HH:mm', [cultureinfo]::InvariantCulture))
+    if ($at.Date -gt $Now.Date) { $text += ' ' + (Get-Text -Key 'timer.tomorrow') }
     return $text
 }
 

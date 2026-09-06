@@ -169,7 +169,7 @@ Test-Case 'dialog: the editor shows no-shortcut for rubbish instead of pretendin
     $ed = New-ModeEditorWindow -Mode $mode -Combo $null -State $script:DlgState -TakenNames @() `
                                -Hotkeys ([ordered]@{ 'all' = 'needs Ctrl / Alt / Shift' }) -Dark $false
     try {
-        Assert-Equal $script:NoHotkeyText $ed.HotkeyBox.Text 'hint text did not survive as a binding'
+        Assert-Equal (Get-NoHotkeyText) $ed.HotkeyBox.Text 'hint text did not survive as a binding'
     }
     finally { $ed.Window.Close() }
 }
@@ -202,7 +202,7 @@ Test-Case 'dialog: in-progress hint text never becomes a binding' {
     $settings.hotkeys['all'] = 'Ctrl+Alt+F5'
     $ui = New-DialogUi -Settings $settings
     try {
-        foreach ($junk in $script:PressKeysText, 'needs Ctrl / Alt / Shift', 'unsupported key', '') {
+        foreach ($junk in (Get-PressKeysText), 'needs Ctrl / Alt / Shift', 'unsupported key', '') {
             $ui.Hotkeys['all'] = $junk
             $got = Read-SettingsFromUi -Ui $ui -Settings $settings
             Assert-True (-not $got.Settings.hotkeys.Contains('all')) "'$junk' is not a binding"
@@ -295,7 +295,7 @@ Test-Case 'dialog: the cross clears a shortcut and greys itself out when there i
         Assert-True $clear.IsEnabled 'enabled while a shortcut is set'
 
         $clear.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
-        Assert-Equal $script:NoHotkeyText $box.Text 'the click cleared the box'
+        Assert-Equal (Get-NoHotkeyText) $box.Text 'the click cleared the box'
         Assert-True (-not $clear.IsEnabled) 'and greyed itself out'
 
         # Assigned again — the cross is alive again (it follows the field, not the clicks).
@@ -856,7 +856,7 @@ Test-Case 'dialog: the way-back shortcut is set on the Behavior page and saved b
         Assert-True ($got.Problem -like '*assigned twice*') 'with words'
 
         # Cleared, it leaves the file.
-        $ui.BackHotkeyBox.Text = $script:NoHotkeyText
+        $ui.BackHotkeyBox.Text = (Get-NoHotkeyText)
         $got = Read-SettingsFromUi -Ui $ui -Settings $settings
         Assert-True (-not $got.Settings.hotkeys.Contains($script:BackHotkeyName)) 'gone'
     }

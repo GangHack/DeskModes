@@ -36,11 +36,12 @@ New cross-file calls out of `DisplayCore.ps1` follow the same shape.
 .\tools\check.ps1
 ```
 
-Four gates, non-zero exit on any failure: every `.ps1` parses, every `.ps1` is UTF-8
+Five gates, non-zero exit on any failure: every `.ps1` parses, every `.ps1` is UTF-8
 with BOM and CRLF, PSScriptAnalyzer is clean (skipped with a warning when the module
-is absent), and the test suite passes. `-Only <substring>` is passed through to the
-tests; `-RequireAnalyzer` turns a missing analyzer into a failure, which is what CI
-uses.
+is absent), every string key the code asks for is in `lang/en.ps1` and no translation
+carries a key English has never heard of, and the test suite passes. `-Only <substring>`
+is passed through to the tests; `-RequireAnalyzer` turns a missing analyzer into a
+failure, which is what CI uses.
 
 Nothing else counts as verification. In particular, "the tests passed" is not enough:
 `render-preview.ps1` and `Make-Icon.ps1` are dot-sourced by nothing, so a typo in them
@@ -79,11 +80,12 @@ new file of the program ships by itself, a new file for us has to be named there
 | `WindowLayout.ps1` | 228 | window-position snapshots per display set |
 | `render-preview.ps1` | 335 | dev tool: renders all nine windows to PNG without showing them, at the size the markup gives them rather than the size this desk left them |
 | `Make-Icon.ps1` | 150 | dev tool: regenerates `app.ico` |
-| `tools/check.ps1` | 234 | the four gates, and the only answer to "am I done" |
+| `tools/check.ps1` | 320 | the five gates, and the only answer to "am I done" |
+| `lang/` | — | one file per language, `code.ps1` returning a table of key -> text. `en.ps1` is the base every other file is laid over, and the only one that has to be complete |
 | `tools/probe-picture.ps1` | 266 | dev tool: reads and writes ONE monitor register per run, so that an eye at the desk can say what changed. The only way to learn a picture preset's number; the program itself never asks for capabilities |
 | `tools/trace-displays.ps1` | 132 | dev tool: our log and Windows' `Kernel-PnP` 1010 in one timeline. The Windows side is the only place a display leaving the bus by itself is written down |
 | `tools/pack.ps1` | 211 | the release archive: what the user downloads, built from `git ls-files` |
-| `tests/` | — | the runner (112), the framework (79), the fakes (131), 41 files of cases (7417) and `live.ps1` (252) |
+| `tests/` | — | the runner (112), the framework (79), the fakes (131), 43 files of cases (8172) and `live.ps1` (252) |
 | `docs/notes.md` | 2575 | the engineering diary: what Windows actually does, measured, day by day |
 
 Line counts are signposts, not contracts — they drift. `docs/notes.md` is the place
@@ -92,10 +94,32 @@ produced it.
 
 ## Rules you cannot infer from the code
 
-- **Everything here is English** — the code, the comments, the interface, the log, the
-  documentation and the commit subjects. Russian is for talking to the author, and it does
-  not go into the repository. Entries in `last-run.log` from before 2026-08-05 are Russian;
-  that is history, not a precedent.
+- **Everything here is English except what a user reads.** The code, the comments, the log,
+  the documentation and the commit subjects: English, always. The *interface* is translated,
+  and the translations live in `lang/` and nowhere else — a sentence a person reads is a
+  `%%T:key%%` token in the markup or a `Get-Text` in the code, never a literal. Russian is for
+  talking to the author and for `lang/ru.ps1`; it does not go anywhere else in the repository.
+  Entries in `last-run.log` from before 2026-08-05 are Russian; that is history, not a precedent.
+- **The log never changes language, and that costs a second formatting.** `Get-Text -Language 'en'`
+  is how a line on its way to `last-run.log` is built, and `New-DisplayMessage` builds both at once
+  (`.Text` for the person, `.Log` for the file). A refusal goes through `New-DisplayRefusal`, which
+  writes the English itself and marks the exception `dm.logged` so the catch at the bottom of
+  `Switch-DisplayMode` does not write it again in the window's language. `Format-RuleReason` is the
+  log's phrasing of a rule and stays English; `Get-RuleReasonText` is the window's. The command line
+  (`Set-Display.ps1`, and `Format-ActivityReport` behind it) stays English too — it is a scripting
+  surface, and its output gets parsed and googled.
+- **A mode's `Title` is for a person and its `Key` is for everything else.** The title now changes
+  with the language, so nothing may be looked up, compared or logged by it — `settings.json`, the
+  hotkeys, the rules and every line of the log use the key (`solo:<name>`, `combo:<name>`, `all`),
+  which is the same string in every language.
+- **A new string is added to `lang/en.ps1` first.** Gate 4 fails on a key the code asks for and
+  English does not have; a translation that is merely behind is fine and falls back. Keys built at
+  run time (`'timer.set.' + $Action`) are invisible to that scan and are named by hand in both
+  `tools/check.ps1` and `tests/cases/43-language.tests.ps1`.
+- **Nothing that shows text gets a fixed `Width`.** `MinWidth` instead: "Save" is four characters
+  and «Сохранить» is nine, and the button that clipped it looked like a rendering fault rather than
+  like a translation that did not fit. `.\render-preview.ps1 -Fake -Language ru` is how that is
+  looked at without changing the setting and reopening nine windows by hand.
 - **Every date and percentage goes through `InvariantCulture`.** `-f` and `ToString()`
   without a culture take the current one — including its *calendar*. On a Thai locale
   `yyyy` is a Buddhist year and the log stops being ISO. `Format-DisplayStamp` exists
@@ -315,9 +339,9 @@ value of this project, and no fake reproduces them.
   sake of testing. Milliseconds were measured on that path, and the `done:` line in the
   log keeps measuring them on every switch, forever. Shadow functions in the test
   instead.
-- **Do not write anything here in a language other than English** — not a comment, not a
-  log line, not a commit subject. The one-language rule is the whole rule; there is no
-  half of the repository it does not apply to.
+- **Do not write anything here in a language other than English, outside `lang/`** — not a
+  comment, not a log line, not a commit subject, and not a sentence hard-coded into a window.
+  `lang/` is the one place another language belongs, and even there the comments are English.
 - **Do not let anything here learn where it lives.** There is not one absolute path in
   this repository — every one of them resolves through `$PSScriptRoot` or `%~dp0`, which
   is why the folder can be moved or renamed at no cost. Keep it that way. What a move
