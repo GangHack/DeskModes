@@ -248,6 +248,41 @@ Test-Case 'switch: a failed exact restore cannot poison the baseline after resta
     Assert-Equal 4 $script:SwDesk[2].Rotation 'the saved portrait rotation wins over the failed observation'
 }
 
+Test-Case 'switch: leaving an unsafe desk preserves its trusted window baseline and still restores the destination' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:WindowMarkers = @{}
+    $script:RestoredWindowKeys = @()
+    $script:LiveWindows = 'trusted All'
+    function Save-WindowLayout {
+        param([string]$Key)
+        $script:SwCalls += 'windows:save'
+        $script:WindowMarkers[$Key] = $script:LiveWindows
+    }
+    function Restore-WindowLayout {
+        param([string]$Key)
+        $script:SwCalls += 'windows:restore'
+        $script:RestoredWindowKeys += $Key
+        if ($script:WindowMarkers.ContainsKey($Key)) { $script:LiveWindows = $script:WindowMarkers[$Key] }
+    }
+
+    $allWindowKey = Get-DisplayLayoutKey -State $script:SwDesk
+    [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet)
+    $soloWindowKey = Get-DisplayLayoutKey -State @($script:SwDesk | Where-Object { $_.Active })
+    $script:LiveWindows = 'trusted Solo'
+    $script:SwVerifyMismatch = $true
+    $failed = Switch-DisplayMode -ModeKey 'all' -Quiet
+    Assert-Equal 'partial' $failed.Outcome 'the All restore is guarded as unsafe'
+
+    $script:LiveWindows = 'windows on failed All'
+    $script:SwVerifyMismatch = $false
+    [void](Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet)
+
+    Assert-Equal 'trusted All' $script:WindowMarkers[$allWindowKey] 'failed All did not replace the good window positions'
+    Assert-True ($script:RestoredWindowKeys -contains $soloWindowKey) 'the successful destination still restored its windows in the tail'
+}
+
 Test-Case 'switch: a failed first solo restore retries from the trusted larger desk' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
@@ -501,6 +536,68 @@ Test-Case 'switch: -KeepMode leaves resolution and refresh rate alone' {
     # remainder.
     Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the one-call road needs modes, so it is not even tried'
     Assert-Equal 1 @($script:SwCalls | Where-Object { $_ -like 'topology:*' }).Count 'the set alone is asked for instead'
+}
+
+Test-Case 'switch: KeepMode restores saved geometry with the live mode and keeps both truths durable' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwDesk[0].Hz = 75; $script:SwDesk[0].RateNum = 75; $script:SwDesk[0].RateDen = 1
+    $allKey = Get-DesktopSetKey -DevicePaths @($script:SwDesk | ForEach-Object { $_.Id })
+
+    [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
+    $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080
+    $script:SwDesk[0].Hz = 120; $script:SwDesk[0].RateNum = 120000; $script:SwDesk[0].RateDen = 1000
+    $kept = Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet
+
+    Assert-True $kept.Ok 'the exact All restore completed'
+    $activeTarget = @($script:SwFullTargets | Where-Object { $_.DevicePath -eq 'path-ug' })[0]
+    Assert-Equal 1920 $activeTarget.Width 'the live active resolution was requested'
+    Assert-Equal 120000 $activeTarget.RateNum 'with its exact live refresh fraction'
+    Assert-Equal 1 $activeTarget.Rotation 'while the saved rotation was restored'
+    $baseline = @($script:SwStore.Snapshots[$allKey].Displays | Where-Object { $_.Id -eq 'path-ug' })[0]
+    Assert-Equal 75 $baseline.Hz 'the canonical All baseline remains unchanged'
+    $protected = @($script:SwStore.ProtectedSnapshot.Displays | Where-Object { $_.Id -eq 'path-ug' })[0]
+    Assert-Equal 120 $protected.Hz 'the watchdog separately protects what KeepMode actually applied'
+
+    $beforeRepeat = @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
+    Assert-Equal 120 $script:SwDesk[0].Hz 'a manual repeat All preserves the live complete desk'
+    Assert-Equal $beforeRepeat @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the repeat does not rebuild it'
+    Assert-Equal 120 $script:SwStore.Snapshots[$allKey].Displays[0].Hz 'that explicit repeat promotes the successful live desk'
+}
+
+Test-Case 'switch: KeepMode refuses a live size that overlaps saved sleeping geometry' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080
+    $script:SwDesk[1].X = 1920
+    [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
+    $script:SwDesk[0].Width = 2560
+    $script:SwCalls = @()
+
+    $failed = ''
+    try { [void](Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet) } catch { $failed = $_.Exception.Message }
+
+    Assert-True ($failed -like '*Windows refused the display configuration*') 'the conflict is refused in the existing switch vocabulary'
+    Assert-Equal 0 $script:SwCalls.Count 'nothing external ran after the conflict was found'
+}
+
+Test-Case 'switch: KeepMode refuses live dimensions observed under a different rotation' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwDesk[0].Width = 1080; $script:SwDesk[0].Height = 1920; $script:SwDesk[0].Rotation = 4
+    [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
+    $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080; $script:SwDesk[0].Rotation = 1
+    $script:SwCalls = @()
+
+    $failed = ''
+    try { [void](Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet) } catch { $failed = $_.Exception.Message }
+
+    Assert-True ($failed -like '*Windows refused the display configuration*') 'one request cannot keep the landscape source and restore portrait rotation'
+    Assert-Equal 0 $script:SwCalls.Count 'the conflict has no topology or mode fallback'
 }
 
 Test-Case 'switch: modes are only pushed when the desk actually moved' {

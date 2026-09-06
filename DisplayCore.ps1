@@ -1027,11 +1027,12 @@ function New-DesktopSnapshot {
 
 function New-DesktopSnapshotStore {
     return [pscustomobject][ordered]@{
-        Version      = 1
-        Snapshots    = @{}
-        ProtectedKey = ''
-        PendingKey   = ''
-        UnsafeKeys   = @{}
+        Version           = 2
+        Snapshots         = @{}
+        ProtectedKey      = ''
+        ProtectedSnapshot = $null
+        PendingKey        = ''
+        UnsafeKeys        = @{}
     }
 }
 
@@ -1062,6 +1063,28 @@ function Read-DesktopSnapshotStore {
             }
         }
         $store.ProtectedKey = [string]$raw.protectedKey
+        if ($raw.protectedSnapshot) {
+            $saved = $raw.protectedSnapshot
+            $state = @()
+            foreach ($d in @($saved.displays)) {
+                foreach ($field in 'id', 'x', 'y', 'width', 'height', 'hz', 'rotation', 'rateNum', 'rateDen') {
+                    if (-not $d.PSObject.Properties[$field]) { throw "Protected desktop snapshot is missing $field." }
+                }
+                $state += [pscustomobject]@{
+                    Id = [string]$d.id; Label = [string]$d.label
+                    Active = $true; Disconnected = $false
+                    Primary = ([string]$d.id -eq [string]$saved.primaryId)
+                    X = [int]$d.x; Y = [int]$d.y
+                    Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
+                    Rotation = [int]$d.rotation; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
+                }
+            }
+            $protected = New-DesktopSnapshot -State $state
+            if ($protected -and $protected.Key -eq $store.ProtectedKey -and
+                [string]$saved.key -eq $protected.Key) {
+                $store.ProtectedSnapshot = $protected
+            }
+        }
         $store.PendingKey = [string]$raw.pendingKey
         if ($store.PendingKey) { $store.UnsafeKeys[$store.PendingKey] = $true }
         foreach ($key in @($raw.unsafeKeys)) {
@@ -1095,8 +1118,24 @@ function Write-DesktopSnapshotStore {
             })
         }
     }
+    $protected = $null
+    if ($Store.ProtectedSnapshot) {
+        $protected = [ordered]@{
+            key = [string]$Store.ProtectedSnapshot.Key
+            primaryId = [string]$Store.ProtectedSnapshot.PrimaryId
+            displays = @($Store.ProtectedSnapshot.Displays | ForEach-Object {
+                [ordered]@{
+                    id = [string]$_.Id; label = [string]$_.Label
+                    x = [int]$_.X; y = [int]$_.Y
+                    width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
+                    rotation = [int]$_.Rotation; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
+                }
+            })
+        }
+    }
     $flat = [ordered]@{
-        version = 1; protectedKey = [string]$Store.ProtectedKey
+        version = 2; protectedKey = [string]$Store.ProtectedKey
+        protectedSnapshot = $protected
         pendingKey = [string]$Store.PendingKey
         unsafeKeys = @($Store.UnsafeKeys.Keys | Sort-Object)
         snapshots = @($saved)
@@ -1121,7 +1160,8 @@ function New-DesktopRestorePlan {
         [Parameter(Mandatory)]$Wanted,
         [string]$PrimaryPath = '',
         [string[]]$Order = @(),
-        [switch]$UseConfiguredLayout
+        [switch]$UseConfiguredLayout,
+        [switch]$KeepMode
     )
 
     $wantedById = @{}
@@ -1147,17 +1187,44 @@ function New-DesktopRestorePlan {
     foreach ($d in @($Snapshot.Displays)) {
         $m = $wantedById[[string]$d.Id]
         $where = $configuredPositions[[string]$d.Id]
+        $width = [int]$d.Width; $height = [int]$d.Height; $hz = [int]$d.Hz
+        $rateNum = [int]$d.RateNum; $rateDen = [int]$d.RateDen
+        if ($KeepMode -and $m.Active) {
+            # The source size belongs to the rotation under which it was observed. Reusing it under a
+            # quarter-turn would ask CCD for a different physical mode while claiming to keep it.
+            $savedPortrait = ([int]$d.Rotation -eq 2 -or [int]$d.Rotation -eq 4)
+            $livePortrait = ([int]$m.Rotation -eq 2 -or [int]$m.Rotation -eq 4)
+            if ($savedPortrait -ne $livePortrait -or [int]$m.Width -le 0 -or [int]$m.Height -le 0 -or
+                [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0) { return $null }
+            $width = [int]$m.Width; $height = [int]$m.Height; $hz = [int]$m.Hz
+            $rateNum = [int]$m.RateNum; $rateDen = [int]$m.RateDen
+        }
         $targets += [pscustomobject][ordered]@{
             DevicePath = [string]$d.Id
             Label      = [string]$m.Label
-            Width      = [int]$d.Width
-            Height     = [int]$d.Height
-            Hz         = [int]$d.Hz
-            RateNum    = [int]$d.RateNum
-            RateDen    = [int]$d.RateDen
+            Width      = $width
+            Height     = $height
+            Hz         = $hz
+            RateNum    = $rateNum
+            RateDen    = $rateDen
             Rotation   = [int]$d.Rotation
             X          = $(if ($UseConfiguredLayout) { [int]$where.X } else { [int]$d.X - [int]$anchor.X })
             Y          = $(if ($UseConfiguredLayout) { [int]$where.Y } else { [int]$d.Y - [int]$anchor.Y })
+        }
+    }
+    # Saved coordinates describe saved rectangles. A larger live mode can extend into a sleeping
+    # neighbour; applying that overlap would invent a new arrangement despite -KeepMode. Refuse before
+    # CCD sees anything and leave the canonical snapshot untouched for an ordinary restore.
+    if ($KeepMode) {
+        for ($i = 0; $i -lt $targets.Count; $i++) {
+            for ($j = $i + 1; $j -lt $targets.Count; $j++) {
+                $a = $targets[$i]; $b = $targets[$j]
+                $overlapX = ([int]$a.X -lt [int]$b.X + [int]$b.Width -and
+                             [int]$b.X -lt [int]$a.X + [int]$a.Width)
+                $overlapY = ([int]$a.Y -lt [int]$b.Y + [int]$b.Height -and
+                             [int]$b.Y -lt [int]$a.Y + [int]$a.Height)
+                if ($overlapX -and $overlapY) { return $null }
+            }
         }
     }
     $expectedState = @($targets | ForEach-Object {
@@ -1183,21 +1250,31 @@ function New-DesktopSubsetSnapshot {
         [Parameter(Mandatory)]$Store
     )
 
+    $wantedList = @($Wanted)
+    $wantedIds = @($wantedList | ForEach-Object { [string]$_.Id })
+    $candidates = @()
+    if ($CurrentSnapshot) { $candidates += $CurrentSnapshot }
+    foreach ($key in @($Store.Snapshots.Keys | Sort-Object)) {
+        if ($Store.PendingKey -eq $key -or $Store.UnsafeKeys.ContainsKey($key)) { continue }
+        $snapshot = $Store.Snapshots[$key]
+        if ($snapshot -and $snapshot -ne $CurrentSnapshot) { $candidates += $snapshot }
+    }
+
+    # Relative coordinates only have meaning inside one observation. Combining records from two solo
+    # snapshots would put both displays at (0,0), even though every individual record is valid.
+    $source = $null
+    foreach ($snapshot in @($candidates | Sort-Object { @($_.Displays).Count }, Key)) {
+        $ids = @($snapshot.Displays | ForEach-Object { [string]$_.Id })
+        if (@($wantedIds | Where-Object { $ids -notcontains $_ }).Count -eq 0) {
+            $source = $snapshot
+            break
+        }
+    }
+    if (-not $source) { return $null }
+
     $records = @()
-    foreach ($m in @($Wanted)) {
-        $record = $null
-        if ($CurrentSnapshot) {
-            $record = @($CurrentSnapshot.Displays | Where-Object { $_.Id -eq [string]$m.Id } | Select-Object -First 1)
-            if ($record.Count -gt 0) { $record = $record[0] } else { $record = $null }
-        }
-        if (-not $record) {
-            foreach ($snapshot in @($Store.Snapshots.Values)) {
-                $record = @($snapshot.Displays | Where-Object { $_.Id -eq [string]$m.Id } | Select-Object -First 1)
-                if ($record.Count -gt 0) { $record = $record[0]; break }
-                $record = $null
-            }
-        }
-        if (-not $record) { return $null }
+    foreach ($m in $wantedList) {
+        $record = @($source.Displays | Where-Object { $_.Id -eq [string]$m.Id } | Select-Object -First 1)[0]
         $records += [pscustomobject]@{
             Id = [string]$m.Id; Label = [string]$m.Label
             Active = $true; Disconnected = $false; Primary = $false
@@ -1207,8 +1284,8 @@ function New-DesktopSubsetSnapshot {
         }
     }
     $primaryId = ''
-    if ($CurrentSnapshot -and @($records | Where-Object { $_.Id -eq $CurrentSnapshot.PrimaryId }).Count -gt 0) {
-        $primaryId = [string]$CurrentSnapshot.PrimaryId
+    if (@($records | Where-Object { $_.Id -eq $source.PrimaryId }).Count -gt 0) {
+        $primaryId = [string]$source.PrimaryId
     }
     else { $primaryId = [string]$records[0].Id }
     foreach ($r in $records) { $r.Primary = ($r.Id -eq $primaryId) }
@@ -1252,6 +1329,7 @@ function Save-CurrentDesktopSnapshot {
         if ($store.PendingKey -eq $snapshot.Key) { $store.PendingKey = '' }
         [void]$store.UnsafeKeys.Remove($snapshot.Key)
         $store.ProtectedKey = $snapshot.Key
+        $store.ProtectedSnapshot = $null
         Write-DesktopSnapshotStore -Store $store
         Write-DisplayLog ("desktop: adopted the current physical arrangement - {0} display(s)" -f $snapshot.Displays.Count)
         return $true
@@ -5333,7 +5411,10 @@ function Switch-DisplayMode {
         if ($destinationSnapshot) {
             $restorePlan = New-DesktopRestorePlan -Snapshot $destinationSnapshot -Wanted $wanted `
                 -PrimaryPath ([string]$primary.Id) -Order @($settings.layout) `
-                -UseConfiguredLayout:([bool]$settings.layoutOverride)
+                -UseConfiguredLayout:([bool]$settings.layoutOverride) -KeepMode:$KeepMode
+            if (-not $restorePlan) {
+                throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
+            }
         }
         $exactAlready = ($restorePlan -and $currentSnapshot -and
                          (Test-DesktopSnapshotMatch -Snapshot $restorePlan.Expected -State $monitors))
@@ -5348,6 +5429,7 @@ function Switch-DisplayMode {
                 $desktopStore.PendingKey = $destinationKey
                 $desktopStore.UnsafeKeys[$destinationKey] = $true
                 $desktopStore.ProtectedKey = ''
+                $desktopStore.ProtectedSnapshot = $null
                 $storeDirty = $true
             }
             if ($storeDirty) {
@@ -5393,8 +5475,15 @@ function Switch-DisplayMode {
                 $doWindows = (-not $sameTopology -and (Test-Path Function:\Save-WindowLayout) -and
                               ($null -eq $settings.restoreWindows -or $settings.restoreWindows))
                 if ($doWindows) {
-                    try { Save-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $activeNow) }
-                    catch { Write-DisplayLog "warn: windows - saving failed: $($_.Exception.Message)" }
+                    # A failed exact destination is not a new source of truth. Its windows may already
+                    # have been squeezed onto the wrong geometry, so leaving it must not overwrite the
+                    # last trusted window snapshot for that display set. The tail still restores the
+                    # destination after a successful switch.
+                    if ($currentSnapshotTrusted) {
+                        try { Save-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $activeNow) }
+                        catch { Write-DisplayLog "warn: windows - saving failed: $($_.Exception.Message)" }
+                    }
+                    else { Write-DisplayLog 'windows: source desktop is unverified - keeping its saved window positions' }
                     & $notePhase $phases 'windows'
                 }
 
@@ -5576,6 +5665,7 @@ function Switch-DisplayMode {
                 $desktopStore.PendingKey = ''
                 [void]$desktopStore.UnsafeKeys.Remove($destinationKey)
                 $desktopStore.ProtectedKey = $destinationKey
+                $desktopStore.ProtectedSnapshot = $(if ($KeepMode) { $verifiedSnapshot } else { $null })
                 try { Write-DesktopSnapshotStore -Store $desktopStore }
                 catch {
                     Write-DisplayLog "warn: the restored physical desktop could not be marked complete - $($_.Exception.Message)"
@@ -5794,10 +5884,21 @@ function Restore-BestModes {
         $state = @(Get-DisplayState)
         $activeKey = Get-DesktopSetKey -DevicePaths @($state | Where-Object { $_.Active } | ForEach-Object { $_.Id })
         $snapshotStore = Read-DesktopSnapshotStore
+        # Pending or previously failed exact geometry is neither a baseline nor permission to fall back
+        # to BestMode. A repair here can mutate the destination between retries and make verification
+        # impossible on the next switch.
+        if ($snapshotStore.PendingKey -eq $activeKey -or $snapshotStore.UnsafeKeys.ContainsKey($activeKey)) {
+            Write-DisplayLog 'watch: active physical desktop is unverified - postponing mode repair'
+            return @()
+        }
         $protectedSnapshot = $null
         if ($snapshotStore.ProtectedKey -eq $activeKey -and
             -not $snapshotStore.UnsafeKeys.ContainsKey($activeKey)) {
-            $protectedSnapshot = $snapshotStore.Snapshots[$activeKey]
+            $protectedSnapshot = $(if ($snapshotStore.ProtectedSnapshot -and
+                                       $snapshotStore.ProtectedSnapshot.Key -eq $activeKey) {
+                                       $snapshotStore.ProtectedSnapshot
+                                   }
+                                   else { $snapshotStore.Snapshots[$activeKey] })
         }
 
         $todo = @()
