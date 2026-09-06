@@ -136,10 +136,12 @@ Test-Case 'hdr: a per-display answer written by Monitor ID survives both Saves' 
         try {
             Assert-Equal 'GSM5BB3' (Get-HdrKeyFor -Editor $ed -Name 'LG ULTRAGEAR') 'the row finds the Monitor ID'
             $got = Read-ModeFromUi -Editor $ed
+            Assert-True $got.Mode.Hdr.Contains('GSM5BB3') 'the editor retains the Monitor ID entry'
             Assert-Equal $false ([bool]$got.Mode.Hdr['GSM5BB3']) 'the editor keeps the answer under that ID'
 
             Set-UiMode -Ui $ui -Mode $mode -Combo $null -Edited $got.Mode
             $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-True $updated.hdr['all'].Contains('GSM5BB3') 'the settings Save retains the Monitor ID entry'
             Assert-Equal $false ([bool]$updated.hdr['all']['GSM5BB3']) 'the settings Save keeps it too'
         }
         finally { $ed.Window.Close(); $script:ActiveEditor = $null }
