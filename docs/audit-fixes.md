@@ -12,7 +12,7 @@ This record tracks the twelve corrections and the behavior their regressions mus
 | 2 | Watchdog maximizes refresh after an exact restoration fails verification. | Pending and unsafe display sets receive no watchdog mode writes. |
 | 3 | Identical CCD source numbers on different adapters collide. | Adapter LUID and source ID identify a source; incomplete requested sets are refused before apply. |
 | 4 | Separate solo snapshots are combined at the same origin. | A first subset prefers the current trusted desk, otherwise one coherent stored superset; unrelated records never become an exact desktop. |
-| 5 | Exact restoration ignores `-KeepMode`. | Active display resolution and exact refresh survive the call, watchdog and automatic reapply; incompatible geometry is refused before apply. |
+| 5 | Exact restoration ignores `-KeepMode`. | Active display resolution and exact refresh survive the call, watchdog and repeated failed automatic repairs across disk reloads; incompatible geometry is refused before apply. |
 | 6 | Layout verification failure is reported as success. | Unsettled requested positions produce a failed layout result and cannot establish a successful baseline. |
 | 7 | A partial rule switch discards the original return mode. | Multiple ticks preserve the original return destination, including failed cache reads and delayed displays; retries are bounded and manual choices remain respected. |
 | 8 | Startup shortcut failure separates saved settings from tray state. | Successfully written settings still reach the tray, with a separate warning for startup failure. |
