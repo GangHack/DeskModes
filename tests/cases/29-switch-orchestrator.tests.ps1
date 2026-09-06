@@ -390,6 +390,21 @@ Test-Case 'switch: a refused whole-desk call falls back to the three-step road' 
     Assert-True ($script:SwCalls -contains 'settle') 'the result is waited for either way'
 }
 
+Test-Case 'switch: a generated layout failure stays partial and cannot become a baseline' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwLayoutOk = $false
+    $allKey = Get-DesktopSetKey -DevicePaths @($script:SwDesk | ForEach-Object { $_.Id })
+
+    $r = Switch-DisplayMode -ModeKey 'all' -Quiet
+
+    Assert-Equal 'partial' $r.Outcome 'failure after the generated apply reaches the switch verdict'
+    Assert-True $script:SwStore.UnsafeKeys.ContainsKey($allKey) 'the unverified arrangement remains guarded'
+    Assert-True (-not $script:SwStore.Snapshots.ContainsKey($allKey)) 'it is not learned as a physical baseline'
+    Assert-Equal '' $script:SwStore.ProtectedKey 'the watchdog is not pointed at it'
+}
+
 Test-Case 'switch: Windows refusing the configuration is a failure, not a quiet success' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false

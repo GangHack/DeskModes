@@ -3863,6 +3863,7 @@ function Invoke-CcdLayoutAttempt {
     # ordinary case and too short in the bad one.
     if (-not (Wait-ForLayout -WantedPositions $wantPos)) {
         Write-DisplayLog 'warn: layout did not settle'
+        return (New-LayoutResult -Ok $false -Changed $false)
     }
     return (New-LayoutResult -Ok $true -Changed $true)
 }
