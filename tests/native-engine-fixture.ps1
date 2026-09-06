@@ -14,7 +14,7 @@ public class NativeCcd {
     public const uint PIXELFORMAT_32BPP = 4, SCANLINE_PROGRESSIVE = 1;
     public const uint ROTATION_IDENTITY = 1, SCALING_IDENTITY = 1, GET_TARGET_NAME = 2;
     public const uint SDC_USE_SUPPLIED_DISPLAY_CONFIG = 32, SDC_VALIDATE = 64;
-    public const uint SDC_APPLY = 128, SDC_SAVE_TO_DATABASE = 512;
+    public const uint SDC_APPLY = 128, SDC_SAVE_TO_DATABASE = 512, SDC_ALLOW_CHANGES = 1024;
 
     public struct LUID { public uint Low; public int High; }
     public struct RATIONAL { public uint Numerator, Denominator; }
@@ -41,6 +41,8 @@ public class NativeCcd {
     public static PATH_INFO[] ActivePaths = new PATH_INFO[0];
     public static MODE_INFO[] ActiveModes = new MODE_INFO[0];
     public static uint AppliedCount;
+    public static PATH_INFO[] AppliedPaths = new PATH_INFO[0];
+    public static MODE_INFO[] AppliedModes = new MODE_INFO[0];
 
     public static int GetDisplayConfigBufferSizes(uint flags, ref int pathCount, ref int modeCount) {
         PATH_INFO[] paths = flags == QDC_ALL_PATHS ? AllPaths : ActivePaths;
@@ -61,7 +63,7 @@ public class NativeCcd {
     }
     public static int SetDisplayConfig(int pathCount, PATH_INFO[] paths, int modeCount,
                                        MODE_INFO[] modes, uint flags) {
-        if ((flags & SDC_APPLY) != 0) { AppliedCount = (uint)pathCount; }
+        if ((flags & SDC_APPLY) != 0) { AppliedCount = (uint)pathCount; AppliedPaths = paths; AppliedModes = modes; }
         return 0;
     }
 }
@@ -69,8 +71,8 @@ public class NativeCcd {
 
 $core = Join-Path (Split-Path $PSScriptRoot -Parent) 'DisplayCore.ps1'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($core, [ref]$null, [ref]$null)
-foreach ($name in @('Get-CcdPathChoice', 'Get-LayoutPositions', 'Invoke-CcdFullConfigAttempt',
-                     'Set-CcdFullConfig', 'New-LayoutResult', 'Invoke-CcdLayoutAttempt')) {
+foreach ($name in @('Test-DisplayNameMatch', 'Get-CcdPathChoice', 'Get-LayoutPositions', 'Invoke-CcdFullConfigAttempt',
+                     'Set-CcdFullConfig', 'Set-CcdTopology', 'New-LayoutResult', 'Invoke-CcdLayoutAttempt')) {
     $function = $ast.Find({
         param($node)
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -147,5 +149,77 @@ function Wait-ForLayout { param($WantedPositions) return $false }
 
 $layout = Invoke-CcdLayoutAttempt -PrimaryPath 'panel0' -Order @() -Attempt 1 -Attempts 1
 if ($layout.Ok -or $layout.Changed) { throw 'An unsettled applied layout was reported as successful.' }
+
+
+
+# The current path can be retained only if the remaining targets still have a complete assignment.
+$flexible = New-Object 'NativeCcd+PATH_INFO[]' 3
+$flexible[0] = New-FakePath -AdapterLow 1 -TargetId 0
+$alternate = New-FakePath -AdapterLow 1 -TargetId 0
+$source = $alternate.sourceInfo; $source.id = 1; $alternate.sourceInfo = $source; $alternate.flags = 0
+$flexible[1] = $alternate
+$blocked = New-FakePath -AdapterLow 1 -TargetId 1; $blocked.flags = 0
+$flexible[2] = $blocked
+[NativeCcd]::AllPaths = $flexible
+[NativeCcd]::AppliedCount = 0
+if (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'panel0' -Exact) -or [NativeCcd]::AppliedCount -ne 2) {
+    throw 'A feasible complete assignment was rejected because a current source was reserved greedily.'
+}
+$choice = Get-CcdPathChoice -DevicePaths @('panel0', 'panel1')
+if (($choice.Chosen -notcontains 1) -or ($choice.Chosen -notcontains 2)) {
+    throw 'The constrained target did not receive its sole source.'
+}
+
+[NativeCcd]::AppliedCount = 0
+if (-not (Set-CcdTopology -DevicePaths @('panel1', 'panel0')) -or [NativeCcd]::AppliedCount -ne 2) {
+    throw 'The topology path did not use the complete source assignment.'
+}
+
+# When every target has a current source, available alternatives must not displace that arrangement.
+$stable = New-Object 'NativeCcd+PATH_INFO[]' 4
+$stable[0] = $flexible[1]
+$stable[1] = $flexible[0]
+$current = New-FakePath -AdapterLow 1 -TargetId 1
+$source = $current.sourceInfo; $source.id = 1; $current.sourceInfo = $source
+$stable[2] = $current
+$stable[3] = $flexible[2]
+[NativeCcd]::AllPaths = $stable
+$choice = Get-CcdPathChoice -DevicePaths @('panel1', 'panel0')
+if (($choice.Chosen -notcontains 1) -or ($choice.Chosen -notcontains 2)) {
+    throw 'A complete current assignment was needlessly displaced.'
+}
+
+# A three-target augmenting chain must be followed all the way to its free source.
+$chain = New-Object 'NativeCcd+PATH_INFO[]' 5
+$chain[0] = $flexible[0]
+$chain[1] = $current
+$chain[2] = $flexible[1]
+$next = New-FakePath -AdapterLow 1 -TargetId 1
+$source = $next.sourceInfo; $source.id = 2; $next.sourceInfo = $source; $next.flags = 0
+$chain[3] = $next
+$last = New-FakePath -AdapterLow 1 -TargetId 2; $last.flags = 0
+$chain[4] = $last
+[NativeCcd]::AllPaths = $chain
+$choice = Get-CcdPathChoice -DevicePaths @('panel2', 'panel0', 'panel1')
+if (-not $choice -or ($choice.Chosen -notcontains 2) -or ($choice.Chosen -notcontains 3) -or
+    ($choice.Chosen -notcontains 4)) { throw 'A complete three-target alternating path was missed.' }
+
+# PreserveMode is generated geometry with an exact active mode: even an alternative inactive CCD path
+# must receive the live portrait rotation and fraction along with its source resolution.
+[NativeCcd]::AllPaths = $flexible
+$generated = @(
+    [pscustomobject]@{ DevicePath = 'panel0'; Label = 'A'; Width = 1080; Height = 1920
+        Hz = 144; RateNum = 143999; RateDen = 1000; Rotation = 4; PreserveMode = $true }
+    [pscustomobject]@{ DevicePath = 'panel1'; Label = 'B'; Width = 1920; Height = 1080
+        Hz = 60; RateNum = 60; RateDen = 1; Rotation = 1 }
+)
+if (-not (Set-CcdFullConfig -Targets $generated -PrimaryPath 'panel0' -Order @('A','B'))) {
+    throw 'A complete generated KeepMode request was refused.'
+}
+$applied = @([NativeCcd]::AppliedPaths | Where-Object { $_.targetInfo.id -eq 0 })[0]
+$appliedMode = [NativeCcd]::AppliedModes[$applied.sourceInfo.modeInfoIdx]
+if ($applied.targetInfo.rotation -ne 4 -or $applied.targetInfo.refreshRate.Numerator -ne 143999 -or
+    $applied.targetInfo.refreshRate.Denominator -ne 1000 -or $appliedMode.srcWidth -ne 1080 -or
+    $appliedMode.srcHeight -ne 1920) { throw 'Generated KeepMode lost the active exact portrait mode at the native boundary.' }
 
 Write-Output 'native engine fixture passed'

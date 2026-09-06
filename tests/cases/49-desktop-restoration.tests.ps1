@@ -168,3 +168,81 @@ Test-Case 'verdict: an exact desktop mismatch is never success' {
     Assert-True (-not $v.Ok) 'the mismatch makes the switch partial'
     Assert-True ($v.Text.Contains((Get-Text -Key 'verdict.restore'))) 'the restoration-specific reason is included'
 }
+
+Test-Case 'recheck subset: removing the middle display closes the gap without changing modes' {
+    $desk = New-RestorationDesk
+    $source = New-DesktopSnapshot -State $desk
+    $before = $source | ConvertTo-Json -Depth 8 -Compress
+    $subset = New-DesktopSubsetSnapshot -Wanted @($desk[0], $desk[2]) -CurrentSnapshot $source -Store (New-DesktopSnapshotStore)
+    $plan = New-DesktopRestorePlan -Snapshot $subset -Wanted @($desk[0], $desk[2])
+    Assert-True ($null -ne $plan) 'the nonadjacent subset has a usable exact plan'
+    Assert-Equal ($plan.Targets[0].X + $plan.Targets[0].Width) $plan.Targets[1].X 'the gap is closed'
+    Assert-Equal 4 $plan.Targets[1].Rotation 'portrait rotation survives'
+    Assert-Equal 75 $plan.Targets[1].RateNum 'portrait rate survives'
+    Assert-Equal $before ($source | ConvertTo-Json -Depth 8 -Compress) 'the canonical superset remains unchanged'
+}
+
+Test-Case 'recheck KeepMode: generated targets keep live fractions ahead of stale cache' {
+    $desk = New-RestorationDesk
+    $cache = @{ 'path-left' = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144; RateNum = 144; RateDen = 1 } }
+    $targets = @(Get-SwitchTargets -Wanted @($desk[0]) -Cache $cache -KeepMode)
+    Assert-Equal 143999 $targets[0].RateNum 'live numerator outranks matching rounded cache'
+    Assert-Equal 1000 $targets[0].RateDen 'live denominator outranks cache'
+    $script:GeneratedRateAttempts = @()
+    function Invoke-CcdFullConfigAttempt {
+        param($Targets, $PrimaryPath, $Order, [switch]$WithHz, [switch]$Exact)
+        $script:GeneratedRateAttempts += [bool]$WithHz
+        return $false
+    }
+    Assert-True (-not (Set-CcdFullConfig -Targets $targets)) 'native refusal remains failed'
+    Assert-Equal 1 $script:GeneratedRateAttempts.Count 'the live rate is never discarded for a retry'
+}
+
+Test-Case 'recheck subset: connected groups keep internal offsets when their bridge is removed' {
+    $desk = @()
+    for ($i = 0; $i -lt 5; $i++) {
+        $m = New-FakeMonitor -Label ('Panel' + $i) -ShortId ('ID' + $i) -Id ('path-' + $i)
+        $m.Width = 1920; $m.Height = 1080; $m.X = $i * 1920; $m.Y = 0; $m.Primary = ($i -eq 0)
+        $desk += $m
+    }
+    $desk[4].Y = 200
+    $source = New-DesktopSnapshot -State $desk
+    $wanted = @($desk[0], $desk[1], $desk[3], $desk[4])
+    $subset = New-DesktopSubsetSnapshot -Wanted $wanted -CurrentSnapshot $source -Store (New-DesktopSnapshotStore)
+    $plan = New-DesktopRestorePlan -Snapshot $subset -Wanted $wanted
+    Assert-Equal 1920 ($plan.Targets[1].X - $plan.Targets[0].X) 'primary group keeps its horizontal separation'
+    Assert-Equal 1920 ($plan.Targets[3].X - $plan.Targets[2].X) 'translated group keeps its horizontal separation'
+    Assert-Equal 200 ($plan.Targets[3].Y - $plan.Targets[2].Y) 'translated group keeps its vertical offset'
+    Assert-Equal ($plan.Targets[1].X + 1920) $plan.Targets[2].X 'the two groups meet at an edge'
+    Assert-Equal 5760 $source.Displays[3].X 'saved superset still includes the removed bridge'
+}
+
+Test-Case 'recheck subset: a vertical gap closes on its original axis' {
+    $desk = New-RestorationDesk
+    for ($i = 0; $i -lt 3; $i++) {
+        $desk[$i].X = 0; $desk[$i].Y = $i * 1440
+        $desk[$i].Width = 2560; $desk[$i].Height = 1440; $desk[$i].Primary = ($i -eq 0)
+    }
+    $source = New-DesktopSnapshot -State $desk
+    $subset = New-DesktopSubsetSnapshot -Wanted @($desk[0], $desk[2]) -CurrentSnapshot $source -Store (New-DesktopSnapshotStore)
+    Assert-Equal 0 $subset.Displays[1].X 'vertical arrangement stays vertical'
+    Assert-Equal 1440 $subset.Displays[1].Y 'the missing middle height is removed'
+}
+
+Test-Case 'recheck primary: explicit choices outrank a saved identity while stale choices fall back to it' {
+    $desk = New-RestorationDesk
+    $desk[0].Label = 'Panel'; $desk[1].Label = 'Panel Pro'
+    Assert-Equal 'path-left' (Select-PrimaryDisplay -Wanted $desk -ModePrimary 'absent' -SnapshotPrimaryPath 'path-left').Id 'missing soft choice keeps the saved identity'
+    Assert-Equal 'path-portrait' (Select-PrimaryDisplay -Wanted $desk -ModePrimary 'SAM5678' -SnapshotPrimaryPath 'path-left').Id 'mode choice wins'
+    Assert-Equal 'path-portrait' (Select-PrimaryDisplay -Wanted $desk -SettingsPrimary 'SAM5678' -SnapshotPrimaryPath 'path-left').Id 'explicit settings choice wins'
+    Assert-Equal 'path-primary' (Select-PrimaryDisplay -Wanted $desk -PrimaryMatch 'Panel Pro' -SnapshotPrimaryPath 'path-left').Id 'call-specific choice wins'
+}
+
+Test-Case 'recheck KeepMode: incomplete live mode cannot be replaced with cached data' {
+    $desk = New-RestorationDesk
+    $desk[0].RateDen = 0
+    Assert-Equal 0 @(Get-SwitchTargets -Wanted @($desk[0]) -KeepMode).Count 'missing exact fraction refuses a generated target'
+    $desk[0].RateDen = 1000; $desk[0].Width = 0
+    $cache = @{ 'path-left' = [pscustomobject]@{ Width = 2560; Height = 1440; Hz = 144; RateNum = 144; RateDen = 1 } }
+    Assert-Equal 0 @(Get-SwitchTargets -Wanted @($desk[0]) -Cache $cache -KeepMode).Count 'missing live resolution is not inferred from stale cache'
+}

@@ -536,23 +536,20 @@ Test-Case 'switch: a dry run changes nothing and remembers nothing' {
     Assert-Equal 0 $script:SwCalls.Count 'not one call to the system or the disk'
 }
 
-Test-Case 'switch: -KeepMode leaves resolution and refresh rate alone' {
+Test-Case 'switch: KeepMode refuses incomplete generated modes before topology-only fallback' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk -ThirdActive $false
     $script:SwSettings = New-SwitchSettings
 
-    $r = Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet
+    $refused = $false
+    try { [void](Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet) }
+    catch { $refused = $true }
 
-    Assert-True $r.Ok 'the switch still lands'
+    Assert-True $refused 'the unreadable sleeping mode cannot justify discarding active modes'
     Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'best:*' }).Count 'nobody was pushed to its best mode'
-    # And another thing: for a sleeping monitor there is no "leave it as it is" — it has no current mode.
-    # The set goes to the old road whole, and that is not a breakage but the only honest answer: mixing
-    # specified sizes with unspecified ones in one request means guessing what the system will do with the
-    # remainder.
-    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the one-call road needs modes, so it is not even tried'
-    Assert-Equal 1 @($script:SwCalls | Where-Object { $_ -like 'topology:*' }).Count 'the set alone is asked for instead'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'the incomplete request is not attempted'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'topology:*' }).Count 'topology-only fallback would discard active modes'
 }
-
 Test-Case 'switch: KeepMode restores saved geometry with the live mode and keeps both truths durable' {
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
@@ -1011,4 +1008,92 @@ Test-Case 'switch: one display that came up is kept - a partial verdict, not a r
 
     Assert-Equal 'partial' $r.Outcome 'the desk moved, one display did not follow'
     Assert-True (-not ($script:SwCalls -match '^topology')) 'nothing was put back'
+}
+
+Test-Case 'recheck primary: overlapping labels restore the saved physical identity' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwDesk = @($script:SwDesk[0], $script:SwDesk[1])
+    $script:SwDesk[0].Label = 'Panel'; $script:SwDesk[1].Label = 'Panel Pro'
+    $script:SwSettings = New-SwitchSettings
+    Assert-True (Switch-DisplayMode -ModeKey all -Quiet).Ok 'initial All'
+    Assert-True (Switch-DisplayMode -ModeKey 'solo:Panel Pro' -Quiet).Ok 'solo'
+    Assert-True (Switch-DisplayMode -ModeKey all -Quiet).Ok 'restored All'
+    Assert-Equal 'path-ug' (@($script:SwDesk | Where-Object Primary)[0].Id) 'saved identity wins over ambiguous label'
+    Assert-Equal 0 $script:SwDesk[0].X 'saved origin is retained'
+}
+
+Test-Case 'recheck KeepMode: generated first All preserves the live exact rate without cache' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwDesk[1].Active = $false
+    foreach ($m in $script:SwDesk) { $m.Native = [pscustomobject]@{ Width = 2560; Height = 1440 } }
+    function Set-WantedModes {
+        param($Wanted, [switch]$KeepMode, [switch]$AlreadyBest)
+        # Only newly awakened targets have an unspecified mode. The fake driver selects a valid default
+        # for them; an already active panel must retain the exact request and is checked separately.
+        foreach ($m in $script:SwDesk) {
+            if ($m.Hz -eq 0) { $m.Hz = 60; $m.RateNum = 60; $m.RateDen = 1 }
+            if ($m.Rotation -eq 0) { $m.Rotation = 1 }
+        }
+        return [pscustomobject]@{ Summary = @('fake modes'); Failed = @(); Applied = @{}; LevelTargets = @() }
+    }
+    $script:SwSettings = New-SwitchSettings
+    $r = Switch-DisplayMode -ModeKey all -KeepMode -Quiet
+    Assert-True $r.Ok 'generated request succeeds'
+    Assert-True (-not $script:SwFullExact) 'the destination has no coherent snapshot'
+    Assert-Equal 143999 $script:SwFullTargets[0].RateNum 'live numerator is requested'
+    Assert-Equal 1000 $script:SwFullTargets[0].RateDen 'live denominator is requested'
+}
+
+Test-Case 'recheck KeepMode: generated refusal never falls back to topology-only modes' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwDesk[1].Active = $false
+    foreach ($m in $script:SwDesk) { $m.Native = [pscustomobject]@{ Width = 2560; Height = 1440 } }
+    function Set-WantedModes {
+        param($Wanted, [switch]$KeepMode, [switch]$AlreadyBest)
+        # Only newly awakened targets have an unspecified mode. The fake driver selects a valid default
+        # for them; an already active panel must retain the exact request and is checked separately.
+        foreach ($m in $script:SwDesk) {
+            if ($m.Hz -eq 0) { $m.Hz = 60; $m.RateNum = 60; $m.RateDen = 1 }
+            if ($m.Rotation -eq 0) { $m.Rotation = 1 }
+        }
+        return [pscustomobject]@{ Summary = @('fake modes'); Failed = @(); Applied = @{}; LevelTargets = @() }
+    }
+    $script:SwSettings = New-SwitchSettings
+    $script:SwFullOk = $false
+    $refused = $false
+    try { [void](Switch-DisplayMode -ModeKey all -KeepMode -Quiet) }
+    catch { $refused = $true }
+    Assert-True $refused 'refusal remains a refusal'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'topology:*' }).Count 'no lossy topology fallback'
+}
+
+Test-Case 'recheck KeepMode: generated driver drift is rejected before learning the result' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive $false
+    $script:SwDesk[1].Active = $false
+    foreach ($m in $script:SwDesk) { $m.Native = [pscustomobject]@{ Width = 2560; Height = 1440 } }
+    function Set-WantedModes {
+        param($Wanted, [switch]$KeepMode, [switch]$AlreadyBest)
+        # Only newly awakened targets have an unspecified mode. The fake driver selects a valid default
+        # for them; an already active panel must retain the exact request and is checked separately.
+        foreach ($m in $script:SwDesk) {
+            if ($m.Hz -eq 0) { $m.Hz = 60; $m.RateNum = 60; $m.RateDen = 1 }
+            if ($m.Rotation -eq 0) { $m.Rotation = 1 }
+        }
+        return [pscustomobject]@{ Summary = @('fake modes'); Failed = @(); Applied = @{}; LevelTargets = @() }
+    }
+    $script:SwSettings = New-SwitchSettings
+    function Wait-ForTopology {
+        param($WantedPaths)
+        foreach ($m in $script:SwDesk) { $m.Active = $true }
+        $script:SwDesk[0].RateNum = 60; $script:SwDesk[0].RateDen = 1
+        return $script:SwSettled
+    }
+    $r = Switch-DisplayMode -ModeKey all -KeepMode -Quiet
+    Assert-True (-not $r.Ok) 'a changed live refresh fraction fails verification'
+    $key = Get-DesktopSetKey -DevicePaths @($script:SwDesk | ForEach-Object Id)
+    Assert-True (-not $script:SwStore.Snapshots.ContainsKey($key)) 'the drift is not learned'
 }

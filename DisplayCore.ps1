@@ -1297,6 +1297,76 @@ function New-DesktopSubsetSnapshot {
         $primaryId = [string]$source.PrimaryId
     }
     else { $primaryId = [string]$records[0].Id }
+    # Removing a bridge display can split a valid desktop into islands. Only this newly derived subset
+    # may close those gaps: translate each connected island as a whole, keeping its rotation, rates and
+    # internal geometry. The primary island stays put and the canonical superset is never edited.
+    if ($records.Count -gt 1 -and $records.Count -lt @($source.Displays).Count) {
+        $remaining = @($records | Sort-Object @{ Expression = { if ($_.Id -eq $primaryId) { 0 } else { 1 } } }, Id)
+        $components = @()
+        while ($remaining.Count -gt 0) {
+            $component = @($remaining[0])
+            $remaining = @($remaining | Select-Object -Skip 1)
+            for ($i = 0; $i -lt $component.Count; $i++) {
+                $a = $component[$i]
+                foreach ($b in @($remaining)) {
+                    $edgeX = ($a.X + $a.Width -eq $b.X -or $b.X + $b.Width -eq $a.X)
+                    $edgeY = ($a.Y + $a.Height -eq $b.Y -or $b.Y + $b.Height -eq $a.Y)
+                    $overlapX = ($a.X -lt $b.X + $b.Width -and $b.X -lt $a.X + $a.Width)
+                    $overlapY = ($a.Y -lt $b.Y + $b.Height -and $b.Y -lt $a.Y + $a.Height)
+                    if (($edgeX -and $overlapY) -or ($edgeY -and $overlapX)) {
+                        $component += $b
+                        $remaining = @($remaining | Where-Object { $_.Id -ne $b.Id })
+                    }
+                }
+            }
+            $components += [pscustomobject]@{ Records = $component }
+        }
+        $placed = @($components[0].Records)
+        $components = @($components | Select-Object -Skip 1)
+        while ($components.Count -gt 0) {
+            $best = $null
+            for ($c = 0; $c -lt $components.Count; $c++) {
+                $moving = @($components[$c].Records)
+                foreach ($a in $placed) {
+                    foreach ($b in $moving) {
+                        # Edge contact needs a positive shared span, not just a corner. Keep the other
+                        # axis unchanged wherever possible, otherwise move it the minimum one pixel in.
+                        $dx = [Math]::Max($a.X - $b.X - $b.Width + 1, [Math]::Min(0, $a.X + $a.Width - $b.X - 1))
+                        $dy = [Math]::Max($a.Y - $b.Y - $b.Height + 1, [Math]::Min(0, $a.Y + $a.Height - $b.Y - 1))
+                        $shifts = @(
+                            @{ X = $a.X + $a.Width - $b.X; Y = $dy }
+                            @{ X = $a.X - $b.X - $b.Width; Y = $dy }
+                            @{ X = $dx; Y = $a.Y + $a.Height - $b.Y }
+                            @{ X = $dx; Y = $a.Y - $b.Y - $b.Height }
+                        )
+                        foreach ($shift in $shifts) {
+                            $cost = [Math]::Abs($shift.X) + [Math]::Abs($shift.Y)
+                            if ($best -and $cost -ge $best.Cost) { continue }
+                            $overlap = $false
+                            foreach ($r in $moving) {
+                                foreach ($p in $placed) {
+                                    if ($r.X + $shift.X -lt $p.X + $p.Width -and
+                                        $p.X -lt $r.X + $shift.X + $r.Width -and
+                                        $r.Y + $shift.Y -lt $p.Y + $p.Height -and
+                                        $p.Y -lt $r.Y + $shift.Y + $r.Height) { $overlap = $true; break }
+                                }
+                                if ($overlap) { break }
+                            }
+                            if (-not $overlap) {
+                                $best = [pscustomobject]@{ Component = $c; X = $shift.X; Y = $shift.Y; Cost = $cost }
+                            }
+                        }
+                    }
+                }
+            }
+            if (-not $best) { return $null }
+            foreach ($r in $components[$best.Component].Records) {
+                $r.X += $best.X; $r.Y += $best.Y
+                $placed += $r
+            }
+            $components = @($components | Where-Object { $_ -ne $components[$best.Component] })
+        }
+    }
     foreach ($r in $records) { $r.Primary = ($r.Id -eq $primaryId) }
     return (New-DesktopSnapshot -State $records)
 }
@@ -1380,7 +1450,7 @@ function Get-WatchdogMode {
 # With -KeepMode nobody is asking for the resolution or the refresh rate to change, so for a monitor that is
 # on we take what it is standing at.
 #
-# The refresh rate travels onward as a FRACTION and only out of the cache: CCD accepts nothing but the exact
+# The refresh rate travels onward as a FRACTION from live CCD state or the cache: CCD accepts the exact
 # value (144 Hz here is 143999/1000), whereas the whole hertz out of EnumDisplaySettings are rounded and a
 # request by them the system rejects. A fraction is only good if it is from THE SAME mode: the cache
 # remembers 144 Hz while 240 is being asked for — so we have no fraction for 240, the system will choose the
@@ -1422,12 +1492,21 @@ function Get-SwitchTargets {
         if ($w -le 0 -or $h -le 0) { return @() }
 
         $num = 0; $den = 0
-        if ($hz -gt 0 -and $cached -and [int]$cached.RateDen -gt 0 -and
+        $preserveMode = ($KeepMode -and $m.Active)
+        if ($preserveMode) {
+            # A rounded cache match cannot stand in for the live fraction. If CCD could not read that
+            # fraction, KeepMode must refuse instead of asking Windows to invent a replacement rate.
+            if ([int]$m.Width -le 0 -or [int]$m.Height -le 0 -or
+                [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0 -or
+                [int]$m.Rotation -lt 1 -or [int]$m.Rotation -gt 4) { return @() }
+            $num = [int]$m.RateNum; $den = [int]$m.RateDen
+        }
+        elseif ($hz -gt 0 -and $cached -and [int]$cached.RateDen -gt 0 -and
             [int]$cached.Width -eq $w -and [int]$cached.Height -eq $h -and [int]$cached.Hz -eq $hz) {
             $num = [int]$cached.RateNum; $den = [int]$cached.RateDen
         }
 
-        $out += [pscustomobject]@{
+        $target = [pscustomobject]@{
             DevicePath = [string]$m.Id
             Label      = [string]$m.Label
             Width      = $w
@@ -1435,7 +1514,10 @@ function Get-SwitchTargets {
             Hz         = $hz
             RateNum    = $num
             RateDen    = $den
+            PreserveMode = [bool]$preserveMode
         }
+        if ($preserveMode) { $target | Add-Member -NotePropertyName Rotation -NotePropertyValue ([int]$m.Rotation) }
+        $out += $target
     }
     return $out
 }
@@ -3312,43 +3394,70 @@ function Get-CcdPathChoice {
     $modes = New-Object 'NativeCcd+MODE_INFO[]' $nm
     if ([NativeCcd]::QueryDisplayConfig([NativeCcd]::QDC_ALL_PATHS, [ref]$np, $paths, [ref]$nm, $modes, [IntPtr]::Zero) -ne 0) { return $null }
 
-    # QDC_ALL_PATHS hands back every "source x target" combination. We take one path per monitor with a
-    # free source: two monitors on one source is a clone, and what is wanted is an extend. A path that is
-    # already active is preferred — fewer rebuilds.
-    $chosen = @()
-    $usedSources = @{}
-    $covered = @{}
-    # The DevicePath by the chosen path's index: Set-CcdFullConfig finds the monitor's target mode by it.
-    # We remember it here, where the path has already been identified — there is no point asking the system
-    # a second time about something known.
+    # QDC paths are a bipartite graph: a target may use several sources, but every source belongs to
+    # at most one target in an extended desktop. Current assignments are preferred, not reserved: a
+    # target with only one possible source may need a current holder to move along an alternating path.
+    $candidates = @{}
+    $sourceByIndex = @{}
     $byIndex = @{}
-
+    $targetOrder = @()
     foreach ($onlyActive in $true, $false) {
         for ($i = 0; $i -lt $np; $i++) {
             $isActive = (($paths[$i].flags -band [NativeCcd]::PATH_ACTIVE) -ne 0)
-            if ($onlyActive -ne $isActive) { continue }
-            if ($paths[$i].targetInfo.targetAvailable -eq 0) { continue }
+            if ($onlyActive -ne $isActive -or $paths[$i].targetInfo.targetAvailable -eq 0) { continue }
             $dp = Get-CcdPathDevice $paths[$i]
-            if (-not $dp -or -not $want.ContainsKey($dp) -or $covered.ContainsKey($dp)) { continue }
-            # A source id is local to one adapter. Source 0 on two graphics adapters names two
-            # independent sources, so both halves of the LUID are part of the key.
-            $sid = [string]::Format([cultureinfo]::InvariantCulture, '{0}:{1}:{2}',
+            if (-not $dp -or -not $want.ContainsKey($dp)) { continue }
+            if (-not $candidates.ContainsKey($dp)) { $candidates[$dp] = @(); $targetOrder += $dp }
+            $candidates[$dp] += $i
+            $byIndex[$i] = $dp
+            # Source ids are local to an adapter; both LUID halves must travel with the id.
+            $sourceByIndex[$i] = [string]::Format([cultureinfo]::InvariantCulture, '{0}:{1}:{2}',
                 [uint32]$paths[$i].sourceInfo.adapterId.Low,
                 [int32]$paths[$i].sourceInfo.adapterId.High,
                 [uint32]$paths[$i].sourceInfo.id)
-            if ($usedSources.ContainsKey($sid)) { continue }
-            $usedSources[$sid] = $true
-            $covered[$dp] = $true
-            $byIndex[$i] = $dp
-            $chosen += $i
         }
     }
 
-    $missing = @($want.Keys | Where-Object { -not $covered.ContainsKey($_) })
-    if ($missing.Count -gt 0) {
-        Write-DisplayLog ("ccd: no usable path for {0} display(s)" -f $missing.Count)
+    $assigned = @{}
+    $sourceOwner = @{}
+    foreach ($target in $targetOrder) {
+        $queue = @($target)
+        $seen = @{ $target = $true }
+        $parent = @{}
+        $found = $false
+        for ($q = 0; $q -lt $queue.Count -and -not $found; $q++) {
+            $device = $queue[$q]
+            foreach ($i in $candidates[$device]) {
+                $sid = $sourceByIndex[$i]
+                if (-not $sourceOwner.ContainsKey($sid)) {
+                    # Walk back from the free source, moving each current holder only when the whole
+                    # chain has somewhere to land. A dead end never disturbs the matching we have.
+                    $assigned[$device] = $i
+                    $sourceOwner[$sid] = $device
+                    while ($parent.ContainsKey($device)) {
+                        $edge = $parent[$device]
+                        $device = $edge.Device
+                        $assigned[$device] = $edge.Path
+                        $sourceOwner[$sourceByIndex[$edge.Path]] = $device
+                    }
+                    $found = $true
+                    break
+                }
+                $holder = $sourceOwner[$sid]
+                if (-not $seen.ContainsKey($holder)) {
+                    $seen[$holder] = $true
+                    $parent[$holder] = [pscustomobject]@{ Device = $device; Path = $i }
+                    $queue += $holder
+                }
+            }
+        }
+        if (-not $found) { break }
+    }
+    if ($assigned.Count -ne $want.Count) {
+        Write-DisplayLog ("ccd: no usable path for {0} display(s)" -f ($want.Count - $assigned.Count))
         return $null
     }
+    $chosen = @($targetOrder | ForEach-Object { $assigned[$_] })
     if ($chosen.Count -eq 0) { return $null }
 
     return [pscustomobject]@{ Paths = $paths; Chosen = @($chosen); DeviceByIndex = $byIndex }
@@ -3467,9 +3576,9 @@ function Set-CcdFullConfig {
     # We skip the first attempt when there is no exact fraction for any monitor: there is nothing to ask a
     # refresh rate with, and the attempt would knowingly be the same as the second.
     foreach ($withHz in $true, $false) {
-        # A saved physical desktop is an all-or-nothing request. Retrying it without the exact rate would
-        # report success after silently replacing part of the baseline Windows was asked to restore.
-        if ($Exact -and -not $withHz) { continue }
+        # A saved desktop or a live KeepMode target requires its exact rate. A simplified retry would
+        # report success after silently replacing part of the mode Windows was asked to preserve.
+        if (($Exact -or @($list | Where-Object { $_.PreserveMode }).Count -gt 0) -and -not $withHz) { continue }
         if ($withHz -and -not (@($list | Where-Object { [int]$_.RateDen -gt 0 }).Count)) { continue }
         if (Invoke-CcdFullConfigAttempt -Targets $list -PrimaryPath $PrimaryPath -Order $Order `
                                         -WithHz:$withHz -Exact:$Exact) {
@@ -3573,7 +3682,7 @@ function Invoke-CcdFullConfigAttempt {
             # and a zero is invalid in both enumerations: together with a specified refresh rate such a
             # path fails validation. We fix only the zeroes — if there is a value, it is somebody else's
             # and touching it is none of our business.
-            if ($Exact)             { $ti.rotation = [uint32][int]$t.Rotation }
+            if ($Exact -or $t.PreserveMode) { $ti.rotation = [uint32][int]$t.Rotation }
             elseif ($ti.rotation -eq 0) { $ti.rotation = [NativeCcd]::ROTATION_IDENTITY }
             if ($ti.scaling -eq 0)  { $ti.scaling  = [NativeCcd]::SCALING_IDENTITY }
         }
@@ -5036,9 +5145,10 @@ function Format-PhaseTimes {
 #   2. the mode's own primary (for combos) — soft: that monitor may not be on the desk, and the combo
 #      has to work without it.
 #   3. the primary from the settings — soft, for the same reason.
-#   4. whoever is primary right now, if they are among those being switched on: do not move it without need.
-#   5. the rightmost by layout: a desk has a "main" side.
-#   6. the first one that comes to hand.
+#   4. the destination snapshot's physical primary identity, without name matching.
+#   5. whoever is primary right now, if they are among those being switched on: do not move it without need.
+#   6. the rightmost by layout: a desk has a "main" side.
+#   7. the first one that comes to hand.
 function Select-PrimaryDisplay {
     param(
         $Wanted,
@@ -5046,7 +5156,8 @@ function Select-PrimaryDisplay {
         [string]$ModePrimary,
         [string]$SettingsPrimary,
         $Layout,
-        [string]$ModeTitle = ''
+        [string]$ModeTitle = '',
+        [string]$SnapshotPrimaryPath = ''
     )
 
     $wanted = @($Wanted)
@@ -5066,6 +5177,11 @@ function Select-PrimaryDisplay {
         $hit = @($wanted | Where-Object { Test-DisplayNameMatch -Pattern $soft -Label $_.Label -ShortId $_.ShortId })
         if ($hit.Count -eq 1) { return $hit[0] }
     }
+
+    # A saved primary is a physical identity, not a name pattern. Ambiguous or absent soft settings
+    # still fall through to that identity instead of retaining the primary from an unrelated solo set.
+    $hit = @($wanted | Where-Object { $_.Id -eq $SnapshotPrimaryPath })
+    if ($SnapshotPrimaryPath -and $hit.Count -eq 1) { return $hit[0] }
 
     $hit = $wanted | Where-Object { $_.Primary } | Select-Object -First 1
     if ($hit) { return $hit }
@@ -5451,18 +5567,15 @@ function Switch-DisplayMode {
         # primary of their own — it is gentler than -PrimaryMatch: that one a person types right now and
         # a typo has to be an error, whereas a combo's primary was written down once, and that monitor
         # not being on the desk is no reason to bring the whole mode down.
-        $snapshotPrimary = ''
-        if ($destinationSnapshot) {
-            $snapshotPrimary = [string](@($wanted | Where-Object {
-                $_.Id -eq [string]$destinationSnapshot.PrimaryId }) | Select-Object -First 1).Label
-        }
-        $settingsPrimary = $(if ($settings.primaryOverride) { [string]$settings.primary } else { $snapshotPrimary })
+        $settingsPrimary = $(if ($settings.primaryOverride) { [string]$settings.primary } else { '' })
         $selectionLayout = $(if ($destinationSnapshot -and -not $settings.layoutOverride) { @() } else { @($settings.layout) })
         $primary = Select-PrimaryDisplay -Wanted $wanted -PrimaryMatch $PrimaryMatch `
                                          -ModePrimary ([string]$mode.Primary) `
                                          -SettingsPrimary $settingsPrimary `
-                                         -Layout $selectionLayout -ModeTitle $mode.Title
+                                         -Layout $selectionLayout -ModeTitle $mode.Title `
+                                         -SnapshotPrimaryPath ([string]$destinationSnapshot.PrimaryId)
         $restorePlan = $null
+        $preservedTargets = @()
         if ($destinationSnapshot) {
             $restorePlan = New-DesktopRestorePlan -Snapshot $destinationSnapshot -Wanted $wanted `
                 -PrimaryPath ([string]$primary.Id) -Order @($settings.layout) `
@@ -5566,12 +5679,15 @@ function Switch-DisplayMode {
                 }
                 elseif (-not $sameTopology) {
                     $targets = @(Get-SwitchTargets -Wanted $wanted -Cache (Get-ModeCache) -KeepMode:$KeepMode)
+                    $preservedTargets = @($targets | Where-Object { $_.PreserveMode })
                     if ($targets.Count -eq $wanted.Count) {
                         $full = Set-CcdFullConfig -Targets $targets -PrimaryPath $primary.Id -Order @($settings.layout)
                     }
                     # It did not work out — the old three-step road. It works, it just blinks: the set
                     # without the modes, and the positions and the refresh rate brought up afterwards.
-                    if (-not $full -and -not (Set-CcdTopology -DevicePaths $wantedIds)) {
+                    # KeepMode cannot take that road: unspecified modes let Windows replace the live
+                    # resolution and rate, and its repair pass deliberately does not set either back.
+                    if (-not $full -and ($KeepMode -or -not (Set-CcdTopology -DevicePaths $wantedIds))) {
                         throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
                     }
                 }
@@ -5649,6 +5765,18 @@ function Switch-DisplayMode {
             if ($restoreFailed) {
                 Write-DisplayLog 'warn: the saved physical desktop did not verify after apply'
             }
+        }
+        elseif ($preservedTargets.Count -gt 0) {
+            $verifiedState = @(Get-DisplayState)
+            foreach ($t in $preservedTargets) {
+                $actual = @($verifiedState | Where-Object { $_.Active -and $_.Id -eq $t.DevicePath })
+                if ($actual.Count -ne 1 -or $actual[0].Width -ne $t.Width -or
+                    $actual[0].Height -ne $t.Height -or $actual[0].Rotation -ne $t.Rotation -or
+                    [int]$actual[0].RateNum -le 0 -or [int]$actual[0].RateDen -le 0 -or
+                    [int64]$actual[0].RateNum * [int64]$t.RateDen -ne
+                    [int64]$t.RateNum * [int64]$actual[0].RateDen) { $restoreFailed = $true }
+            }
+            if ($restoreFailed) { Write-DisplayLog 'warn: the active modes did not survive the generated KeepMode request' }
         }
 
         # Not one of the displays we asked for attached: the set we put out is out, and the set we put
