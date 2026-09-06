@@ -1087,7 +1087,13 @@ $script:PowerTicker.add_Tick({
 $script:ActivityTicks = 0
 
 function Invoke-ActivityTick {
-    if (-not (Get-ActiveSettings).stats) { return }
+    if (-not (Get-ActiveSettings).stats) {
+        # Turning the diary off ends the in-memory run as surely as idling does. Otherwise turning it
+        # on later joins both sides of the gap into one session even though nothing between was kept.
+        $script:ActivityRunStart = $null
+        $script:ActivityRunLast = $null
+        return
+    }
     try {
         # First "is anybody at the computer", and only then the monitor map and the mode
         # key: at night every tick ends on the very first question, and recomputing the
