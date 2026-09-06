@@ -112,3 +112,13 @@ Test-Case 'full config: duplicate requested paths are refused before an attempt 
     Assert-True (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'path-a' -Exact)) 'an incomplete unique set is rejected'
     Assert-Equal 0 $script:FullCalls 'the lower apply layer was never reached'
 }
+
+Test-Case 'rule match: overlapping names find a unique assignment in either pattern order' {
+    $connected = @(
+        [pscustomobject]@{ Label = 'LG ULTRAGEAR'; ShortId = 'GSM1111' }
+        [pscustomobject]@{ Label = 'LG ULTRAFINE'; ShortId = 'GSM2222' }
+    )
+
+    Assert-True (Test-DisplaySetMatch -Patterns @('LG', 'ULTRAGEAR') -Connected $connected) 'the broad pattern can move to the other display'
+    Assert-True (Test-DisplaySetMatch -Patterns @('ULTRAGEAR', 'LG') -Connected $connected) 'pattern order does not change the result'
+}

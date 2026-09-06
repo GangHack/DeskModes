@@ -6545,17 +6545,43 @@ function Test-DisplaySetMatch {
     if ($want.Count -eq 0) { return $false }
     if ($want.Count -ne $have.Count) { return $false }
 
-    # Each display may answer for one pattern only: two patterns that both match one monitor, with
-    # another monitor unmatched, is not the desk the rule describes.
-    $taken = New-Object System.Collections.ArrayList
-    foreach ($pat in $want) {
-        $hit = $null
-        foreach ($m in $have) {
-            if ($taken -contains $m) { continue }
-            if (Test-DisplayNameMatch -Pattern ([string]$pat) -Label ([string]$m.Label) -ShortId ([string]$m.ShortId)) { $hit = $m; break }
+    # Find a complete one-to-one assignment rather than taking the first match. With the patterns LG
+    # and ULTRAGEAR, the broad LG may first meet LG ULTRAGEAR even though it can move to LG ULTRAFINE;
+    # a greedy choice would then make the answer depend on pattern order.
+    $candidates = @{}
+    for ($patternIndex = 0; $patternIndex -lt $want.Count; $patternIndex++) {
+        $matches = @()
+        for ($displayIndex = 0; $displayIndex -lt $have.Count; $displayIndex++) {
+            $m = $have[$displayIndex]
+            if (Test-DisplayNameMatch -Pattern ([string]$want[$patternIndex]) `
+                    -Label ([string]$m.Label) -ShortId ([string]$m.ShortId)) {
+                $matches += $displayIndex
+            }
         }
-        if (-not $hit) { return $false }
-        [void]$taken.Add($hit)
+        if ($matches.Count -eq 0) { return $false }
+        $candidates[$patternIndex] = @($matches)
+    }
+
+    # Augmenting paths let a later, narrower pattern displace an earlier broad match when the broad
+    # pattern has another candidate. Every display is still assigned at most once.
+    $assigned = @{}
+    $assign = $null
+    $assign = {
+        param([int]$PatternIndex, $SeenDisplays)
+
+        foreach ($displayIndex in @($candidates[$PatternIndex])) {
+            if ($SeenDisplays.ContainsKey($displayIndex)) { continue }
+            $SeenDisplays[$displayIndex] = $true
+            if (-not $assigned.ContainsKey($displayIndex) -or
+                (& $assign -PatternIndex ([int]$assigned[$displayIndex]) -SeenDisplays $SeenDisplays)) {
+                $assigned[$displayIndex] = $PatternIndex
+                return $true
+            }
+        }
+        return $false
+    }
+    for ($patternIndex = 0; $patternIndex -lt $want.Count; $patternIndex++) {
+        if (-not (& $assign -PatternIndex $patternIndex -SeenDisplays @{})) { return $false }
     }
     return $true
 }
