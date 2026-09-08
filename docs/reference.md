@@ -92,12 +92,16 @@ it can be resized; where it stood and which page you left it on come back with i
 
 **Your desk** separates the Windows layout from explicit switching choices. The live diagram
 uses Windows coordinates and display dimensions, including portrait orientation and Y offsets;
-its star identifies the current primary. The switching row lets you deliberately change order
-or choose a different taskbar display. An unrelated Save preserves the existing choices.
+its star identifies the current primary and refreshes when Windows reports a display change,
+including a primary change between identical panels. This refresh preserves unfinished edits.
+The switching row lets you deliberately change order or choose a different taskbar display
+for subsequent switches. Save records those choices without changing the live desktop itself.
 **Use Windows layout** reads the current arrangement, adopts it as the complete desktop
 snapshot and clears row/primary overrides. **Which is which** shows each display's concise
 name on its physical screen. Identical panels keep distinct titles and exact internal bindings.
-Left-click the tray icon to open Settings, or right-click for its switching menu.
+Double-left-click the tray icon to open Settings, or right-click for its switching menu.
+Save applies settings and keeps the window open for further edits.
+Reopening Settings activates the existing window, preserving unfinished edits.
 
 A display you have switched off at its own button is still there, marked `not connected`. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them

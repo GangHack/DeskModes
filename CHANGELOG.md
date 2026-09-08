@@ -35,7 +35,8 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 
 ### Interface and support
 
-- Left-click the tray icon to open Settings; right-click retains the switching menu.
+- Double-left-click the tray icon to open Settings; right-click retains the switching menu.
+- Save applies settings while keeping the window open for further edits.
 - Your desk shows live Windows geometry and primary separately from explicit row editing.
   Identical displays have concise distinct titles without changing their saved identities.
 

@@ -217,10 +217,17 @@ Windows desktop text/DPI scaling.
 
 | Requirement | Acceptance scenario | Status |
 | --- | --- | --- |
-| Preserve CCD target scaling | Centered/aspect-ratio transforms survive disk, subset derivation, exact apply, KeepMode and failed-result retry; old snapshots remain readable | Targeted fake checks passed; full gate pending |
-| Double-left-click Settings | Single left does nothing; left double opens Settings; right menu is retained | In progress |
-| Save without closing | Durable saves immediately update active settings, remain editable and can be repeated; failed saves preserve the form | In progress |
-| Identical-monitor primary updates | Fresh live primary moves to the correct physical panel; configured edits remain intact | In progress |
+| Preserve CCD target scaling | Centered/aspect-ratio transforms survive disk, subset derivation, exact apply, KeepMode and failed-result retry; old snapshots remain readable | Passed fake/native boundary checks; independent review accepted |
+| Double-left-click Settings | Single left does nothing; left double opens Settings; right menu is retained; reopening reuses the existing window | Passed extracted handler and WPF lifetime checks |
+| Save without closing | Durable saves immediately update active settings, remain editable and can be repeated; failed saves preserve the form | Passed repeated-save, write-failure, callback-failure and external-setting retry checks |
+| Identical-monitor primary updates | Fresh live primary moves to the correct physical panel; configured edits remain intact | Passed duplicate-panel click and live-refresh checks |
 | Integrated verification | Five required gates, independent review and fake UI/portable evidence | Pending |
 
 No real monitor switching, DDC or power actions are included in automatic verification.
+
+Independent strong review accepted both the scaling and UI changes after corrections. Scaling
+refuses an unsupported active transform before any mutation even when an older baseline exists;
+standard CCD transforms 1-4 are preserved, while legacy missing/zero fields remain unspecified.
+The UI review additionally required one Settings window per lifetime, cleanup after setup
+failures, and keeping failed startup/sleep changes dirty so the same window can retry them.
+Focused UI suites passed 302, 35 and 30 assertions before integration.

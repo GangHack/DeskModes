@@ -26,16 +26,17 @@ use a source checkout; a version number in the application is not a published re
    user account. Keep the whole `DeskModes` folder together; do not run from inside the ZIP.
    A source checkout works too: `git clone https://github.com/GangHack/DeskModes.git`.
 2. Double-click **Displays.cmd**. The tray icon appears and Settings opens on the first run.
-   Left-click the tray icon to reopen Settings; right-click it for the switching menu.
+   Double-left-click the tray icon to reopen Settings; right-click it for the switching menu.
    If Windows shows a warning, review the source and publisher before choosing to run it.
 3. On **Your desk**, use **Use Windows layout** if the current arrangement is correct,
    or arrange the cards and choose the taskbar display. In **Modes**, add a combination,
-   select its displays and set a hotkey. Press **Save**.
+   select its displays and set a hotkey. Press **Save**; the window stays open for further edits.
 4. Switch using the tray menu or your hotkey. Enable **Start with Windows** in Behavior
    if you want the tray to return after sign-in.
 
 The interface follows Windows or your language choice: English, Russian, Ukrainian,
-Spanish, French and German. Settings are written for you; no JSON editing is required.
+Spanish, French and German. Choose it in **Settings → Behavior → Language**, save, and
+reopen Settings to translate the window. No JSON editing is required.
 The `.cmd` launchers choose Windows PowerShell 5.1 even if your terminal uses PowerShell 7.
 
 ## What comes with a mode
