@@ -271,3 +271,29 @@ switching or system-setting mutation was performed.
 The newest candidate is `DeskModes-1.0.0-language-refresh-2026-09-08.zip` in the sibling launch
 workspace's `language-refresh-candidate-2026-09-08` directory. It includes the earlier fixes.
 SHA256: `0dffb0569e7a21a313f05afc192c334cc0205af6037763fb6892de692f0fc114`.
+## September 9 imported-settings compatibility correction
+
+The supplied preliminary hardware-audit report identified DM-001 (orphaned imported UID-caption
+solo bindings), DM-002 (exact id: selectors entering fuzzy ShortId matching), and DM-003
+(indistinguishable 1.0.0 candidates). The report is evidence, not authorization to run its live
+steps. The original compatibility JSON and complete user backup were not supplied; regression
+fixtures use fictional paths with the reported model/ShortId/UID structure.
+
+Version 1.0.1 corrects exact path matching across membership, primary, layout, rules and monitor
+controls. Imported physical selectors survive unrelated combo/rule saves. UID-caption and exact
+solo references migrate only to a unique fingerprinted physical mode; ambiguous or absent targets,
+non-fingerprinted destinations and binding collisions retain their original entries. Group names
+and saved member/primary selectors are preserved. Earlier engine, UI and language fixes remain.
+
+Independent strong review found two additional identity downgrades (editor saves and migration to
+bare model keys); both were corrected and re-reviewed without blockers. An independent unshown
+rule-editor check preserved id:original-path and rejected a replacement same-model panel.
+The complete Windows PowerShell 5.1 gate passed: 77 parsed scripts, 105 encoding checks, clean
+PSScriptAnalyzer 1.25.0, 306 keys in all six languages and 2,456 assertions.
+
+Clean source `24047a5e7c9891c21b988e163f369fe988d99c8c` produced `DeskModes-1.0.1.zip`.
+SHA256: `4667b5ad4aef5b86d8604e14d42793939eb9ae5ebf9c309723011c9641635741`.
+All 25 archive file hashes match source; unpacked diagnostics reports DeskModes 1.0.1 and 20
+fake EN/RU previews rendered. The About version was visually checked. Evidence lives in the
+sibling launch workspace under `upgrade-fixes-2026-09-09`. No real monitor switching, DDC,
+settings replacement on the friend's machine, release, tag or push was performed.
