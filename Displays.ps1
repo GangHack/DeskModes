@@ -129,7 +129,7 @@ function Set-ActiveSettings {
 # A successful Save reaches the running tray while the Settings window remains open. Set the
 # object first: every later step reads through Get-ActiveSettings, so even a hotkey refusal cannot
 # leave the tray using an older in-memory version than settings.json.
-function Apply-SavedSettings {
+function Invoke-SavedSettings {
     param($NewSettings)
 
     Set-ActiveSettings $NewSettings
@@ -1242,7 +1242,7 @@ function Open-SettingsWindow {
         [void](Show-SettingsDialog -State (Get-CachedDesk) -Settings (Get-ActiveSettings) `
                   -Positions $positions -Page $Page -OnSaved {
                       param($saved)
-                      Apply-SavedSettings -NewSettings $saved
+                      Invoke-SavedSettings -NewSettings $saved
                   })
     }
     catch {

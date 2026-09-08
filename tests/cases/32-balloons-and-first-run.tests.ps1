@@ -47,8 +47,8 @@ $script:TrayMouseDoubleClick = [scriptblock]::Create($trayMouseDoubleClick[0].Ar
 
 $applySaved = @($script:TrayAst.FindAll({ param($n)
     $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-    $n.Name -eq 'Apply-SavedSettings' }, $true))
-if ($applySaved.Count -ne 1) { throw "expected exactly one Apply-SavedSettings in Displays.ps1, found $($applySaved.Count)" }
+    $n.Name -eq 'Invoke-SavedSettings' }, $true))
+if ($applySaved.Count -ne 1) { throw "expected exactly one Invoke-SavedSettings in Displays.ps1, found $($applySaved.Count)" }
 . ([scriptblock]::Create($applySaved[0].Extent.Text))
 
 # --- the environment these two pieces expect around themselves ---------------
@@ -239,7 +239,7 @@ Test-Case 'settings Save: the tray adopts language and hotkeys before the dialog
     function Register-Hotkeys { $script:AppliedHotkeys++ }
     function Show-Balloon { param($Title, $Text, $Kind, [switch]$Always) $script:AppliedBalloons++ }
 
-    Apply-SavedSettings -NewSettings $saved
+    Invoke-SavedSettings -NewSettings $saved
 
     Assert-True ($script:AppliedSettings -eq $saved) 'the active settings change immediately'
     Assert-Equal 'ru' $script:AppliedLanguage 'the active language changes immediately'
