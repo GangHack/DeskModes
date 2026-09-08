@@ -221,7 +221,7 @@ Windows desktop text/DPI scaling.
 | Double-left-click Settings | Single left does nothing; left double opens Settings; right menu is retained; reopening reuses the existing window | Passed extracted handler and WPF lifetime checks |
 | Save without closing | Durable saves immediately update active settings, remain editable and can be repeated; failed saves preserve the form | Passed repeated-save, write-failure, callback-failure and external-setting retry checks |
 | Identical-monitor primary updates | Fresh live primary moves to the correct physical panel; configured edits remain intact | Passed duplicate-panel click and live-refresh checks |
-| Integrated verification | Five required gates, independent review and fake UI/portable evidence | Pending |
+| Integrated verification | Five required gates, independent review and fake UI/portable evidence | Passed: 2,392 assertions, clean analyzer, complete translations, portable smoke and sampled EN/RU previews |
 
 No real monitor switching, DDC or power actions are included in automatic verification.
 
@@ -231,3 +231,23 @@ standard CCD transforms 1-4 are preserved, while legacy missing/zero fields rema
 The UI review additionally required one Settings window per lifetime, cleanup after setup
 failures, and keeping failed startup/sleep changes dirty so the same window can retry them.
 Focused UI suites passed 302, 35 and 30 assertions before integration.
+
+Final Windows PowerShell 5.1 `tools/check.ps1 -RequireAnalyzer` passed: 77 scripts parsed,
+105 encoding checks, PSScriptAnalyzer 1.25.0 clean, all 306 keys present in all six languages,
+and 2,392 assertions. The integrated gate caught an unapproved helper verb, which was renamed
+with its callers and tests. Visual review caught a clipped Russian taskbar caption; the concise
+caption was restored and the complete gate and portable checks were repeated successfully.
+
+The local candidate was packed from clean source `5e4d919fa793551cd2665821253573ed047951e7`.
+Its delivery filename is `DeskModes-1.0.0-settings-fixes-2026-09-08.zip`; renaming the packer's
+output does not change its contents. SHA256:
+`426bf8958b7b5b875502765f7555252c3581d8f81e6bdeaa12c92667d03fe407`.
+All 25 archive files matched source hashes. A fresh unpacked copy produced valid CLI diagnostics
+JSON and 20 fake EN/RU preview images. The live desk, configured row, long Russian captions and
+language setting were visually inspected. Evidence is in the sibling launch workspace under
+`settings-followup-candidate-2026-09-08` (`check-final.txt`, `verification.json`, `smoke.txt`).
+
+The requested local software follow-up is complete. The friend's old-base hardware results do
+not establish hardware acceptance for this candidate. No real switching, DDC, startup or power
+mutation, release, tag or push was performed. Subsequent changes to this acceptance record are
+documentation only and are excluded from the portable archive.
