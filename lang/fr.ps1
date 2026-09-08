@@ -55,7 +55,7 @@
     'behavior.hint'               = 'Ce que DeskModes fait de lui-même.'
     'behavior.dayToDay'           = 'Au quotidien'
     'behavior.language'           = 'Langue'
-    'behavior.language.hint'      = 'Les fenêtres, le menu et les notifications. Le journal reste en anglais. Une fenêtre déjà ouverte garde la langue dans laquelle elle a été construite.'
+    'behavior.language.hint'      = 'Après enregistrement, les paramètres se rouvrent automatiquement dans la langue choisie. Le journal reste en anglais.'
     'behavior.language.auto'      = 'Suivre Windows'
     'behavior.startup'            = 'Démarrer avec Windows'
     'behavior.startup.hint'       = 'L''icône de la zone de notification et les raccourcis reviennent après un redémarrage.'

@@ -35,8 +35,8 @@ use a source checkout; a version number in the application is not a published re
    if you want the tray to return after sign-in.
 
 The interface follows Windows or your language choice: English, Russian, Ukrainian,
-Spanish, French and German. Choose it in **Settings → Behavior → Language**, save, and
-reopen Settings to translate the window. No JSON editing is required.
+Spanish, French and German. Choose it in **Settings → Behavior → Language** and save.
+Settings reopens automatically on the same page in the selected language. No JSON editing is required.
 The `.cmd` launchers choose Windows PowerShell 5.1 even if your terminal uses PowerShell 7.
 
 ## What comes with a mode

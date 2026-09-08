@@ -158,3 +158,116 @@ Test-Case 'settings dialog: failed setup releases the half-built active window' 
     Assert-True $failed 'the setup failure still reaches the caller'
     Assert-Null $script:ActiveUi 'a later tray double-click can build a fresh window'
 }
+
+Test-Case 'settings language: failed writes keep the original window and successful changes request a rebuild' {
+    $oldLanguage = $script:LangCode
+    [void](Initialize-Language -Code 'en')
+    $settings = Get-DefaultSettings
+    $settings.language = 'en'
+    $ui = New-DialogUi -Settings $settings
+    $ui.RestartOnLanguageChange = $true
+    $ui.StartupBox.IsChecked = $false
+    $ui.StartupWasEnabled = $false
+    $ui.LanguageBox.SelectedItem = @($ui.LanguageBox.Items | Where-Object { $_.Tag -eq 'ru' })[0]
+    $script:LanguageWriteOk = $false
+    function Save-DisplaySettings { param($Settings) return $script:LanguageWriteOk }
+    function Save-UiSleepMinutes { param($Ui) return $true }
+    function Show-SettingsWarning { param($Text, $Owner) }
+    try {
+        Assert-Equal $false (Invoke-SettingsSave -Ui $ui) 'failed persistence does not apply a language'
+        Assert-Equal $false $ui.ReloadLanguage 'the original window remains available'
+        Assert-Equal 'en' $ui.Settings.language 'the last durable language remains English'
+        $script:LanguageWriteOk = $true
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'a retry saves the chosen language'
+        Assert-True $ui.ReloadLanguage 'the modal owner is asked to rebuild'
+        Assert-Equal 'ru' $ui.Result.language 'the new window will receive the saved language'
+    }
+    finally { $ui.Window.Close(); [void](Initialize-Language -Code $oldLanguage) }
+}
+
+Test-Case 'settings language: modal rebuilds preserve the page, saved result and refused system edits' {
+    $oldLanguage = $script:LangCode
+    $script:ActiveUi = $null
+    $script:LanguageFrame = 0
+    $script:LanguageWrites = 0
+    $script:LanguageCallbacks = 0
+    $script:LanguageSleepOk = $false
+    $script:LanguageSteps = @(
+        {
+            param($Ui)
+            Assert-Equal 'en' $Ui.LanguageCode 'the first frame uses English'
+            $Ui.Page = 'behavior'
+            $Ui.Window.WindowState = 'Maximized'
+            $Ui.RequestedLanguage = 'ru'
+            $Ui.SleepWanted = 15
+            Assert-True (Invoke-SettingsSave -Ui $Ui) 'the language saves even when Windows refuses the timeout'
+            Assert-True $Ui.Window.Closed 'the old frame closes after its durable Save'
+        },
+        {
+            param($Ui)
+            Assert-Equal 'ru' $Ui.LanguageCode 'the next frame uses Russian without another user action'
+            Assert-Equal 'behavior' $Ui.Page 'the page is retained'
+            Assert-Equal 'Maximized' $Ui.Window.WindowState 'the window state is retained'
+            Assert-Equal 15 $Ui.SleepWanted 'the refused requested timeout survives'
+            Assert-Equal 5 $Ui.SleepMinutes 'the confirmed timeout remains unchanged'
+            Assert-True (Test-UiEdited -Ui $Ui) 'the external retry remains available'
+            $script:LanguageSleepOk = $true
+            Assert-True (Invoke-SettingsSave -Ui $Ui) 'retrying in the same language succeeds'
+            Assert-Equal $false $Ui.Window.Closed 'ordinary Save keeps the translated window open'
+            Assert-Equal $false $Ui.ReloadLanguage 'the same language does not create a loop'
+            $Ui.RequestedLanguage = 'fr'
+            Assert-True (Invoke-SettingsSave -Ui $Ui) 'a second language change saves normally'
+        },
+        {
+            param($Ui)
+            Assert-Equal 'fr' $Ui.LanguageCode 'another rebuild uses French'
+            Assert-Equal 15 $Ui.SleepMinutes 'the successful timeout retry survives'
+            Assert-Equal $false (Test-UiEdited -Ui $Ui) 'the final form is clean'
+            # Closing this frame without another Save must still return the last durable result.
+        }
+    )
+    function New-SettingsWindow {
+        param($Modes, $Settings, $State, $Positions, $Page)
+        $script:LanguageFrame++
+        if ($script:LanguageFrame -gt 3) { throw 'Unexpected language rebuild loop' }
+        $ui = [pscustomobject]@{
+            Settings=$Settings; State=$State; Positions=$Positions; Page=$Page; Result=$null
+            StartupWasEnabled=$false; StartupBox=[pscustomobject]@{IsChecked=$false}
+            SleepMinutes=-1; SleepWanted=-1; Baseline=''; OnSaved=$null; SaveBusy=$false
+            LanguageCode=$script:LangCode; RestartOnLanguageChange=$false; ReloadLanguage=$false
+            RequestedLanguage=$Settings.language; Window=$null
+        }
+        $ui.Window = [pscustomobject]@{Owner=$ui; Closed=$false; WindowState='Normal'}
+        $ui.Window | Add-Member ScriptMethod Close { $this.Closed = $true }
+        $ui.Window | Add-Member ScriptMethod ShowDialog { & $script:LanguageSteps[$script:LanguageFrame - 1] $this.Owner }
+        $script:ActiveUi = $ui
+        return $ui
+    }
+    function Read-SettingsFromUi {
+        param($Ui, $Settings)
+        $updated = Get-DefaultSettings
+        $updated.language = $Ui.RequestedLanguage
+        return [pscustomobject]@{Ok=$true; Settings=$updated}
+    }
+    function Get-DialogModes { param($State, $Settings) return @() }
+    function Get-UiFingerprint { param($Ui) return ('{0}|{1}' -f $Ui.StartupBox.IsChecked, $Ui.SleepWanted) }
+    function Update-UiFooter { param($Ui) }
+    function Test-RunAtStartup { return $false }
+    function Get-DisplaySleepMinutes { return 5 }
+    function Set-UiSleepMinutes { param($Ui, $Minutes) $Ui.SleepMinutes=$Minutes; $Ui.SleepWanted=$Minutes }
+    function Get-UiSleepMinutes { param($Ui) return $Ui.SleepWanted }
+    function Set-DisplaySleepMinutes { param($Minutes) return $script:LanguageSleepOk }
+    function Show-SettingsWarning { param($Text, $Owner) }
+    function Save-DisplaySettings { param($Settings) $script:LanguageWrites++; return $true }
+    try {
+        $settings = Get-DefaultSettings
+        $settings.language = 'en'
+        $got = Show-SettingsDialog -State @() -Settings $settings -OnSaved { param($saved) $script:LanguageCallbacks++ }
+        Assert-Equal 3 $script:LanguageFrame 'only language changes rebuild the window'
+        Assert-Equal 3 $script:LanguageWrites 'each user Save writes exactly once'
+        Assert-Equal 3 $script:LanguageCallbacks 'each durable Save notifies the tray exactly once'
+        Assert-Equal 'fr' $got.language 'closing the rebuilt window returns the last saved version'
+        Assert-Null $script:ActiveUi 'the final modal lifetime releases ownership'
+    }
+    finally { $script:ActiveUi=$null; [void](Initialize-Language -Code $oldLanguage) }
+}

@@ -100,7 +100,8 @@ for subsequent switches. Save records those choices without changing the live de
 snapshot and clears row/primary overrides. **Which is which** shows each display's concise
 name on its physical screen. Identical panels keep distinct titles and exact internal bindings.
 Double-left-click the tray icon to open Settings, or right-click for its switching menu.
-Save applies settings and keeps the window open for further edits.
+Save applies settings and keeps the window open for further edits. Saving a different language
+automatically reopens Settings on the same page with the translated interface.
 Reopening Settings activates the existing window, preserving unfinished edits.
 
 A display you have switched off at its own button is still there, marked `not connected`. Some

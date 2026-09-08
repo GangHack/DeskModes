@@ -216,7 +216,7 @@
 
     # --- the language row ---
     'behavior.language'           = 'Language'
-    'behavior.language.hint'      = 'The windows, the menu and the notifications. The log stays English. A window already open keeps the language it was built in.'
+    'behavior.language.hint'      = 'Save refreshes Settings in the selected language automatically. The log stays English.'
     'behavior.language.auto'      = 'Follow Windows'
 
     # --- the shortcut field ---

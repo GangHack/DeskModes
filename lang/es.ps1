@@ -55,7 +55,7 @@
     'behavior.hint'               = 'Lo que DeskModes hace por su cuenta.'
     'behavior.dayToDay'           = 'El día a día'
     'behavior.language'           = 'Idioma'
-    'behavior.language.hint'      = 'Las ventanas, el menú y los avisos. El registro sigue en inglés. Una ventana ya abierta se queda en el idioma con el que se abrió.'
+    'behavior.language.hint'      = 'Al guardar, la configuración se abre automáticamente en el idioma elegido. El registro sigue en inglés.'
     'behavior.language.auto'      = 'Seguir a Windows'
     'behavior.startup'            = 'Arrancar con Windows'
     'behavior.startup.hint'       = 'El icono de la bandeja y los atajos vuelven tras reiniciar.'

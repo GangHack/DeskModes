@@ -61,7 +61,7 @@
     'behavior.hint'               = 'Що DeskModes робить сам.'
     'behavior.dayToDay'           = 'Щодня'
     'behavior.language'           = 'Мова'
-    'behavior.language.hint'      = 'Вікна, меню та сповіщення. Журнал залишається англійським. Уже відкрите вікно залишиться тією мовою, якою відкрилося.'
+    'behavior.language.hint'      = 'Після збереження налаштування автоматично відкриються вибраною мовою. Журнал залишається англійським.'
     'behavior.language.auto'      = 'Як у Windows'
     'behavior.startup'            = 'Запускати разом із Windows'
     'behavior.startup.hint'       = 'Значок у треї та гарячі клавіші повернуться після перезавантаження.'

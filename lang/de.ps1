@@ -56,7 +56,7 @@
     'behavior.hint'               = 'Was DeskModes von sich aus tut.'
     'behavior.dayToDay'           = 'Im Alltag'
     'behavior.language'           = 'Sprache'
-    'behavior.language.hint'      = 'Die Fenster, das Menü und die Benachrichtigungen. Das Protokoll bleibt englisch. Ein bereits offenes Fenster behält die Sprache, in der es gebaut wurde.'
+    'behavior.language.hint'      = 'Nach dem Speichern öffnen sich die Einstellungen automatisch in der gewählten Sprache. Das Protokoll bleibt englisch.'
     'behavior.language.auto'      = 'Windows folgen'
     'behavior.startup'            = 'Mit Windows starten'
     'behavior.startup.hint'       = 'Das Infobereich-Symbol und die Tastenkürzel sind nach einem Neustart wieder da.'

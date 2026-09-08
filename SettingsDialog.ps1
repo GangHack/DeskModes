@@ -2403,6 +2403,9 @@ function New-SettingsWindow {
         StartupWasEnabled = $false
         OnSaved           = $null
         SaveBusy          = $false
+        LanguageCode      = [string]$script:LangCode
+        RestartOnLanguageChange = $false
+        ReloadLanguage    = $false
         NavList           = $win.FindName('NavList')
         NavAbout          = $win.FindName('NavAbout')
         # Page name -> the panel that is that page. One map, so Set-UiPage does not have to know
@@ -6336,6 +6339,13 @@ function Invoke-SettingsSave {
                 Show-SettingsWarning -Text (Get-Text -Key 'settings.applyFailed') -Owner $Ui.Window
             }
         }
+        # Rebuild translated markup only after the durable save and tray callback. The modal
+        # owner resumes after Close and carries the page and any refused system edits forward.
+        if ($Ui.RestartOnLanguageChange -and
+            (Resolve-LanguageCode -Wanted $updated.language) -ne [string]$Ui.LanguageCode) {
+            $Ui.ReloadLanguage = $true
+            $Ui.Window.Close()
+        }
         return $true
     }
     finally { $Ui.SaveBusy = $false }
@@ -6389,38 +6399,54 @@ function Show-SettingsDialog {
         $Settings = Get-DisplaySettings
     }
 
-    $ui = $null
-    try {
-        $script:PendingSettingsDeskState = $null
-        $modes = @(Get-DialogModes -State $State -Settings $Settings)
-        $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Positions $Positions -Page $Page
-
-        # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
-        # from the settings: the shortcut could have been deleted by hand.
-        $startupWasEnabled = [bool](Test-RunAtStartup)
-        $ui.StartupWasEnabled = $startupWasEnabled
-        $ui.OnSaved = $OnSaved
-        $ui.StartupBox.IsChecked = $startupWasEnabled
-        # And the display timeout from Windows, for the same reason: it is the system's, not ours.
-        Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
-        # Both of those were just set from outside, and neither is a person's edit. Taken again so
-        # the footer does not open a freshly opened window on "Cancel" - and the page showing is told
-        # again, because the first telling compared against a baseline that had neither in it.
-        Set-UiBaseline -Ui $ui
-        Update-UiFooter -Ui $ui
-
-        [void]$ui.Window.ShowDialog()
-        # A close before any Save still returns $null. After one or more Saves this is the latest
-        # durable object, which keeps the function useful to non-tray callers and tests.
-        return $ui.Result
-    }
-    finally {
-        if ($ui -and $ui.Window) { $ui.Window.Close() }
-        if ($ui -and [object]::ReferenceEquals($script:ActiveUi, $ui)) {
-            $script:ActiveUi = $null
+    $previousUi = $null
+    while ($true) {
+        $ui = $null
+        try {
+            [void](Initialize-Language -Code $Settings.language)
             $script:PendingSettingsDeskState = $null
-            $script:PendingSettingsPage = ''
+            $modes = @(Get-DialogModes -State $State -Settings $Settings)
+            $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Positions $Positions -Page $Page
+            $ui.OnSaved = $OnSaved
+            $ui.RestartOnLanguageChange = $true
+
+            if ($previousUi) {
+                # A language refresh must not erase a refused startup or sleep edit. Carry both
+                # the requested controls and their last confirmed Windows values to the new form.
+                $ui.StartupWasEnabled = $previousUi.StartupWasEnabled
+                $ui.StartupBox.IsChecked = $previousUi.StartupBox.IsChecked
+                Set-UiSleepMinutes -Ui $ui -Minutes (Get-UiSleepMinutes -Ui $previousUi)
+                $ui.SleepMinutes = $previousUi.SleepMinutes
+                $ui.Result = $previousUi.Result
+                $ui.Window.WindowState = $previousUi.Window.WindowState
+                Set-UiBaseline -Ui $ui
+                if (Test-UiEdited -Ui $previousUi) { $ui.Baseline = 'external settings still pending' }
+            }
+            else {
+                # These are Windows settings, so first opening reads their actual values rather
+                # than treating a shortcut deleted by hand as still enabled.
+                $ui.StartupWasEnabled = [bool](Test-RunAtStartup)
+                $ui.StartupBox.IsChecked = $ui.StartupWasEnabled
+                Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
+                Set-UiBaseline -Ui $ui
+            }
+            Update-UiFooter -Ui $ui
+            [void]$ui.Window.ShowDialog()
         }
+        finally {
+            if ($ui -and $ui.Window) { $ui.Window.Close() }
+            if ($ui -and [object]::ReferenceEquals($script:ActiveUi, $ui)) {
+                $script:ActiveUi = $null
+                $script:PendingSettingsDeskState = $null
+                $script:PendingSettingsPage = ''
+            }
+        }
+        if (-not $ui.ReloadLanguage) { return $ui.Result }
+        $previousUi = $ui
+        $Settings = $ui.Result
+        $State = $ui.State
+        $Positions = $ui.Positions
+        $Page = [string]$ui.Page
     }
 }
 
