@@ -128,6 +128,28 @@ Test-Case 'dialog: direct desk edits mark only the setting a person changed' {
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'dialog: identical panels keep the configured taskbar on the physical panel clicked' {
+    $left = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-left'
+    $right = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-right'
+    $left.Primary = $true
+    $settings = Get-DefaultSettings
+    $settings.layout = @('Acer XV272U')
+    $ui = New-DialogUi -Settings $settings -State @($left, $right)
+    try {
+        $rightCard = @($ui.DeskPanel.Children | Where-Object { $_.Tag.DisplayId -eq 'path-right' })[0]
+        Assert-True ($null -ne $rightCard) 'the configured card keeps the physical display identity'
+        $rightCard.Tag.Radio.IsChecked = $true
+        $rightCard.Tag.Radio.RaiseEvent((New-Object System.Windows.RoutedEventArgs (
+            [System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+
+        Assert-True ([bool]$rightCard.Tag.Radio.IsChecked) 'the configured taskbar star moves at once'
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal ([string]$right.Label) ([string]$updated.primary) 'Save keeps the clicked panel fingerprint'
+        Assert-Equal $true ([bool]$updated.primaryOverride) 'the physical choice is explicit'
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'desk: live geometry keeps Windows offsets and portrait shape' {
     $state = @(
         (New-FakeMonitor 'Acer XV272U {1111111111111111}' 'ACR1234' 'path-left')
@@ -175,6 +197,97 @@ Test-Case 'desk: configured taskbar edits do not change the live Windows star' {
         Update-LiveDesk -Ui $ui
         Assert-True ([string]$ui.LiveDeskCanvas.Children[1].Child.Text -like "$script:UiStar*") 'the live star still reports Windows'
         Assert-True ([string]$ui.LiveDeskCanvas.Children[0].Child.Text -notlike "$script:UiStar*") 'the configured choice stays in the separate row'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: an external primary change refreshes only the live view' {
+    $left = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-left'
+    $right = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-right'
+    $left.Primary = $true
+    $settings = Get-DefaultSettings
+    $settings.layout = @('Acer XV272U')
+    $positions = @{
+        'path-left' = [pscustomobject]@{ X = 0; Y = 0 }
+        'path-right' = [pscustomobject]@{ X = 2560; Y = 0 }
+    }
+    $ui = New-SettingsWindow -Modes @(Get-DialogModes -State @($left, $right) -Settings $settings) `
+                             -Settings $settings -State @($left, $right) -Positions $positions
+    try {
+        $rightCard = @($ui.DeskPanel.Children | Where-Object { $_.Tag.DisplayId -eq 'path-right' })[0]
+        $rightCard.Tag.Radio.IsChecked = $true
+        $rightCard.Tag.Radio.RaiseEvent((New-Object System.Windows.RoutedEventArgs (
+            [System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $ui.NotifyBox.IsChecked = -not $ui.NotifyBox.IsChecked
+        $configuredOrder = @($ui.DeskPanel.Children | ForEach-Object { [string]$_.Tag.DisplayId })
+
+        $freshLeft = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-left'
+        $freshRight = New-FakeMonitor 'Acer XV272U' 'ACR1234' 'path-right'
+        $freshRight.Primary = $true
+        Assert-True (Update-SettingsLiveDesk -Ui $ui -State @($freshLeft, $freshRight) -Positions $positions) 'the fresh state was accepted'
+
+        Assert-Equal @($configuredOrder) @($ui.DeskPanel.Children | ForEach-Object { [string]$_.Tag.DisplayId }) 'the unsaved configured order stays put'
+        Assert-True ([bool]$rightCard.Tag.Radio.IsChecked) 'the unsaved configured taskbar choice stays put'
+        Assert-True ([bool]$ui.NotifyBox.IsChecked -ne [bool]$settings.notifications) 'other unsaved edits stay put'
+        Assert-True ([string]$ui.LiveDeskCanvas.Children[1].Child.Text -like "$script:UiStar*") 'the live star follows Windows to the other physical panel'
+        Assert-True ([string]$ui.LiveDeskCanvas.Children[0].Child.Text -notlike "$script:UiStar*") 'the old live primary loses its star'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: Save commits repeatedly without closing or replacing the working copy on failure' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $ui | Add-Member -MemberType NoteProperty -Name StartupWasEnabled -Value $false -Force
+        $ui | Add-Member -MemberType NoteProperty -Name OnSaved -Value {
+            param($saved)
+            $script:WindowSaveCallbacks++
+            $script:WindowLastSaved = $saved
+        } -Force
+        $ui.StartupBox.IsChecked = $false
+        $script:WindowSaveCalls = 0
+        $script:WindowSaveCallbacks = 0
+        $script:WindowLastSaved = $null
+        $script:WindowWriteSucceeds = $true
+        $script:WindowWarnings = @()
+        function Save-DisplaySettings {
+            param($Settings)
+            $script:WindowSaveCalls++
+            return $script:WindowWriteSucceeds
+        }
+        function Save-UiSleepMinutes { param($Ui) return $true }
+        function Show-SettingsWarning { param([string]$Text, $Owner) $script:WindowWarnings += $Text }
+
+        $ui.NotifyBox.IsChecked = $false
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the first Save succeeds'
+        Assert-Null $ui.Window.DialogResult 'Save does not close the modal window'
+        Assert-Equal 1 $script:WindowSaveCallbacks 'the tray is told immediately'
+        Assert-Equal $false ([bool]$ui.Settings.notifications) 'the working copy advances to the durable settings'
+
+        $ui.RefreshBox.IsChecked = $false
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the same open window saves again'
+        Assert-Equal 2 $script:WindowSaveCalls 'each press makes one durable write'
+        Assert-Equal 2 $script:WindowSaveCallbacks 'each durable version reaches the tray'
+        Assert-Equal $false ([bool]$script:WindowLastSaved.maximizeRefresh) 'the second edit is applied'
+
+        $durable = $ui.Settings
+        $ui.StatsBox.IsChecked = $true
+        $script:WindowWriteSucceeds = $false
+        Assert-Equal $false (Invoke-SettingsSave -Ui $ui) 'a refused write is reported'
+        Assert-True ($ui.Settings -eq $durable) 'the working copy remains the last durable object'
+        Assert-Equal 2 $script:WindowSaveCallbacks 'the failed version never reaches the tray'
+        Assert-Null $ui.Window.DialogResult 'a failure leaves the window open for another attempt'
+        Assert-Equal 1 $script:WindowWarnings.Count 'the refusal is visible once'
+
+        $ui.StatsBox.IsChecked = $false
+        $ui.OnSaved = { param($saved) throw 'fictional tray callback failure' }
+        $script:WindowWriteSucceeds = $true
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'a callback failure does not undo the durable Save'
+        Assert-Equal $ui.Result $ui.Settings 'the form and durable result still advance together'
+        Assert-Null $ui.Window.DialogResult 'callback failure also leaves the window open'
+        Assert-Equal 2 $script:WindowWarnings.Count 'the separate apply failure is visible'
+        Assert-Equal (Get-Text -Key 'settings.applyFailed') $script:WindowWarnings[1] 'the warning says the durable Save succeeded'
     }
     finally { $ui.Window.Close() }
 }

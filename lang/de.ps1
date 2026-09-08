@@ -31,7 +31,7 @@
 
     'desk.hint'                   = 'Die aktuelle Windows-Anordnung und die beim Umschalten verwendeten Einstellungen werden getrennt angezeigt.'
     'desk.live'                   = 'Windows-Anordnung jetzt'
-    'desk.live.hint'              = 'Positionen, Versatz, Ausrichtung und Stern stammen aus Windows beim Öffnen der Einstellungen.'
+    'desk.live.hint'              = 'Wird automatisch aktualisiert. Positionen, Ausrichtung und der mit einem Stern markierte Taskleistenmonitor stammen aus Windows.'
     'desk.live.unavailable'       = 'Windows hat keine Bildschirmanordnung gemeldet.'
     'desk.saved'                  = 'Umschaltlayout anpassen'
     'desk.saved.hint'             = 'Die Windows-Anordnung bleibt standardmäßig erhalten. Ändern Sie hier die Reihenfolge oder den Taskleistenbildschirm, um sie anzupassen.'
@@ -343,7 +343,7 @@
     'balloon.seeLog'              = 'Einzelheiten stehen im Protokoll.'
     'balloon.noLog'               = 'Noch kein Protokoll'
     'balloon.noLog.body'          = 'Es erscheint nach dem ersten Umschalten.'
-    'balloon.firstRun'            = 'Linksklick öffnet die Einstellungen, Rechtsklick das Bildschirmmenü.'
+    'balloon.firstRun'            = 'Doppelklick öffnet die Einstellungen, Rechtsklick das Bildschirmmenü.'
 
     'table.display'               = 'Monitor'
     'table.size'                  = 'Größe'

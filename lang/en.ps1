@@ -27,7 +27,7 @@
     'win.rule'                    = 'DeskModes - Rule'
     'win.timer'                   = 'DeskModes - Timer'
 
-    'desk.taskbar'                = 'Taskbar'
+    'desk.taskbar'                = 'Taskbar on switch'
 
     'nav.desk'                    = 'Your desk'
     'nav.modes'                   = 'Modes'
@@ -37,11 +37,11 @@
     'nav.about'                   = 'About'
 
     'desk.hint'                   = 'Windows'' live layout and the choices DeskModes uses when switching are shown separately.'
-    'desk.live'                   = 'Windows layout now'
-    'desk.live.hint'              = 'Positions, offsets, orientation and the star come from Windows as Settings opened.'
+    'desk.live'                   = 'Live in Windows'
+    'desk.live.hint'              = 'Refreshes automatically. Positions, orientation and the starred taskbar display come from Windows.'
     'desk.live.unavailable'       = 'Windows did not report a display layout.'
-    'desk.saved'                  = 'Customize switching layout'
-    'desk.saved.hint'             = 'Windows layout is preserved by default. Change the order or taskbar display here to customize it.'
+    'desk.saved'                  = 'Configured for switching'
+    'desk.saved.hint'             = 'These controls are saved for future switches. Change the order or choose Taskbar on switch to customize them.'
     'desk.whichIsWhich'           = 'Which is which'
     'desk.whichIsWhich.tip'       = 'Show each display''s name on it for a moment.'
     'desk.copy'                   = 'Use Windows layout'
@@ -65,6 +65,9 @@
     'behavior.startup'            = 'Start with Windows'
     'behavior.startup.hint'       = 'The tray icon and the shortcuts come back after a reboot.'
     'settings.startupFailed'      = 'Settings were saved, but Start with Windows could not be changed. Try again or check the Startup folder; details are in the log.'
+    'settings.writeFailed'        = 'Could not write settings.json - nothing was saved. Check that the folder DeskModes sits in can be written to; details are in the log.'
+    'settings.sleepFailed'        = 'Windows would not change when the displays go dark. Everything else was saved. Set it in Settings - System - Power; details are in the log.'
+    'settings.applyFailed'        = 'Settings were saved, but the running tray could not apply them. Close and restart DeskModes; details are in the log.'
     'behavior.notifications'      = 'Notifications'
     'behavior.notifications.hint' = 'Show a notification after switching.'
     'behavior.back'               = 'Back to the previous mode'
@@ -374,7 +377,7 @@
     'balloon.seeLog'              = 'Details are in the log.'
     'balloon.noLog'               = 'No log yet'
     'balloon.noLog.body'          = 'It appears after the first switch.'
-    'balloon.firstRun'            = 'Left-click the icon for Settings; right-click for the display menu.'
+    'balloon.firstRun'            = 'Double-click the icon for Settings; right-click for the display menu.'
 
     # --- the displays table on the desk page ---
     'table.display'               = 'Display'

@@ -38,8 +38,18 @@ $script:StartupTick = [scriptblock]::Create($startupTick[0].Arguments[0].ScriptB
 $trayMouseClick = @($script:TrayAst.FindAll({ param($n)
     $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
     $n.Member.Extent.Text -eq 'add_MouseClick' }, $true))
-if ($trayMouseClick.Count -ne 1) { throw "expected exactly one tray MouseClick handler in Displays.ps1, found $($trayMouseClick.Count)" }
-$script:TrayMouseClick = [scriptblock]::Create($trayMouseClick[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
+if ($trayMouseClick.Count -ne 0) { throw "expected no tray MouseClick handler in Displays.ps1, found $($trayMouseClick.Count)" }
+$trayMouseDoubleClick = @($script:TrayAst.FindAll({ param($n)
+    $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+    $n.Member.Extent.Text -eq 'add_MouseDoubleClick' }, $true))
+if ($trayMouseDoubleClick.Count -ne 1) { throw "expected exactly one tray MouseDoubleClick handler in Displays.ps1, found $($trayMouseDoubleClick.Count)" }
+$script:TrayMouseDoubleClick = [scriptblock]::Create($trayMouseDoubleClick[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
+
+$applySaved = @($script:TrayAst.FindAll({ param($n)
+    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $n.Name -eq 'Apply-SavedSettings' }, $true))
+if ($applySaved.Count -ne 1) { throw "expected exactly one Apply-SavedSettings in Displays.ps1, found $($applySaved.Count)" }
+. ([scriptblock]::Create($applySaved[0].Extent.Text))
 
 # --- the environment these two pieces expect around themselves ---------------
 
@@ -185,7 +195,7 @@ Test-Case 'startup: the first run says where the menu is and opens Settings itse
     Invoke-StartupTick -First $true
     Assert-True $script:TimerStopped 'the one-shot timer stopped itself'
     Assert-Equal 1 $script:tray.Shown 'one balloon'
-    Assert-True ($script:tray.BalloonTipText -like '*Left-click*') 'which says how Settings opens'
+    Assert-True ($script:tray.BalloonTipText -like '*Double-click*') 'which says how Settings opens'
     Assert-True ($script:tray.BalloonTipText -like '*right-click*') 'and where the display menu is'
     Assert-True $script:SettingsOpened 'and the window opened by itself'
 }
@@ -207,12 +217,51 @@ Test-Case 'startup: a Settings window that will not open does not take the start
     Assert-True $script:TimerStopped 'and the start finished'
 }
 
-Test-Case 'tray: left click opens Settings and right click remains the context menu' {
+Test-Case 'tray: double left click opens Settings and other clicks remain inert' {
     $script:SettingsOpened = $false
-    & $script:TrayMouseClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left })
-    Assert-True $script:SettingsOpened 'left click opens Settings'
+    & $script:TrayMouseDoubleClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left })
+    Assert-True $script:SettingsOpened 'double left click opens Settings'
 
     $script:SettingsOpened = $false
-    & $script:TrayMouseClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Right })
-    Assert-True (-not $script:SettingsOpened) 'right click is left to NotifyIcon and its ContextMenuStrip'
+    & $script:TrayMouseDoubleClick $null ([pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Right })
+    Assert-True (-not $script:SettingsOpened) 'right double click is left to NotifyIcon and its ContextMenuStrip'
+}
+
+Test-Case 'settings Save: the tray adopts language and hotkeys before the dialog closes' {
+    $saved = Get-DefaultSettings
+    $saved.language = 'ru'
+    $script:AppliedSettings = $null
+    $script:AppliedLanguage = ''
+    $script:AppliedHotkeys = 0
+    $script:AppliedBalloons = 0
+    function Set-ActiveSettings { param($NewSettings) $script:AppliedSettings = $NewSettings }
+    function Initialize-Language { param([string]$Code) $script:AppliedLanguage = $Code; return $Code }
+    function Register-Hotkeys { $script:AppliedHotkeys++ }
+    function Show-Balloon { param($Title, $Text, $Kind, [switch]$Always) $script:AppliedBalloons++ }
+
+    Apply-SavedSettings -NewSettings $saved
+
+    Assert-True ($script:AppliedSettings -eq $saved) 'the active settings change immediately'
+    Assert-Equal 'ru' $script:AppliedLanguage 'the active language changes immediately'
+    Assert-Equal 1 $script:AppliedHotkeys 'the shortcuts are registered immediately'
+    Assert-Equal 1 $script:AppliedBalloons 'the in-window Save is acknowledged'
+}
+
+Test-Case 'settings window: the dialog hands every durable Save to the tray callback' {
+    $open = @($script:TrayAst.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $n.Name -eq 'Open-SettingsWindow' }, $true))[0]
+    $shows = @($open.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.CommandAst] -and
+        $n.GetCommandName() -eq 'Show-SettingsDialog' }, $true))
+    Assert-Equal 1 $shows.Count 'Settings is shown in one place'
+    Assert-True ($shows[0].Extent.Text -match '-OnSaved') 'and supplies the immediate-apply callback'
+}
+
+Test-Case 'display change: an open Settings window receives the fresh live desk' {
+    $assignments = @($script:TrayAst.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $n.Left.Extent.Text -eq '$script:DisplayChanged' }, $true))
+    Assert-Equal 1 $assignments.Count 'the display-change handler is unique'
+    Assert-True ($assignments[0].Extent.Text -match 'Update-OpenSettingsDesk') 'it refreshes the live Settings view'
 }

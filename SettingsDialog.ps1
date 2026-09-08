@@ -2313,7 +2313,9 @@ function Save-UiSleepMinutes {
 
     $wanted = Get-UiSleepMinutes -Ui $Ui
     if ($wanted -lt 0 -or $wanted -eq [int]$Ui.SleepMinutes) { return $true }
-    return [bool](Set-DisplaySleepMinutes -Minutes $wanted)
+    $saved = [bool](Set-DisplaySleepMinutes -Minutes $wanted)
+    if ($saved) { $Ui.SleepMinutes = $wanted }
+    return $saved
 }
 
 # A page, a folder or a file, opened by whatever Windows uses for it. Every button on the About
@@ -2345,6 +2347,9 @@ function New-SettingsWindow {
     )
 
     Initialize-WpfRuntime
+    # A card keeps the device path as its identity. Naming the instances before the cards are
+    # built means two panels of one model leave with different selectors when either is chosen.
+    Set-DisplayIdentity -State $State
 
     $dark = Test-DarkTheme
     $palette = Get-UiPalette -Dark $dark
@@ -2392,6 +2397,12 @@ function New-SettingsWindow {
         # that Save writes only a value somebody actually changed - like "Start with Windows",
         # this is the system's state and not ours to rewrite on every Save.
         SleepMinutes      = -1
+        # These are filled by Show-SettingsDialog. Keeping them on the window state lets each
+        # Save compare against the last operation that really reached Windows and notify the tray
+        # while the same modal window remains open.
+        StartupWasEnabled = $false
+        OnSaved           = $null
+        SaveBusy          = $false
         NavList           = $win.FindName('NavList')
         NavAbout          = $win.FindName('NavAbout')
         # Page name -> the panel that is that page. One map, so Set-UiPage does not have to know
@@ -2552,9 +2563,6 @@ function New-SettingsWindow {
         $ui.DonateHint.Text = (Get-Text -Key 'about.donate.none')
     }
 
-    # The window is built — from this point on the handlers find it here.
-    $script:ActiveUi = $ui
-
     # Where it stood last time, and on which page. A rectangle that is no longer on any screen is
     # dropped whole: the window opens centred, at the size the markup gives it.
     $saved = Get-UiState
@@ -2574,11 +2582,18 @@ function New-SettingsWindow {
 
     # The geometry is written when the window closes rather than while it is being dragged: this
     # is a note about where to open next time, not a setting Save is responsible for.
+    $win.Tag = $ui
     $win.add_Closing({
-        Save-UiState -Ui $script:ActiveUi
+        $closingUi = $this.Tag
+        Save-UiState -Ui $closingUi
         # The diary page goes with the window: its handlers look for it in here, and a stale one
         # would be a page of a window that is gone.
-        $script:ActiveStatsUi = $null
+        if ([object]::ReferenceEquals($script:ActiveUi, $closingUi)) {
+            $script:ActiveStatsUi = $null
+            $script:ActiveUi = $null
+            $script:PendingSettingsDeskState = $null
+            $script:PendingSettingsPage = ''
+        }
     })
 
     $ui.NavList.add_SelectionChanged({
@@ -2660,21 +2675,17 @@ function New-SettingsWindow {
         catch { Write-DisplayLog "settings dialog: could not copy diagnostics - $($_.Exception.Message)" }
     })
 
-    # Save validates the input BEFORE closing: the old window used to close on a duplicate key
-    # combination and throw every edit away; now it stays open.
+    # Save is a commit, not a way out. Validation, the durable write and the tray callback all
+    # happen while the window is open, so another edit can be saved without rebuilding the form.
     $ui.SaveBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        $got = Read-SettingsFromUi -Ui $ui -Settings $ui.Settings
-        if (-not $got.Ok) {
-            [void][System.Windows.MessageBox]::Show($ui.Window, $got.Problem, 'DeskModes',
-                [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
-            return
-        }
-        $ui.Result = $got.Settings
-        $ui.Window.DialogResult = $true
+        [void](Invoke-SettingsSave -Ui $ui)
     })
 
+    # Last, after every control and handler is ready. If construction throws before here there is
+    # no half-built window for the tray's singleton guard to mistake for one it can activate.
+    $script:ActiveUi = $ui
     return $ui
 }
 
@@ -3028,6 +3039,9 @@ function Add-DeskCard {
 
     $outer.Tag = [pscustomobject]@{
         Label     = $Label
+        # The label is the durable selector, but the device path is how a live refresh finds this
+        # same physical card if duplicate-panel labels are promoted or enumeration order changes.
+        DisplayId = $(if ($Display) { [string]$Display.Id } else { '' })
         ShortId   = $(if ($Display) { [string]$Display.ShortId } else { '' })
         Connected = $connected
         Radio     = $radio
@@ -3207,13 +3221,83 @@ function Get-DeskReadOrder {
     foreach ($m in @($State | Where-Object { $_ -and $_.Active })) {
         $pos = $(if ($Positions -and $Positions.Contains([string]$m.Id)) { $Positions[[string]$m.Id] } else { $null })
         if (-not $pos) { continue }
-        $placed += [pscustomobject]@{ Label = [string]$m.Label; X = [int]$pos.X; Y = [int]$pos.Y; Primary = [bool]$m.Primary }
+        $placed += [pscustomobject]@{
+            Id = [string]$m.Id; Label = [string]$m.Label
+            X = [int]$pos.X; Y = [int]$pos.Y; Primary = [bool]$m.Primary
+        }
     }
     $ordered = @($placed | Sort-Object -Property X, Y)
     $primary = @($ordered | Where-Object { $_.Primary } | ForEach-Object { $_.Label })
     return [pscustomobject]@{
         Order   = @($ordered | ForEach-Object { $_.Label })
         Primary = [string]$(if ($primary.Count -gt 0) { $primary[0] } else { '' })
+        Displays = $ordered
+    }
+}
+
+# Refresh the facts attached to configured cards without rebuilding their row. Rebuilding would
+# throw away an unsaved order and taskbar choice; matching on the device path lets a card acquire
+# the stable fingerprint Windows now reports while keeping every control exactly where it is.
+function Update-DeskCardIdentities {
+    param($Ui, $State)
+
+    foreach ($card in @($Ui.DeskPanel.Children)) {
+        $info = $card.Tag
+        if (-not $info -or -not $info.DisplayId) { continue }
+        $display = @($State | Where-Object { $_ -and [string]$_.Id -eq [string]$info.DisplayId }) |
+                   Select-Object -First 1
+        if (-not $display) { continue }
+        $info.Label = [string]$display.Label
+        $info.ShortId = [string]$display.ShortId
+        if ($info.Name) {
+            $title = Get-DisplayTitle -Label ([string]$display.Label)
+            $info.Name.Text = $title
+            $info.Name.ToolTip = $title
+        }
+    }
+}
+
+# Replace only the live facts in an open Settings window. Form controls and the configured row
+# remain the person's working copy; the live canvas and table follow an external Windows change.
+function Update-SettingsLiveDesk {
+    param($Ui, $State = $null, $Positions = $null)
+
+    if (-not $Ui) { return $false }
+    if ($null -eq $State) {
+        try { $State = @(Get-DeskDisplays -State @(Get-DisplayState)) }
+        catch { return $false }
+    }
+    if ($null -eq $Positions) {
+        try { $Positions = Get-CcdSourcePositions }
+        catch { return $false }
+    }
+    Set-DisplayIdentity -State $State
+    $Ui.State = @($State)
+    $Ui.Positions = $Positions
+    Update-DeskCardIdentities -Ui $Ui -State $Ui.State
+    Update-LiveDesk -Ui $Ui
+    Update-DisplaysTable -Ui $Ui
+    return $true
+}
+
+# SystemEvents can arrive away from WPF's dispatcher. The latest cache snapshot is kept in script
+# scope and the actual control update is posted to the window's own thread without a closure.
+$script:PendingSettingsDeskState = $null
+function Update-OpenSettingsDesk {
+    param($State = $null)
+
+    if ($null -ne $State) { $script:PendingSettingsDeskState = @($State) }
+    $ui = $script:ActiveUi
+    if (-not $ui -or -not $ui.Window) { return }
+    if (-not $ui.Window.Dispatcher.CheckAccess()) {
+        [void]$ui.Window.Dispatcher.BeginInvoke([action]{ Update-OpenSettingsDesk })
+        return
+    }
+    $fresh = $script:PendingSettingsDeskState
+    $script:PendingSettingsDeskState = $null
+    if ($null -eq $fresh) { return }
+    if (-not (Update-SettingsLiveDesk -Ui $ui -State $fresh)) {
+        Write-DisplayLog 'settings dialog: could not refresh the live desk'
     }
 }
 
@@ -3245,8 +3329,12 @@ function Invoke-DeskRead {
 
     $panel = $Ui.DeskPanel
     $at = 0
-    foreach ($label in @($read.Order)) {
-        $card = @($panel.Children | Where-Object { $_.Tag -and [string]$_.Tag.Label -eq $label })
+    Update-DeskCardIdentities -Ui $Ui -State $Ui.State
+    foreach ($display in @($read.Displays)) {
+        $card = @($panel.Children | Where-Object {
+            $_.Tag -and (($_.Tag.DisplayId -and [string]$_.Tag.DisplayId -eq [string]$display.Id) -or
+                         (-not $_.Tag.DisplayId -and [string]$_.Tag.Label -eq [string]$display.Label))
+        })
         if ($card.Count -eq 0) { continue }
         $i = $panel.Children.IndexOf($card[0])
         if ($i -ne $at) {
@@ -3255,10 +3343,16 @@ function Invoke-DeskRead {
         }
         $at++
     }
-    if ($read.Primary) {
+    $primaryDisplay = @($read.Displays | Where-Object { $_.Primary }) | Select-Object -First 1
+    if ($primaryDisplay) {
         foreach ($child in @($panel.Children)) {
             $info = $child.Tag
-            if ($info -and $info.Radio -and [string]$info.Label -eq $read.Primary) { $info.Radio.IsChecked = $true; break }
+            if ($info -and $info.Radio -and
+                (($info.DisplayId -and [string]$info.DisplayId -eq [string]$primaryDisplay.Id) -or
+                 (-not $info.DisplayId -and [string]$info.Label -eq [string]$primaryDisplay.Label))) {
+                $info.Radio.IsChecked = $true
+                break
+            }
         }
     }
     # Adopting the exact Windows snapshot removes synthetic overrides. The row still follows the
@@ -6171,15 +6265,108 @@ function Get-DialogModes {
 }
 
 function Show-SettingsWarning {
-    param([string]$Text)
+    param([string]$Text, $Owner = $null)
 
-    [void][System.Windows.MessageBox]::Show(
-        $Text, 'DeskModes', [System.Windows.MessageBoxButton]::OK,
-        [System.Windows.MessageBoxImage]::Warning)
+    if ($Owner) {
+        [void][System.Windows.MessageBox]::Show(
+            $Owner, $Text, 'DeskModes', [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning)
+    }
+    else {
+        [void][System.Windows.MessageBox]::Show(
+            $Text, 'DeskModes', [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning)
+    }
 }
 
-# Returns the changed settings, or $null if it was cancelled. The window takes its icon off
-# the disk itself (Register-WindowTheme): WPF wants an ImageSource, not a GDI icon.
+# Commit the current form without ending its modal lifetime. The in-memory working copy advances
+# only after settings.json is durable, so a failed write can be corrected and retried without the
+# tray, the form and the file disagreeing about which version is active.
+function Invoke-SettingsSave {
+    param($Ui)
+
+    if (-not $Ui -or $Ui.SaveBusy) { return $false }
+    $Ui.SaveBusy = $true
+    try {
+        $got = Read-SettingsFromUi -Ui $Ui -Settings $Ui.Settings
+        if (-not $got.Ok) {
+            Show-SettingsWarning -Text $got.Problem -Owner $Ui.Window
+            return $false
+        }
+        $updated = $got.Settings
+        if (-not (Save-DisplaySettings $updated)) {
+            Show-SettingsWarning -Text (Get-Text -Key 'settings.writeFailed') -Owner $Ui.Window
+            return $false
+        }
+
+        $externalFailed = $false
+        $startupWanted = [bool]$Ui.StartupBox.IsChecked
+        if ($startupWanted -ne [bool]$Ui.StartupWasEnabled) {
+            try {
+                Set-RunAtStartup -Enabled $startupWanted
+                $Ui.StartupWasEnabled = $startupWanted
+            }
+            catch {
+                $externalFailed = $true
+                Write-DisplayLog "settings dialog: settings saved, but startup could not be changed - $($_.Exception.Message)"
+                Show-SettingsWarning -Text (Get-Text -Key 'settings.startupFailed') -Owner $Ui.Window
+            }
+        }
+        if (-not (Save-UiSleepMinutes -Ui $Ui)) {
+            $externalFailed = $true
+            Show-SettingsWarning -Text (Get-Text -Key 'settings.sleepFailed') -Owner $Ui.Window
+        }
+
+        $Ui.Settings = $updated
+        $Ui.Result = $updated
+        Set-UiBaseline -Ui $Ui
+        if ($externalFailed) {
+            # The normal fingerprint contains the requested checkbox and timeout. Keep it unequal
+            # until a later Save confirms those external Windows settings, including on pages that
+            # hide Save when the window is clean.
+            $Ui.Baseline = 'external settings still pending'
+        }
+        Update-UiFooter -Ui $Ui
+
+        $callback = $Ui.OnSaved
+        if ($callback) {
+            try { & $callback $updated }
+            catch {
+                Write-DisplayLog "settings dialog: saved settings could not be applied to the tray - $($_.Exception.Message)"
+                Show-SettingsWarning -Text (Get-Text -Key 'settings.applyFailed') -Owner $Ui.Window
+            }
+        }
+        return $true
+    }
+    finally { $Ui.SaveBusy = $false }
+}
+
+# A double-click can arrive inside ShowDialog's nested message pump. Reuse the one modal lifetime:
+# another New-SettingsWindow would replace ActiveUi and leave the first window's handlers stranded.
+$script:PendingSettingsPage = ''
+function Show-OpenSettingsWindow {
+    param([string]$Page = '')
+
+    $ui = $script:ActiveUi
+    if (-not $ui -or -not $ui.Window) { return $false }
+    if ($Page) { $script:PendingSettingsPage = $Page }
+    if (-not $ui.Window.Dispatcher.CheckAccess()) {
+        [void]$ui.Window.Dispatcher.BeginInvoke([action]{ Show-OpenSettingsWindow })
+        return $true
+    }
+    $wanted = $script:PendingSettingsPage
+    $script:PendingSettingsPage = ''
+    if ($wanted) { Set-UiPage -Ui $ui -Page $wanted }
+    if ($ui.Window.WindowState -eq [System.Windows.WindowState]::Minimized) {
+        $ui.Window.WindowState = [System.Windows.WindowState]::Normal
+    }
+    [void]$ui.Window.Activate()
+    return $true
+}
+
+# Returns the latest settings saved during this window lifetime, or $null if it closed without a
+# Save. The window takes its icon off the disk itself (Register-WindowTheme): WPF wants an
+# ImageSource, not a GDI icon.
 function Show-SettingsDialog {
     param(
         $State,
@@ -6187,8 +6374,13 @@ function Show-SettingsDialog {
         $Positions = @{},
         # Which page to open on. Empty - the one the window was left on. The tray's About item
         # is what names a page.
-        [string]$Page = ''
+        [string]$Page = '',
+        # The tray supplies this so settings, language and shortcuts change on every successful
+        # Save, rather than waiting for the modal window to close.
+        [scriptblock]$OnSaved = $null
     )
+
+    if (Show-OpenSettingsWindow -Page $Page) { return $script:ActiveUi.Result }
 
     # Insurance: if the settings did not make it, we read them off the disk rather than
     # dying on a reference to $null.
@@ -6197,60 +6389,38 @@ function Show-SettingsDialog {
         $Settings = Get-DisplaySettings
     }
 
-    $modes = @(Get-DialogModes -State $State -Settings $Settings)
-
-    $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Positions $Positions -Page $Page
-
-    # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
-    # from the settings: the shortcut could have been deleted by hand.
-    $startupWasEnabled = [bool](Test-RunAtStartup)
-    $ui.StartupBox.IsChecked = $startupWasEnabled
-    # And the display timeout from Windows, for the same reason: it is the system's, not ours.
-    Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
-    # Both of those were just set from outside, and neither is a person's edit. Taken again so
-    # the footer does not open a freshly opened window on "Cancel" - and the page showing is told
-    # again, because the first telling compared against a baseline that had neither in it.
-    Set-UiBaseline -Ui $ui
-    Update-UiFooter -Ui $ui
-
+    $ui = $null
     try {
-        if (-not $ui.Window.ShowDialog()) { return $null }
-        $updated = $ui.Result
-        if (-not $updated) { return $null }
+        $script:PendingSettingsDeskState = $null
+        $modes = @(Get-DialogModes -State $State -Settings $Settings)
+        $ui = New-SettingsWindow -Modes $modes -Settings $Settings -State $State -Positions $Positions -Page $Page
 
-        # A write that did not happen must not be reported as saved. The window is already closed by
-        # this point (setting DialogResult closes it), so the message box goes without an owner — and
-        # $null travels back, so the tray keeps living with the settings it had: memory, disk and the
-        # registered shortcuts stay one and the same thing.
-        if (-not (Save-DisplaySettings $updated)) {
-            Show-SettingsWarning -Text (
-                "Could not write settings.json - nothing was saved." + [environment]::NewLine +
-                "Check that the folder DeskModes sits in can be written to. Details are in the log.")
-            return $null
-        }
-        $startupWanted = [bool]$ui.StartupBox.IsChecked
-        if ($startupWanted -ne $startupWasEnabled) {
-            try { Set-RunAtStartup -Enabled $startupWanted }
-            catch {
-                # settings.json is already durable. A shortcut failure is one setting left behind,
-                # not grounds to make the tray keep the old settings and disagree with the file.
-                Write-DisplayLog "settings dialog: settings saved, but startup could not be changed - $($_.Exception.Message)"
-                Show-SettingsWarning -Text (Get-Text -Key 'settings.startupFailed')
-            }
-        }
-        # Everything of ours is saved by now, so this is a warning about one row and not a failed
-        # save: the settings still travel back to the tray. Said in a box all the same - the
-        # dropdown is showing a number Windows did not take, and only the log would know.
-        if (-not (Save-UiSleepMinutes -Ui $ui)) {
-            Show-SettingsWarning -Text (
-                "Windows would not change when the displays go dark." + [environment]::NewLine +
-                "Everything else was saved. Set it in Settings - System - Power; details are in the log.")
-        }
-        return $updated
+        # The run-at-startup checkbox is read from the fact that the shortcut exists rather than
+        # from the settings: the shortcut could have been deleted by hand.
+        $startupWasEnabled = [bool](Test-RunAtStartup)
+        $ui.StartupWasEnabled = $startupWasEnabled
+        $ui.OnSaved = $OnSaved
+        $ui.StartupBox.IsChecked = $startupWasEnabled
+        # And the display timeout from Windows, for the same reason: it is the system's, not ours.
+        Set-UiSleepMinutes -Ui $ui -Minutes (Get-DisplaySleepMinutes)
+        # Both of those were just set from outside, and neither is a person's edit. Taken again so
+        # the footer does not open a freshly opened window on "Cancel" - and the page showing is told
+        # again, because the first telling compared against a baseline that had neither in it.
+        Set-UiBaseline -Ui $ui
+        Update-UiFooter -Ui $ui
+
+        [void]$ui.Window.ShowDialog()
+        # A close before any Save still returns $null. After one or more Saves this is the latest
+        # durable object, which keeps the function useful to non-tray callers and tests.
+        return $ui.Result
     }
     finally {
-        $ui.Window.Close()
-        $script:ActiveUi = $null
+        if ($ui -and $ui.Window) { $ui.Window.Close() }
+        if ($ui -and [object]::ReferenceEquals($script:ActiveUi, $ui)) {
+            $script:ActiveUi = $null
+            $script:PendingSettingsDeskState = $null
+            $script:PendingSettingsPage = ''
+        }
     }
 }
 

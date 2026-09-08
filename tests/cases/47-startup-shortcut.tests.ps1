@@ -56,70 +56,105 @@ Test-Case 'startup shortcut: an unreadable shortcut counts as disabled without b
     Assert-True (-not (Invoke-StartupShortcutFixture -Unreadable)) 'an unreadable shortcut cannot be verified as enabled'
 }
 
-Test-Case 'settings Save: a startup failure warns but returns the settings already committed' {
+Test-Case 'settings Save: a startup failure keeps the external edit dirty and retries it' {
     $script:SavedSettings = $null
     $script:StartupCalls = 0
-    $script:SettingsWarning = ''
-    $window = [pscustomobject]@{}
-    $window | Add-Member -MemberType ScriptMethod -Name ShowDialog -Value {
-        $script:SettingsSaveUi.StartupBox.IsChecked = $true
-        return $true
-    }
-    $window | Add-Member -MemberType ScriptMethod -Name Close -Value { }
-    $updated = Get-DefaultSettings
-    $updated.language = 'ru'
-    $script:SettingsSaveUi = [pscustomobject]@{
-        Window = $window; Result = $updated
-        StartupBox = [pscustomobject]@{ IsChecked = $true }
-    }
-
-    function Get-DialogModes { param($State, $Settings) return @() }
-    function New-SettingsWindow { param($Modes, $Settings, $State, $Positions, [string]$Page) return $script:SettingsSaveUi }
-    function Test-RunAtStartup { return $false }
-    function Get-DisplaySleepMinutes { return 10 }
-    function Set-UiSleepMinutes { param($Ui, [int]$Minutes) }
-    function Set-UiBaseline { param($Ui) }
-    function Update-UiFooter { param($Ui) }
+    $script:StartupSucceeds = $false
+    $script:SettingsWarnings = @()
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    $ui.StartupWasEnabled = $false
+    $ui.StartupBox.IsChecked = $true
     function Save-DisplaySettings { param($Settings) $script:SavedSettings = $Settings; return $true }
-    function Set-RunAtStartup { param([bool]$Enabled) $script:StartupCalls++; throw 'fictional Startup folder refusal' }
+    function Set-RunAtStartup {
+        param([bool]$Enabled)
+        $script:StartupCalls++
+        if (-not $script:StartupSucceeds) { throw 'fictional Startup folder refusal' }
+    }
     function Save-UiSleepMinutes { param($Ui) return $true }
-    function Show-SettingsWarning { param([string]$Text) $script:SettingsWarning = $Text }
+    function Show-SettingsWarning { param([string]$Text, $Owner) $script:SettingsWarnings += $Text }
 
     try {
-        [void](Initialize-Language -Code 'ru')
-        $got = Show-SettingsDialog -State @() -Settings (Get-DefaultSettings)
-        Assert-True ($got -eq $updated) 'the tray receives the object written to settings.json'
-        Assert-True ($script:SavedSettings -eq $updated) 'the settings were committed before the shortcut failed'
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'settings.json is still a successful save'
+        Assert-True ($script:SavedSettings -eq $ui.Result) 'the result is the object already committed'
         Assert-Equal 1 $script:StartupCalls 'the requested startup change was attempted once'
-        Assert-Equal (Get-Text -Key 'settings.startupFailed') $script:SettingsWarning 'the warning follows the active language'
-        Assert-True ($script:SettingsWarning -notmatch '^\[') 'the warning key exists'
+        Assert-Equal (Get-Text -Key 'settings.startupFailed') $script:SettingsWarnings[0] 'the failure is visible'
+        Assert-True (Test-UiEdited -Ui $ui) 'the unconfirmed external choice remains dirty'
+
+        $script:StartupSucceeds = $true
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the same open window retries successfully'
+        Assert-Equal 2 $script:StartupCalls 'the external change was attempted again'
+        Assert-Equal $true ([bool]$ui.StartupWasEnabled) 'the confirmed state advances'
+        Assert-Equal $false (Test-UiEdited -Ui $ui) 'the successful retry becomes the baseline'
     }
-    finally { [void](Initialize-Language -Code 'en') }
+    finally { $ui.Window.Close() }
 }
 
 Test-Case 'settings Save: an unchanged startup choice is not rewritten' {
     $script:StartupCalls = 0
-    $window = [pscustomobject]@{}
-    $window | Add-Member -MemberType ScriptMethod -Name ShowDialog -Value { return $true }
-    $window | Add-Member -MemberType ScriptMethod -Name Close -Value { }
-    $updated = Get-DefaultSettings
-    $script:SettingsSaveUi = [pscustomobject]@{
-        Window = $window; Result = $updated
-        StartupBox = [pscustomobject]@{ IsChecked = $true }
-    }
-
-    function Get-DialogModes { param($State, $Settings) return @() }
-    function New-SettingsWindow { param($Modes, $Settings, $State, $Positions, [string]$Page) return $script:SettingsSaveUi }
-    function Test-RunAtStartup { return $true }
-    function Get-DisplaySleepMinutes { return 10 }
-    function Set-UiSleepMinutes { param($Ui, [int]$Minutes) }
-    function Set-UiBaseline { param($Ui) }
-    function Update-UiFooter { param($Ui) }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    $ui.StartupWasEnabled = $true
+    $ui.StartupBox.IsChecked = $true
     function Save-DisplaySettings { param($Settings) return $true }
     function Set-RunAtStartup { param([bool]$Enabled) $script:StartupCalls++ }
     function Save-UiSleepMinutes { param($Ui) return $true }
 
-    $got = Show-SettingsDialog -State @() -Settings (Get-DefaultSettings)
-    Assert-True ($got -eq $updated) 'the committed settings still return'
-    Assert-Equal 0 $script:StartupCalls 'the current valid shortcut is left alone'
+    try {
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the settings save succeeds'
+        Assert-Equal 0 $script:StartupCalls 'the current valid shortcut is left alone'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'settings Save: a refused sleep timeout stays dirty until a retry succeeds' {
+    $script:SleepCalls = 0
+    $script:SleepSucceeds = $false
+    $script:SettingsWarnings = @()
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    $ui.StartupWasEnabled = $false
+    $ui.StartupBox.IsChecked = $false
+    Set-UiSleepMinutes -Ui $ui -Minutes 5
+    $ui.SleepBox.SelectedItem = @($ui.SleepBox.Items | Where-Object { [int]$_.Tag -eq 15 })[0]
+    function Save-DisplaySettings { param($Settings) return $true }
+    function Set-DisplaySleepMinutes { param([int]$Minutes) $script:SleepCalls++; return $script:SleepSucceeds }
+    function Show-SettingsWarning { param([string]$Text, $Owner) $script:SettingsWarnings += $Text }
+
+    try {
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the settings file still commits'
+        Assert-Equal 1 $script:SleepCalls 'Windows was asked once'
+        Assert-Equal 5 ([int]$ui.SleepMinutes) 'the confirmed timeout remains old'
+        Assert-True (Test-UiEdited -Ui $ui) 'the refused timeout remains dirty'
+
+        $script:SleepSucceeds = $true
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the same window retries the timeout'
+        Assert-Equal 2 $script:SleepCalls 'Windows was asked again'
+        Assert-Equal 15 ([int]$ui.SleepMinutes) 'the confirmed timeout advances'
+        Assert-Equal $false (Test-UiEdited -Ui $ui) 'the successful retry becomes clean'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'settings dialog: reopening activates the existing modal window and keeps its result' {
+    $settings = Get-DefaultSettings
+    $ui = New-DialogUi -Settings $settings
+    $ui.Result = $settings
+    try {
+        $got = Show-SettingsDialog -State @() -Settings $settings -Page 'about'
+        Assert-True ($got -eq $settings) 'no second modal lifetime replaces the saved result'
+        Assert-True ($script:ActiveUi -eq $ui) 'the original window remains active'
+        Assert-Equal 'about' ([string]$ui.Page) 'the explicitly requested page is honored'
+    }
+    finally { $ui.Window.Close(); $script:ActiveUi = $null }
+}
+
+Test-Case 'settings dialog: failed setup releases the half-built active window' {
+    $script:ActiveUi = $null
+    $failed = $false
+    function Test-RunAtStartup { return $false }
+    function Get-DisplaySleepMinutes { throw 'fictional power query failure' }
+
+    try { [void](Show-SettingsDialog -State $script:DlgState -Settings (Get-DefaultSettings)) }
+    catch { $failed = $true }
+
+    Assert-True $failed 'the setup failure still reaches the caller'
+    Assert-Null $script:ActiveUi 'a later tray double-click can build a fresh window'
 }

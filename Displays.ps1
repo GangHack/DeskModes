@@ -126,6 +126,18 @@ function Set-ActiveSettings {
     $script:Settings = $NewSettings
 }
 
+# A successful Save reaches the running tray while the Settings window remains open. Set the
+# object first: every later step reads through Get-ActiveSettings, so even a hotkey refusal cannot
+# leave the tray using an older in-memory version than settings.json.
+function Apply-SavedSettings {
+    param($NewSettings)
+
+    Set-ActiveSettings $NewSettings
+    [void](Initialize-Language -Code $NewSettings.language)
+    Register-Hotkeys
+    Show-Balloon (Get-Text -Key 'balloon.saved') (Get-Text -Key 'balloon.saved.body') -Always
+}
+
 # --- the state cache --------------------------------------------------------
 # The menu has to open instantly. A slow query right inside the Opening handler breaks
 # an ordinary right-click on the icon: Windows decides the menu never showed and closes
@@ -1215,6 +1227,10 @@ function Open-SettingsWindow {
     # "what version is this and where do I report it".
     param([string]$Page = '')
 
+    # ShowDialog runs a nested message pump, so another tray double-click can reach here while the
+    # modal window is still alive. Bring that one forward instead of replacing its shared UI state.
+    if (Show-OpenSettingsWindow -Page $Page) { return }
+
     # An error while building a WinForms window is shown as a nameless system window with no
     # detail. We catch it ourselves and write it to the log — there is no debugging it otherwise.
     try {
@@ -1223,17 +1239,11 @@ function Open-SettingsWindow {
         $positions = @{}
         try { $positions = Get-CcdSourcePositions }
         catch { Write-DisplayLog "settings dialog: could not read the live desk positions - $($_.Exception.Message)" }
-        $updated = Show-SettingsDialog -State (Get-CachedDesk) `
-                       -Settings (Get-ActiveSettings) -Positions $positions -Page $Page
-        if ($updated) {
-            Set-ActiveSettings $updated
-            # The menu is built on every open and the balloon below is about to be shown, so both
-            # land in the new language at once. The window itself does not: it is still up, in the
-            # language it was built in, and that is what the row's caption says will happen.
-            [void](Initialize-Language -Code $updated.language)
-            Register-Hotkeys
-            Show-Balloon (Get-Text -Key 'balloon.saved') (Get-Text -Key 'balloon.saved.body')
-        }
+        [void](Show-SettingsDialog -State (Get-CachedDesk) -Settings (Get-ActiveSettings) `
+                  -Positions $positions -Page $Page -OnSaved {
+                      param($saved)
+                      Apply-SavedSettings -NewSettings $saved
+                  })
     }
     catch {
         Write-DisplayLog "settings dialog ERROR: $($_.Exception.Message) | $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)"
@@ -1531,10 +1541,9 @@ $menu.add_Opening({
     [void]$menu.Items.Add($exitItem)
 })
 
-# NotifyIcon owns the right button and opens its ContextMenuStrip. The left button is the
-# direct route into Settings; filtering the button here keeps a right click from also opening a
-# window behind its menu.
-$tray.add_MouseClick({
+# NotifyIcon owns the right button and opens its ContextMenuStrip. Settings follows the desktop's
+# ordinary icon convention: a single left click only selects the icon, a double left click opens.
+$tray.add_MouseDoubleClick({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Open-SettingsWindow }
 })
@@ -1570,6 +1579,9 @@ Update-StateCache   # so the first menu open is as fast as all the others, and t
 $script:DisplayChanged = {
     $before = @($script:PresentIds)
     Update-StateCache
+    # The configured row remains the person's working copy; only the live diagram and facts follow
+    # a primary, position or topology change that happened outside this window.
+    Update-OpenSettingsDesk -State (Get-CachedDesk)
     # The desk snapshot first: everything else in this handler changes it, and a snapshot
     # written after them would be answering a different question.
     try { Write-DeskSnapshot }

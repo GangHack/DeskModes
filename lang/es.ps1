@@ -30,7 +30,7 @@
 
     'desk.hint'                   = 'La disposición actual de Windows y las opciones usadas al cambiar se muestran por separado.'
     'desk.live'                   = 'Disposición de Windows ahora'
-    'desk.live.hint'              = 'Las posiciones, los desplazamientos, la orientación y la estrella proceden de Windows al abrir la configuración.'
+    'desk.live.hint'              = 'Se actualiza automáticamente. Las posiciones, la orientación y el monitor de la barra de tareas marcado con una estrella proceden de Windows.'
     'desk.live.unavailable'       = 'Windows no informó de una disposición de pantallas.'
     'desk.saved'                  = 'Personalizar disposición al cambiar'
     'desk.saved.hint'             = 'La disposición de Windows se conserva de forma predeterminada. Cambia aquí el orden o la pantalla de la barra de tareas para personalizarla.'
@@ -343,7 +343,7 @@
     'balloon.seeLog'              = 'Los detalles están en el registro.'
     'balloon.noLog'               = 'Todavía no hay registro'
     'balloon.noLog.body'          = 'Aparecerá después del primer cambio.'
-    'balloon.firstRun'            = 'Clic izquierdo para la configuración; clic derecho para el menú de pantallas.'
+    'balloon.firstRun'            = 'Doble clic para la configuración; clic derecho para el menú de pantallas.'
 
     'table.display'               = 'Pantalla'
     'table.size'                  = 'Tamaño'

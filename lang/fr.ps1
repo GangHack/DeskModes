@@ -30,7 +30,7 @@
 
     'desk.hint'                   = 'La disposition actuelle de Windows et les choix utilisés lors du basculement sont affichés séparément.'
     'desk.live'                   = 'Disposition Windows actuelle'
-    'desk.live.hint'              = 'Les positions, décalages, orientations et l''étoile viennent de Windows à l''ouverture des paramètres.'
+    'desk.live.hint'              = 'Actualisé automatiquement. Les positions, l''orientation et l''écran de la barre des tâches marqué d''une étoile viennent de Windows.'
     'desk.live.unavailable'       = 'Windows n''a signalé aucune disposition d''écrans.'
     'desk.saved'                  = 'Personnaliser la disposition au basculement'
     'desk.saved.hint'             = 'La disposition Windows est conservée par défaut. Modifiez ici l''ordre ou l''écran de la barre des tâches pour la personnaliser.'
@@ -342,7 +342,7 @@
     'balloon.seeLog'              = 'Les détails sont dans le journal.'
     'balloon.noLog'               = 'Pas encore de journal'
     'balloon.noLog.body'          = 'Il apparaîtra après le premier basculement.'
-    'balloon.firstRun'            = 'Clic gauche pour les paramètres ; clic droit pour le menu des écrans.'
+    'balloon.firstRun'            = 'Double-clic pour les paramètres ; clic droit pour le menu des écrans.'
 
     'table.display'               = 'Écran'
     'table.size'                  = 'Taille'
