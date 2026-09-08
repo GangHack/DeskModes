@@ -3,6 +3,15 @@
 User-visible changes. The version shown by DeskModes is defined in DisplayCore.ps1.
 A release is dated only when its tag is ready to publish.
 
+## 1.0.1 — not released yet
+
+- Preserve the physical meaning of imported `id:` display selectors in groups, primary choices,
+  layout, rules and per-monitor settings. Exact paths never fall back to a shared model name.
+- Migrate imported solo captions containing model, ShortId and connection token to the matching
+  physical mode, retaining shortcuts and other mode references. Ambiguities and existing bindings
+  are preserved for explicit resolution rather than silently overwritten.
+- Identify this compatibility fix as 1.0.1 in the application, diagnostics and portable archive.
+
 ## 1.0.0 — not released yet
 
 First public release candidate. Requires Windows 10/11 and Windows PowerShell 5.1.

@@ -101,7 +101,7 @@ function Resolve-ModeKey {
     }
 
     # part of a monitor's name
-    $hit = @($Modes | Where-Object { $_.Kind -eq 'solo' -and (Test-DisplayNameMatch -Pattern $Text -Label $_.Label -ShortId '') })
+    $hit = @($Modes | Where-Object { $_.Kind -eq 'solo' -and (Test-DisplayNameMatch -Pattern $Text -Label $_.Label -ShortId '' -Id $_.Id) })
     if ($hit.Count -eq 1) { return $hit[0] }
     if ($hit.Count -gt 1) {
         throw ("'$Text' matches several modes: " + (($hit | ForEach-Object { $_.Key }) -join ', '))

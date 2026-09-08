@@ -281,6 +281,15 @@ Identical monitor models receive a connection fingerprint in their selected labe
 including when the other panel is disconnected. A changed port can produce a new connection;
 select it again in Settings. Old ambiguous numbered keys are retained for manual reassignment.
 Plain model patterns intentionally match every matching panel.
+Imported `id:<full device path>` selectors remain exact and case-insensitive in groups, primary,
+layout, rules and per-monitor settings. An unavailable path never matches another panel by model.
+Saving an existing group or rule retains its imported exact selectors.
+
+On startup, imported solo captions containing model, ShortId and a connection token (for example
+`UID256`) migrate only when all components identify one panel with a stable fingerprinted mode.
+Shortcuts and other mode references migrate together. Ambiguities, missing physical targets,
+non-fingerprinted destinations and conflicting bindings remain available for explicit reselection;
+they are never reassigned to a model-only key. Existing group names and membership are preserved.
 
 Names are matched by substring, in either direction: `UltraGear` finds `LG ULTRAGEAR`, and
 `ROG STRIX XG27AQDMGR` finds the `XG27AQDMGR` Windows reports. Matching is

@@ -2864,7 +2864,7 @@ function Update-DeskPanel {
         $hit = $null
         foreach ($m in $state) {
             if ($placed -contains $m) { continue }
-            if (Test-DisplayNameMatch -Pattern $pattern -Label $m.Label -ShortId $m.ShortId) { $hit = $m; break }
+            if (Test-DisplayNameMatch -Pattern $pattern -Label $m.Label -ShortId $m.ShortId -Id $m.Id) { $hit = $m; break }
         }
         if ($hit) {
             [void]$placed.Add($hit)
@@ -2904,7 +2904,7 @@ function Update-DeskPanel {
         foreach ($child in @($Ui.DeskPanel.Children)) {
             $info = $child.Tag
             if (-not $info) { continue }
-            if (Test-DisplayNameMatch -Pattern ([string]$settings.primary) -Label $info.Label -ShortId $info.ShortId) {
+            if (Test-DisplayNameMatch -Pattern ([string]$settings.primary) -Label $info.Label -ShortId $info.ShortId -Id $info.DisplayId) {
                 $info.Radio.IsChecked = $true
                 break
             }
@@ -3891,8 +3891,9 @@ function Get-PictureKeyFor {
     if (-not $Name -or -not $Editor.Picture) { return '' }
     if ($Editor.Picture.Contains($Name)) { return [string]$Name }
     $shortId = Get-EditorDisplayShortId -Editor $Editor -Name $Name
+    $physical = @($Editor.State | Where-Object { $_.Label -eq $Name }) | Select-Object -First 1
     foreach ($key in @($Editor.Picture.Keys)) {
-        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId) { return [string]$key }
+        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId -Id ([string]$physical.Id)) { return [string]$key }
     }
     return ''
 }
@@ -4423,7 +4424,13 @@ function Add-ComboMemberChecks {
         $cb.Content = $(if ($m.Disconnected) { $displayTitle + $notConnected } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
-            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
+                $cb.IsChecked = $true
+                # The visible row may be a bare model name; saving it must retain an imported
+                # exact selector instead of silently making the group or rule fuzzy.
+                if ($pat -like 'id:*') { $cb.DataContext = [string]$pat }
+                break
+            }
         }
         [void]$membersPanel.Children.Add($cb)
         $checks += $cb
@@ -4431,7 +4438,7 @@ function Add-ComboMemberChecks {
     foreach ($pat in $patterns) {
         $matched = $false
         foreach ($m in $Displays) {
-            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $matched = $true; break }
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) { $matched = $true; break }
         }
         if ($matched) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
@@ -4457,13 +4464,15 @@ function Add-ComboMemberChecks {
     if ($Combo -and $Combo.Primary) {
         foreach ($item in @($primaryBox.Items | Select-Object -Skip 1)) {
             $shortId = ''
+            $physicalId = ''
             foreach ($display in $Displays) {
                 if ([string]$display.Label -eq [string]$item.Tag) {
                     $shortId = [string]$display.ShortId
+                    $physicalId = [string]$display.Id
                     break
                 }
             }
-            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$item.Tag) -ShortId $shortId) {
+            if (Test-DisplayNameMatch -Pattern ([string]$Combo.Primary) -Label ([string]$item.Tag) -ShortId $shortId -Id $physicalId) {
                 $item.DataContext = [string]$Combo.Primary
                 $primaryBox.SelectedItem = $item
                 break
@@ -4719,8 +4728,9 @@ function Get-HdrKeyFor {
     if (-not $Name -or -not $Editor.Hdr) { return '' }
     if ($Editor.Hdr.Contains($Name)) { return [string]$Name }
     $shortId = Get-EditorDisplayShortId -Editor $Editor -Name $Name
+    $physical = @($Editor.State | Where-Object { $_.Label -eq $Name }) | Select-Object -First 1
     foreach ($key in @($Editor.Hdr.Keys)) {
-        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId) { return [string]$key }
+        if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $Name -ShortId $shortId -Id ([string]$physical.Id)) { return [string]$key }
     }
     return ''
 }
@@ -5130,6 +5140,9 @@ function Read-ModeFromUi {
 
     $name = $Editor.NameBox.Text.Trim()
     $chosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+    $savedChosen = @($Editor.Checks | Where-Object { $_.IsChecked } | ForEach-Object {
+        if ([string]$_.DataContext -like 'id:*') { [string]$_.DataContext } else { [string]$_.Tag }
+    })
     $prim = ''
     $primMember = ''
     if ($Editor.PrimaryBox.SelectedIndex -gt 0) {
@@ -5152,7 +5165,7 @@ function Read-ModeFromUi {
     return [pscustomobject]@{
         Ok = $true
         Mode = [pscustomobject]@{
-            Name = $name; Patterns = $chosen; Primary = $prim
+            Name = $name; Patterns = $savedChosen; Primary = $prim
             Hotkey = $hk; Level = $Editor.Brightness.Model
             Contrast = $Editor.Contrast.Model; Picture = (Get-PictureForSave -Editor $Editor)
             Hdr = (Get-HdrForSave -Editor $Editor)
@@ -5919,7 +5932,13 @@ function Add-RuleDisplayChecks {
         $cb.Content = $(if ($m.Disconnected) { $displayTitle + $notConnected } else { $displayTitle })
         $cb.Tag = [string]$m.Label
         foreach ($pat in $patterns) {
-            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $cb.IsChecked = $true; break }
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
+                $cb.IsChecked = $true
+                # The visible row may be a bare model name; saving it must retain an imported
+                # exact selector instead of silently making the group or rule fuzzy.
+                if ($pat -like 'id:*') { $cb.DataContext = [string]$pat }
+                break
+            }
         }
         [void]$panel.Children.Add($cb)
         $checks += $cb
@@ -5927,7 +5946,7 @@ function Add-RuleDisplayChecks {
     foreach ($pat in $patterns) {
         $matched = $false
         foreach ($m in @($Displays | Where-Object { $_ })) {
-            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $matched = $true; break }
+            if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) { $matched = $true; break }
         }
         if ($matched) { continue }
         $cb = New-Object System.Windows.Controls.CheckBox
@@ -5965,7 +5984,9 @@ function Read-RuleFromUi {
     $parsed = 0
     if ([int]::TryParse(([string]$Editor.MinutesBox.Text).Trim(), [ref]$parsed)) { $minutes = $parsed }
 
-    $displays = @($Editor.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+    $displays = @($Editor.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object {
+        if ([string]$_.DataContext -like 'id:*') { [string]$_.DataContext } else { [string]$_.Tag }
+    })
 
     $problem = ''
     if (-not $mode) { $problem = Get-Text -Key 'rule.needMode' }

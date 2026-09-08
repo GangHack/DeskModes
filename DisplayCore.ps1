@@ -50,7 +50,7 @@ $script:UiStateFile = Join-Path $PSScriptRoot 'ui-state.json'
 # The Windows build and the PowerShell version go in there too: almost every refusal in this code is a
 # refusal of one particular "driver + system build" pair, and without them the question "what have you got?"
 # takes a separate email.
-$script:Version = '1.0.0'
+$script:Version = '1.0.1'
 
 function Get-VersionName {
     return 'DeskModes {0}' -f $script:Version
@@ -3799,7 +3799,7 @@ function Get-LayoutPositions {
         for ($k = 0; $k -lt $Order.Count; $k++) {
             $o = $Order[$k]
             if (-not $o) { continue }
-            if (Test-DisplayNameMatch -Pattern $o -Label $s.Label -ShortId '') { $rank = $k; break }
+            if (Test-DisplayNameMatch -Pattern $o -Label $s.Label -ShortId '' -Id $s.DevicePath) { $rank = $k; break }
         }
         $ranked += [pscustomobject]@{
             DevicePath = $s.DevicePath
@@ -4409,20 +4409,38 @@ function Set-DisplayIdentity {
             }).Count -gt 0
         }
         if ($counts[$model] -lt 2 -and -not $knownTwin) { continue }
-        $sha = [System.Security.Cryptography.SHA256]::Create()
-        try {
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($deviceId.ToLowerInvariant())
-            $suffix = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').Substring(0, 16).ToLowerInvariant()
-        }
-        finally { $sha.Dispose() }
+        $suffix = Get-DisplayFingerprint -Id $deviceId
         $m.Label = $model + ' {' + $suffix + '}'
     }
 }
 
+# The same connection fingerprint must identify a label and an imported exact path.
+function Get-DisplayFingerprint {
+    param([string]$Id)
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Id.ToLowerInvariant())
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').Substring(0, 16).ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
 function Test-DisplayNameMatch {
-    param([string]$Pattern, [string]$Label, [string]$ShortId)
+    param([string]$Pattern, [string]$Label, [string]$ShortId, [string]$Id = '')
 
     if (-not $Pattern) { return $false }
+    # Imported physical selectors never enter fuzzy matching, including when the panel is absent.
+    if ($Pattern.StartsWith('id:', [StringComparison]::OrdinalIgnoreCase)) {
+        $path = $Pattern.Substring(3)
+        if (-not $path) { return $false }
+        if ($Id) { return [string]::Equals($path, $Id, [StringComparison]::OrdinalIgnoreCase) }
+        # Caption-only consumers still have the exact connection hash for identical panels.
+        if ($Label -match ' \{([a-f0-9]{16})\}$') {
+            return $Matches[1] -eq (Get-DisplayFingerprint -Id $path)
+        }
+        return $false
+    }
     # An absent instance must not fall back to its model and select its connected twin.
     if ($Pattern -match ' \{[a-f0-9]{16}\}$') { return $Pattern -eq $Label }
     foreach ($name in $Label, $ShortId) {
@@ -4765,7 +4783,7 @@ function Get-DisplayModes {
             foreach ($m in $State) {
                 if ($m.Disconnected) { continue }
                 foreach ($pat in $patterns) {
-                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) { $available = $true; break }
+                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) { $available = $true; break }
                 }
                 if ($available) { break }
             }
@@ -4857,6 +4875,34 @@ function Update-HotkeyKeys {
             }
         }
 
+        # Imported captions include model, EDID short ID and a connection token. Every component
+        # must agree, and more than one candidate is a refusal to guess between physical panels.
+        $legacyCaption = [regex]::Match($id, '^(.+) · ([^·]+) · ([^·]+)$')
+        $exactLegacy = $id.StartsWith('id:', [StringComparison]::OrdinalIgnoreCase)
+        if ($legacyCaption.Success -or $exactLegacy) {
+            $candidates = @($State | Where-Object {
+                $panel = $_
+                if ($exactLegacy) {
+                    [string]::Equals($id.Substring(3), [string]$panel.Id, [StringComparison]::OrdinalIgnoreCase)
+                }
+                else {
+                    $parts = ([string]$panel.Id) -split '#'
+                    $token = ''
+                    if ($parts.Count -ge 3) {
+                        $token = [string]$parts[2]
+                        $uid = [regex]::Match($token, 'UID\d+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                        if ($uid.Success) { $token = $uid.Value }
+                    }
+                    $panel.Model -eq $legacyCaption.Groups[1].Value -and
+                        $panel.ShortId -eq $legacyCaption.Groups[2].Value -and
+                        $token -eq $legacyCaption.Groups[3].Value
+                }
+            })
+            if ($candidates.Count -ne 1) { continue }
+            $hit = @($modes | Where-Object { $_.Kind -eq 'solo' -and $_.Id -eq $candidates[0].Id }) | Select-Object -First 1
+            # A bare model key would discard the imported physical identity on the next hotplug.
+            if (-not $hit -or $hit.Label -notmatch ' \{[a-f0-9]{16}\}$') { continue }
+        }
         # A monitor's name can change too — from the full "ROG STRIX XG27AQDMGR" to the short
         # "XG27AQDMGR", for instance. One is contained in the other, and that is enough to recognise
         # the monitor and carry the binding over.
@@ -4915,7 +4961,7 @@ function Get-ModeMembers {
             $members = @()
             foreach ($m in $usable) {
                 foreach ($pat in @($Mode.Patterns)) {
-                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId) {
+                    if (Test-DisplayNameMatch -Pattern $pat -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
                         $members += $m
                         break
                     }
@@ -5195,7 +5241,7 @@ function Select-PrimaryDisplay {
 
     foreach ($soft in @($ModePrimary, $SettingsPrimary)) {
         if (-not $soft) { continue }
-        $hit = @($wanted | Where-Object { Test-DisplayNameMatch -Pattern $soft -Label $_.Label -ShortId $_.ShortId })
+        $hit = @($wanted | Where-Object { Test-DisplayNameMatch -Pattern $soft -Label $_.Label -ShortId $_.ShortId -Id $_.Id })
         if ($hit.Count -eq 1) { return $hit[0] }
     }
 
@@ -5209,7 +5255,7 @@ function Select-PrimaryDisplay {
 
     $order = @($Layout)
     for ($k = $order.Count - 1; $k -ge 0; $k--) {
-        $hit = $wanted | Where-Object { Test-DisplayNameMatch -Pattern $order[$k] -Label $_.Label -ShortId $_.ShortId } | Select-Object -First 1
+        $hit = $wanted | Where-Object { Test-DisplayNameMatch -Pattern $order[$k] -Label $_.Label -ShortId $_.ShortId -Id $_.Id } | Select-Object -First 1
         if ($hit) { return $hit }
     }
 
@@ -5258,7 +5304,7 @@ function Set-WantedModes {
         foreach ($m in @($Wanted)) {
             $summary += '{0} {1}x{2} @ {3} Hz' -f $m.Label, $m.Width, $m.Height, $m.Hz
             $applied[[string]$m.Id] = [pscustomobject]@{ Width = $m.Width; Height = $m.Height; Hz = $m.Hz }
-            $levelTargets += [pscustomobject]@{ Device = [string]$m.Output; Label = [string]$m.Label; ShortId = [string]$m.ShortId }
+            $levelTargets += [pscustomobject]@{ Device = [string]$m.Output; Label = [string]$m.Label; ShortId = [string]$m.ShortId; Id = [string]$m.Id }
         }
         Write-DisplayLog 'switch: modes already correct'
     }
@@ -5296,7 +5342,7 @@ function Set-WantedModes {
                 # Set-BestModeFor will work it out itself.
                 [void](Set-BestModeFor -Output $output -Label $m.Label -NativeWidth $nw -NativeHeight $nh -Best $m.BestMode)
             }
-            $levelTargets += [pscustomobject]@{ Device = [string]$output; Label = [string]$m.Label; ShortId = [string]$m.ShortId }
+            $levelTargets += [pscustomobject]@{ Device = [string]$output; Label = [string]$m.Label; ShortId = [string]$m.ShortId; Id = [string]$m.Id }
             $cur = Get-CurrentMode $output
             $summary += $(if ($cur) { '{0} {1}x{2} @ {3} Hz' -f $m.Label, $cur.Width, $cur.Height, $cur.Hz } else { $m.Label })
             if ($cur -and $cur.Width -gt 0) {
@@ -6311,7 +6357,7 @@ function Get-LevelPlan {
         }
         elseif ($Setting -is [System.Collections.IDictionary]) {
             foreach ($key in @($Setting.Keys)) {
-                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId) {
+                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
                     $parsed = 0
                     if ([int]::TryParse([string]$Setting[$key], [ref]$parsed)) { $value = $parsed }
                     break
@@ -6412,7 +6458,7 @@ function Get-HdrPlan {
         if ($Setting -is [bool]) { $plan[[string]$m.Label] = [bool]$Setting; continue }
         if ($Setting -is [System.Collections.IDictionary]) {
             foreach ($key in @($Setting.Keys)) {
-                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId) {
+                if (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
                     $plan[[string]$m.Label] = [bool]$Setting[$key]
                     break
                 }
@@ -6550,7 +6596,7 @@ function Get-PicturePlan {
 
     foreach ($m in @($Wanted)) {
         foreach ($key in @($Setting.Keys)) {
-            if (-not (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId)) { continue }
+            if (-not (Test-DisplayNameMatch -Pattern ([string]$key) -Label $m.Label -ShortId $m.ShortId -Id $m.Id)) { continue }
             $one = ConvertFrom-PictureSetting ([string]$Setting[$key])
             if ($one) { $plan[[string]$m.Label] = $one }
             else { Write-DisplayLog ("picture: '{0}' for {1} is not a register and a number - ignored" -f $Setting[$key], $key) }
@@ -6792,7 +6838,7 @@ function Test-DisplaySetMatch {
         for ($displayIndex = 0; $displayIndex -lt $have.Count; $displayIndex++) {
             $m = $have[$displayIndex]
             if (Test-DisplayNameMatch -Pattern ([string]$want[$patternIndex]) `
-                    -Label ([string]$m.Label) -ShortId ([string]$m.ShortId)) {
+                    -Label ([string]$m.Label) -ShortId ([string]$m.ShortId) -Id ([string]$m.Id)) {
                 $matches += $displayIndex
             }
         }

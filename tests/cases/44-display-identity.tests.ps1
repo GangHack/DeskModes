@@ -226,3 +226,97 @@ Test-Case 'display identity: settings without shortcuts retain ambiguous model k
     Assert-True (-not (Update-HotkeyKeys -Settings $settings -State @($right))) 'a lone surviving twin cannot claim an ambiguous preference'
     Assert-Equal 45 $settings.brightness['solo:Twin Panel'] 'the original preference is not discarded'
 }
+
+Test-Case 'upgrade: exact device selectors never select a twin by its shared model ID' {
+    $a = New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#sample&UID256#{guid}'
+    $b = New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#sample&UID260#{guid}'
+    $state = @($a,$b)
+    Set-DisplayIdentity -State $state
+    foreach ($panel in $state) {
+        $selector = 'id:' + $panel.Id
+        foreach ($candidate in $state) {
+            $expected = $panel.Id -eq $candidate.Id
+            Assert-Equal $expected (Test-DisplayNameMatch -Pattern $selector -Label $candidate.Label -ShortId $candidate.ShortId -Id $candidate.Id) 'full paths are exact'
+            Assert-Equal $expected (Test-DisplayNameMatch -Pattern $selector -Label $candidate.Label -ShortId $candidate.ShortId) 'caption-only consumers compare the physical hash'
+        }
+        $settings=New-TestSettings
+        $settings.combos['One Acer']=[ordered]@{displays=@($selector);primary=$selector}
+        $mode=@(Get-DisplayModes -State $state -Settings $settings | Where-Object {$_.Key -eq 'combo:One Acer'})[0]
+        Assert-Equal @($panel.Id) @(Get-ModeMembers -Mode $mode -State $state | ForEach-Object {$_.Id}) 'an imported single-panel group stays single'
+        Assert-Equal $panel.Id (Select-PrimaryDisplay -Wanted @($b,$a) -ModePrimary $selector).Id 'the imported primary wins regardless of order'
+    }
+    Assert-Equal $false (Test-DisplayNameMatch -Pattern ('id:'+$a.Id) -Label $b.Label -ShortId $b.ShortId -Id $b.Id) 'an absent twin cannot select the survivor'
+    Assert-True (Test-DisplayNameMatch -Pattern ('ID:'+$a.Id.ToUpperInvariant()) -Label 'Renamed Panel' -ShortId 'ACR06C1' -Id $a.Id) 'exact matching is case-insensitive and independent of captions'
+    Assert-Equal $false (Test-DisplayNameMatch -Pattern 'id:' -Label $a.Label -ShortId $a.ShortId) 'an empty physical selector is not a model pattern'
+}
+
+Test-Case 'upgrade: UID captions migrate shortcuts and preferences to their physical Acer keys' {
+    $a=New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#sample&UID256#{guid}'
+    $b=New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#sample&UID260#{guid}'
+    $settings=New-TestSettings
+    $oldA='solo:XV272U · ACR06C1 · UID256'
+    $oldB='solo:XV272U · ACR06C1 · UID260'
+    $settings.hotkeys[$oldA]='Ctrl+Alt+F1'
+    $settings.hotkeys[$oldB]='Ctrl+Alt+F2'
+    $settings.audio[$oldA]='Speaker A'
+    $settings.combos['2 ACER']=[ordered]@{displays=@(('id:'+$a.Id),('id:'+$b.Id));primary=('id:'+$a.Id)}
+    $groupBefore=$settings.combos['2 ACER'] | ConvertTo-Json -Depth 5 -Compress
+    Assert-True (Update-HotkeyKeys -Settings $settings -State @($b,$a)) 'the imported keys migrate'
+    Assert-Equal 'Ctrl+Alt+F1' $settings.hotkeys[('solo:'+$a.Label)] 'F1 keeps UID256'
+    Assert-Equal 'Ctrl+Alt+F2' $settings.hotkeys[('solo:'+$b.Label)] 'F2 keeps UID260'
+    Assert-Equal 'Speaker A' $settings.audio[('solo:'+$a.Label)] 'non-hotkey preferences follow the same physical mapping'
+    Assert-Equal $groupBefore ($settings.combos['2 ACER'] | ConvertTo-Json -Depth 5 -Compress) 'groups and exact primary are preserved'
+    Assert-Equal $false (Update-HotkeyKeys -Settings $settings -State @($a,$b)) 'migration is idempotent'
+
+    $missing=New-TestSettings
+    $missing.hotkeys[$oldA]='Ctrl+Alt+F1'
+    Assert-Equal $false (Update-HotkeyKeys -Settings $missing -State @($b)) 'absence cannot redirect F1 to UID260'
+    Assert-Equal 'Ctrl+Alt+F1' $missing.hotkeys[$oldA] 'the unresolved original is retained'
+    $b.Disconnected=$true
+    Assert-True (Update-HotkeyKeys -Settings $missing -State @($a,$b)) 'remembered targets can retain their bindings'
+}
+
+Test-Case 'upgrade: ambiguous connection tokens and existing destination bindings are never overwritten' {
+    $a=New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#adapterA&UID256#{guid}'
+    $b=New-FakeMonitor -Label 'XV272U' -ShortId 'ACR06C1' -Id '\\?\DISPLAY#ACR06C1#adapterB&UID256#{guid}'
+    $settings=New-TestSettings
+    $old='solo:XV272U · ACR06C1 · UID256'
+    $settings.hotkeys[$old]='Ctrl+Alt+F1'
+    Assert-Equal $false (Update-HotkeyKeys -Settings $settings -State @($a,$b)) 'a reused UID does not prove physical identity'
+    Set-DisplayIdentity -State @($a,$b)
+    $settings.hotkeys[('solo:'+$a.Label)]='Ctrl+Alt+F9'
+    Assert-Equal $false (Update-HotkeyKeys -Settings $settings -State @($a)) 'a conflicting destination is retained'
+    Assert-Equal 'Ctrl+Alt+F9' $settings.hotkeys[('solo:'+$a.Label)] 'the new binding wins'
+    Assert-Equal 'Ctrl+Alt+F1' $settings.hotkeys[$old] 'the old binding remains available for manual editing'
+    $settings.hotkeys.Clear()
+    $settings.hotkeys[('solo:id:'+$a.Id)]='Ctrl+Alt+F1'
+    Assert-True (Update-HotkeyKeys -Settings $settings -State @($a,$b)) 'an imported full path needs no UID inference'
+    Assert-Equal 'Ctrl+Alt+F1' $settings.hotkeys[('solo:'+$a.Label)] 'the full path selects exactly one panel'
+}
+Test-Case 'upgrade: a physical solo binding is not downgraded to a replaceable model key' {
+    $panel=New-FakeMonitor -Label 'Panel' -ShortId 'PNL1234' -Id 'original-path'
+    $settings=New-TestSettings
+    $settings.hotkeys['solo:id:original-path']='Ctrl+Alt+F1'
+    Assert-Equal $false (Update-HotkeyKeys -Settings $settings -State @($panel)) 'without a physical destination key the original is retained'
+    Assert-Equal 'Ctrl+Alt+F1' $settings.hotkeys['solo:id:original-path'] 'the exact binding is not lost'
+    Assert-Equal $false $settings.hotkeys.Contains('solo:Panel') 'a replacement panel cannot inherit a model binding'
+}
+
+Test-Case 'upgrade: an unrelated combo save retains imported exact member and primary selectors' {
+    $panel=New-FakeMonitor -Label 'Panel' -ShortId 'PNL1234' -Id 'original-path'
+    $selector='id:original-path'
+    $combo=[pscustomobject]@{Name='Existing';Patterns=@($selector);Primary=$selector}
+    $ed=New-ModeEditorWindow -Mode $null -Combo $combo -State @($panel) -Dark $false
+    try {
+        $ed.NameBox.Text='Renamed'
+        $got=Read-ModeFromUi -Editor $ed
+        Assert-True $got.Ok 'the primary still belongs to the checked display'
+        Assert-Equal @($selector) @($got.Mode.Patterns) 'the exact member survives an unrelated edit'
+        Assert-Equal $selector $got.Mode.Primary 'the exact primary survives'
+        $replacement=New-FakeMonitor -Label 'Panel' -ShortId 'PNL1234' -Id 'replacement-path'
+        $settings=New-TestSettings -Combos @{ Renamed=@{displays=$got.Mode.Patterns;primary=$got.Mode.Primary} }
+        $mode=Get-DisplayModes -State @($replacement) -Settings $settings | Where-Object {$_.Key -eq 'combo:Renamed'}
+        Assert-Equal 0 @(Get-ModeMembers -Mode $mode -State @($replacement)).Count 'a replacement same-model panel remains unselected'
+    }
+    finally {$ed.Window.Close()}
+}
