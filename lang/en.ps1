@@ -27,7 +27,7 @@
     'win.rule'                    = 'DeskModes - Rule'
     'win.timer'                   = 'DeskModes - Timer'
 
-    'desk.taskbar'                = 'Taskbar on switch'
+    'desk.taskbar'                = 'Taskbar'
 
     'nav.desk'                    = 'Your desk'
     'nav.modes'                   = 'Modes'
@@ -41,7 +41,7 @@
     'desk.live.hint'              = 'Refreshes automatically. Positions, orientation and the starred taskbar display come from Windows.'
     'desk.live.unavailable'       = 'Windows did not report a display layout.'
     'desk.saved'                  = 'Configured for switching'
-    'desk.saved.hint'             = 'These controls are saved for future switches. Change the order or choose Taskbar on switch to customize them.'
+    'desk.saved.hint'             = 'These controls are saved for future switches. Change the order or choose the taskbar display to customize them.'
     'desk.whichIsWhich'           = 'Which is which'
     'desk.whichIsWhich.tip'       = 'Show each display''s name on it for a moment.'
     'desk.copy'                   = 'Use Windows layout'

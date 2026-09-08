@@ -25,7 +25,7 @@
     'win.rule'                    = 'DeskModes — правило'
     'win.timer'                   = 'DeskModes — таймер'
 
-    'desk.taskbar'                = 'Панель задач при переключении'
+    'desk.taskbar'                = 'Панель задач'
 
     'nav.desk'                    = 'Ваш стол'
     'nav.modes'                   = 'Режимы'
