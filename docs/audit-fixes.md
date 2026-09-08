@@ -251,3 +251,23 @@ The requested local software follow-up is complete. The friend's old-base hardwa
 not establish hardware acceptance for this candidate. No real switching, DDC, startup or power
 mutation, release, tag or push was performed. Subsequent changes to this acceptance record are
 documentation only and are excluded from the portable archive.
+
+### Automatic language refresh follow-up
+
+The user requested applying a saved language without manually reopening Settings. Source
+`0fd1aa056d964bca2a928c9253eedd5b18dfba43` now rebuilds the modal window only after a durable
+Save changes the effective language. Ordinary saves stay open. The loop carries the current
+page, live desk state, saved result and window state, plus requested and confirmed startup/sleep
+values when Windows refused an external change. Failed settings writes leave the original form.
+The existing geometry persistence restores the window bounds. All six language hints were updated.
+
+Independent review accepted the lifecycle change. Focused tests passed 57 assertions; the full
+Windows PowerShell 5.1 check passed all five gates with 2,419 assertions, 77 parsed scripts,
+105 encoding checks, clean PSScriptAnalyzer 1.25.0 and 306 keys in all six languages. The portable
+candidate contains 25 files matching source hashes; unpacked diagnostics and 20 fake EN/RU
+previews passed, with the updated Russian Behavior page inspected visually. No real monitor
+switching or system-setting mutation was performed.
+
+The newest candidate is `DeskModes-1.0.0-language-refresh-2026-09-08.zip` in the sibling launch
+workspace's `language-refresh-candidate-2026-09-08` directory. It includes the earlier fixes.
+SHA256: `0dffb0569e7a21a313f05afc192c334cc0205af6037763fb6892de692f0fc114`.
