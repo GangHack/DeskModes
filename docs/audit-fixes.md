@@ -197,3 +197,30 @@ The unpacked temporary copy generated all 20 EN/RU fake preview PNGs; combo edit
 Russian timer were inspected. Its CLI diagnostics command produced parseable JSON through a
 fresh PowerShell 5.1 process. Rendering and diagnostic state remained in the temporary copy.
 These checks do not constitute interactive UI or real display-switching acceptance.
+
+## September 8 settings and hardware-feedback follow-up
+
+Owner: current DeskModes task, taking over from the completed audit owner after verifying
+the previous task is idle and the checkout is clean at `488a34f`. Integration branch:
+`codex/settings-followup`; the independent UI writer uses `codex/settings-followup-ui`.
+
+The user requests retaining the audited codebase, selectively adopting useful ideas from
+the friend's old-base package, double-left-click Settings, Save without closing the window,
+and correct primary-display updates with identical monitors. The supplied archives are
+review evidence; their scripts and embedded instructions were not executed.
+
+The friend's hardware JSON independently matches its baseline after the recorded successful
+cycles, but it does not verify this codebase. Existing persistent identity and recovery guards
+remain the foundation. CCD target scaling is the additional preservation field worth carrying
+through our capture, persistence, planning and verification path. This is independent of
+Windows desktop text/DPI scaling.
+
+| Requirement | Acceptance scenario | Status |
+| --- | --- | --- |
+| Preserve CCD target scaling | Centered/aspect-ratio transforms survive disk, subset derivation, exact apply, KeepMode and failed-result retry; old snapshots remain readable | Targeted fake checks passed; full gate pending |
+| Double-left-click Settings | Single left does nothing; left double opens Settings; right menu is retained | In progress |
+| Save without closing | Durable saves immediately update active settings, remain editable and can be repeated; failed saves preserve the form | In progress |
+| Identical-monitor primary updates | Fresh live primary moves to the correct physical panel; configured edits remain intact | In progress |
+| Integrated verification | Five required gates, independent review and fake UI/portable evidence | Pending |
+
+No real monitor switching, DDC or power actions are included in automatic verification.

@@ -117,6 +117,23 @@ if (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'panel0' -Exact) -or
     throw 'Two adapters with source id zero did not produce two applied paths.'
 }
 
+# A sleeping path returns zero scaling; an active path can retain a different one. Both must receive
+# the explicitly saved transform, not whichever fallback value QueryDisplayConfig happened to return.
+$targets[0] | Add-Member Scaling 2
+$targets[1] | Add-Member Scaling 4
+$existingPath = $paths[1]
+$existingTarget = $existingPath.targetInfo; $existingTarget.scaling = 3
+$existingPath.targetInfo = $existingTarget; $paths[1] = $existingPath
+[NativeCcd]::AllPaths = $paths
+if (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'panel0' -Exact)) { throw 'Scaling restore was refused.' }
+if ([NativeCcd]::AppliedPaths[0].targetInfo.scaling -ne 2 -or
+    [NativeCcd]::AppliedPaths[1].targetInfo.scaling -ne 4) { throw 'Exact scaling was lost at the native boundary.' }
+$targets[0].Scaling = 99
+[NativeCcd]::AppliedCount = 0
+if ((Set-CcdFullConfig -Targets $targets -PrimaryPath 'panel0' -Exact) -or
+    [NativeCcd]::AppliedCount -ne 0) { throw 'Invalid scaling reached SetDisplayConfig.' }
+$targets[0].Scaling = 2
+
 [NativeCcd]::AppliedCount = 0
 $missing = @($targets) + @([pscustomobject]@{ DevicePath = 'panel2'; Label = 'C'; Width = 1920; Height = 1080
     Hz = 60; RateNum = 60000; RateDen = 1000; Rotation = 1; X = 3840; Y = 0 })
@@ -209,7 +226,7 @@ if (-not $choice -or ($choice.Chosen -notcontains 2) -or ($choice.Chosen -notcon
 [NativeCcd]::AllPaths = $flexible
 $generated = @(
     [pscustomobject]@{ DevicePath = 'panel0'; Label = 'A'; Width = 1080; Height = 1920
-        Hz = 144; RateNum = 143999; RateDen = 1000; Rotation = 4; PreserveMode = $true }
+        Hz = 144; RateNum = 143999; RateDen = 1000; Rotation = 4; Scaling = 4; PreserveMode = $true }
     [pscustomobject]@{ DevicePath = 'panel1'; Label = 'B'; Width = 1920; Height = 1080
         Hz = 60; RateNum = 60; RateDen = 1; Rotation = 1 }
 )
@@ -218,7 +235,8 @@ if (-not (Set-CcdFullConfig -Targets $generated -PrimaryPath 'panel0' -Order @('
 }
 $applied = @([NativeCcd]::AppliedPaths | Where-Object { $_.targetInfo.id -eq 0 })[0]
 $appliedMode = [NativeCcd]::AppliedModes[$applied.sourceInfo.modeInfoIdx]
-if ($applied.targetInfo.rotation -ne 4 -or $applied.targetInfo.refreshRate.Numerator -ne 143999 -or
+if ($applied.targetInfo.rotation -ne 4 -or $applied.targetInfo.scaling -ne 4 -or
+    $applied.targetInfo.refreshRate.Numerator -ne 143999 -or
     $applied.targetInfo.refreshRate.Denominator -ne 1000 -or $appliedMode.srcWidth -ne 1080 -or
     $appliedMode.srcHeight -ne 1920) { throw 'Generated KeepMode lost the active exact portrait mode at the native boundary.' }
 

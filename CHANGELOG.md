@@ -12,7 +12,8 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 ### Display modes
 
 - Preserve an already active All displays desktop; capture and restore physical monitor X/Y,
-  primary, orientation (including flipped portrait), resolution and exact refresh rates.
+  primary, orientation (including flipped portrait), resolution, standard CCD target scaling
+  and exact refresh rates.
   A refused restoration cannot silently replace the saved desktop with a damaged result.
 
 - Named combinations, a mode for each display and an all-displays mode, available through

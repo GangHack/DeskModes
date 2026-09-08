@@ -606,7 +606,7 @@ forward, screens blink twice over, and every open window gets told the display c
 three times.
 
 Exact restoration uses `desktop-layouts.json`, keyed by the physical display set, with
-source coordinates, rotation and the driver's refresh fraction. It supplies that geometry
+source coordinates, rotation, standard CCD target scaling and the driver's refresh fraction. It supplies that geometry
 in one CCD request and verifies the returned desktop. A refusal is reported instead of
 retrying with omitted Hz or replacing the saved orientation with a best-mode guess. The
 watchdog respects the restored modes and leaves unverified destinations alone. A failed
@@ -616,13 +616,20 @@ switch pauses the watchdog; a verified refusal preserves the unchanged source pr
 The snapshot is separate from the legacy best-mode
 cache in `display-modes.json`.
 
+Scaling preserves whether the image is centered, stretched or fitted with its aspect ratio.
+It is not the Windows text-size percentage. Older snapshots without this field leave scaling
+unspecified until a fresh complete desktop is captured. Vendor-private custom transforms and
+an unresolved scaling preference are refused before switching because their exact appearance
+cannot be reconstructed from this state alone. The supported standard transforms are defined
+by [Microsoft's DISPLAYCONFIG_SCALING contract](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scaling).
+
 A first subset uses one complete source desktop, preferring the current trusted Windows
 arrangement. Nonadjacent components are joined without gaps or overlap, keeping the primary
 component in place and leaving the saved full desktop untouched. Separate solo snapshots cannot
 establish where those displays belong together.
 Repeating All manually preserves the live desk, including a mode retained with `-KeepMode`.
 
-Generated `-KeepMode` plans retain and verify active resolution, rotation and exact refresh;
+Generated `-KeepMode` plans retain and verify active resolution, rotation, known target scaling and exact refresh;
 missing preservation data or a refused exact mode cannot fall back to unspecified rates.
 
 For other sets with no complete known geometry, the fallback repair steps remain. After applying

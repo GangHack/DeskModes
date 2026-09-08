@@ -1004,6 +1004,10 @@ function New-DesktopSnapshot {
         if ([int]$m.Width -le 0 -or [int]$m.Height -le 0 -or [int]$m.Hz -le 0 -or
             [int]$m.Rotation -lt 1 -or [int]$m.Rotation -gt 4 -or
             [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0) { return $null }
+        # Zero means an older snapshot did not record scaling. Custom scaling needs vendor-private
+        # context; PREFERRED asks Windows to choose. Neither is an exact transform we can restore.
+        $scaling = [int]$m.Scaling
+        if ($scaling -lt 0 -or $scaling -gt 4) { return $null }
         $displays += [pscustomobject][ordered]@{
             Id       = [string]$m.Id
             Label    = [string]$m.Label
@@ -1013,6 +1017,7 @@ function New-DesktopSnapshot {
             Height   = [int]$m.Height
             Hz       = [int]$m.Hz
             Rotation = [int]$m.Rotation
+            Scaling  = $scaling
             RateNum  = [int]$m.RateNum
             RateDen  = [int]$m.RateDen
         }
@@ -1055,7 +1060,7 @@ function Read-DesktopSnapshotStore {
                     Primary = ([string]$d.id -eq [string]$saved.primaryId)
                     X = [int]$d.x; Y = [int]$d.y
                     Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
-                    Rotation = [int]$d.rotation; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
+                    Rotation = [int]$d.rotation; Scaling = [int]$d.scaling; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
                 }
             }
             $snapshot = New-DesktopSnapshot -State $state
@@ -1077,7 +1082,7 @@ function Read-DesktopSnapshotStore {
                     Primary = ([string]$d.id -eq [string]$saved.primaryId)
                     X = [int]$d.x; Y = [int]$d.y
                     Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
-                    Rotation = [int]$d.rotation; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
+                    Rotation = [int]$d.rotation; Scaling = [int]$d.scaling; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
                 }
             }
             $protected = New-DesktopSnapshot -State $state
@@ -1115,7 +1120,7 @@ function Write-DesktopSnapshotStore {
                     id = [string]$_.Id; label = [string]$_.Label
                     x = [int]$_.X; y = [int]$_.Y
                     width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
-                    rotation = [int]$_.Rotation; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
+                    rotation = [int]$_.Rotation; scaling = [int]$_.Scaling; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
                 }
             })
         }
@@ -1130,7 +1135,7 @@ function Write-DesktopSnapshotStore {
                     id = [string]$_.Id; label = [string]$_.Label
                     x = [int]$_.X; y = [int]$_.Y
                     width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
-                    rotation = [int]$_.Rotation; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
+                    rotation = [int]$_.Rotation; scaling = [int]$_.Scaling; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
                 }
             })
         }
@@ -1192,6 +1197,7 @@ function New-DesktopRestorePlan {
         $where = $configuredPositions[[string]$d.Id]
         $width = [int]$d.Width; $height = [int]$d.Height; $hz = [int]$d.Hz
         $rateNum = [int]$d.RateNum; $rateDen = [int]$d.RateDen
+        $scaling = [int]$d.Scaling
         if ($KeepMode -and $m.Active) {
             # The source size belongs to the rotation under which it was observed. Reusing it under a
             # quarter-turn would ask CCD for a different physical mode while claiming to keep it.
@@ -1201,7 +1207,9 @@ function New-DesktopRestorePlan {
                 [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0) { return $null }
             $width = [int]$m.Width; $height = [int]$m.Height; $hz = [int]$m.Hz
             $rateNum = [int]$m.RateNum; $rateDen = [int]$m.RateDen
+            $scaling = [int]$m.Scaling
         }
+        if ($scaling -lt 0 -or $scaling -gt 4) { return $null }
         $targets += [pscustomobject][ordered]@{
             DevicePath = [string]$d.Id
             Label      = [string]$m.Label
@@ -1211,6 +1219,7 @@ function New-DesktopRestorePlan {
             RateNum    = $rateNum
             RateDen    = $rateDen
             Rotation   = [int]$d.Rotation
+            Scaling    = $scaling
             X          = $(if ($UseConfiguredLayout) { [int]$where.X } else { [int]$d.X - [int]$anchor.X })
             Y          = $(if ($UseConfiguredLayout) { [int]$where.Y } else { [int]$d.Y - [int]$anchor.Y })
         }
@@ -1236,7 +1245,7 @@ function New-DesktopRestorePlan {
             Active = $true; Disconnected = $false; Primary = ([string]$_.DevicePath -eq $primary)
             X = [int]$_.X; Y = [int]$_.Y
             Width = [int]$_.Width; Height = [int]$_.Height; Hz = [int]$_.Hz
-            Rotation = [int]$_.Rotation; RateNum = [int]$_.RateNum; RateDen = [int]$_.RateDen
+            Rotation = [int]$_.Rotation; Scaling = [int]$_.Scaling; RateNum = [int]$_.RateNum; RateDen = [int]$_.RateDen
         }
     })
     $expected = New-DesktopSnapshot -State $expectedState
@@ -1289,7 +1298,7 @@ function New-DesktopSubsetSnapshot {
             Active = $true; Disconnected = $false; Primary = $false
             X = [int]$record.X; Y = [int]$record.Y
             Width = [int]$record.Width; Height = [int]$record.Height; Hz = [int]$record.Hz
-            Rotation = [int]$record.Rotation; RateNum = [int]$record.RateNum; RateDen = [int]$record.RateDen
+            Rotation = [int]$record.Rotation; Scaling = [int]$record.Scaling; RateNum = [int]$record.RateNum; RateDen = [int]$record.RateDen
         }
     }
     $primaryId = ''
@@ -1384,6 +1393,7 @@ function Test-DesktopSnapshotMatch {
         foreach ($field in 'X', 'Y', 'Width', 'Height', 'Rotation') {
             if ([int]$actual.$field -ne [int]$wanted.$field) { return $false }
         }
+        if ([int]$wanted.Scaling -gt 0 -and [int]$actual.Scaling -ne [int]$wanted.Scaling) { return $false }
         # Drivers are free to reduce the same fraction (60000/1000 -> 60/1). Cross multiplication accepts
         # that normalization while still distinguishing 143999/1000 from the invented 144/1.
         if ([int64]$actual.RateNum * [int64]$wanted.RateDen -ne
@@ -1498,7 +1508,8 @@ function Get-SwitchTargets {
             # fraction, KeepMode must refuse instead of asking Windows to invent a replacement rate.
             if ([int]$m.Width -le 0 -or [int]$m.Height -le 0 -or
                 [int]$m.RateNum -le 0 -or [int]$m.RateDen -le 0 -or
-                [int]$m.Rotation -lt 1 -or [int]$m.Rotation -gt 4) { return @() }
+                [int]$m.Rotation -lt 1 -or [int]$m.Rotation -gt 4 -or
+                [int]$m.Scaling -lt 0 -or [int]$m.Scaling -gt 4) { return @() }
             $num = [int]$m.RateNum; $den = [int]$m.RateDen
         }
         elseif ($hz -gt 0 -and $cached -and [int]$cached.RateDen -gt 0 -and
@@ -1516,7 +1527,10 @@ function Get-SwitchTargets {
             RateDen    = $den
             PreserveMode = [bool]$preserveMode
         }
-        if ($preserveMode) { $target | Add-Member -NotePropertyName Rotation -NotePropertyValue ([int]$m.Rotation) }
+        if ($preserveMode) {
+            $target | Add-Member -NotePropertyName Rotation -NotePropertyValue ([int]$m.Rotation)
+            $target | Add-Member -NotePropertyName Scaling -NotePropertyValue ([int]$m.Scaling)
+        }
         $out += $target
     }
     return $out
@@ -3341,6 +3355,7 @@ function Get-CcdTargets {
             X           = $x
             Y           = $y
             Rotation    = $rotation
+            Scaling     = $(if ($active) { [int]$p.targetInfo.scaling } else { 0 })
             RateNum     = $rateNum
             RateDen     = $rateDen
             # Who to address a per-target question to (HDR, say): the adapter's LUID and the target's
@@ -3547,6 +3562,7 @@ function Set-CcdFullConfig {
         if ([int]$t.Width -le 0 -or [int]$t.Height -le 0) { return $false }
         if ($Exact -and ([int]$t.RateNum -le 0 -or [int]$t.RateDen -le 0 -or
                          [int]$t.Rotation -lt 1 -or [int]$t.Rotation -gt 4)) { return $false }
+        if ([int]$t.Scaling -lt 0 -or [int]$t.Scaling -gt 4) { return $false }
     }
 
     # Without the monitors' order this road cannot be taken. Setting the whole desk, we are obliged to name
@@ -3684,7 +3700,10 @@ function Invoke-CcdFullConfigAttempt {
             # and touching it is none of our business.
             if ($Exact -or $t.PreserveMode) { $ti.rotation = [uint32][int]$t.Rotation }
             elseif ($ti.rotation -eq 0) { $ti.rotation = [NativeCcd]::ROTATION_IDENTITY }
-            if ($ti.scaling -eq 0)  { $ti.scaling  = [NativeCcd]::SCALING_IDENTITY }
+            if (($Exact -or $t.PreserveMode) -and [int]$t.Scaling -gt 0) {
+                $ti.scaling = [uint32][int]$t.Scaling
+            }
+            elseif ($ti.scaling -eq 0) { $ti.scaling = [NativeCcd]::SCALING_IDENTITY }
         }
         else {
             $rate.Numerator = 0
@@ -4486,6 +4505,7 @@ function Get-DisplayState {
             X            = $(if ($t.Active) { [int]$t.X } else { 0 })
             Y            = $(if ($t.Active) { [int]$t.Y } else { 0 })
             Rotation     = $(if ($t.Active) { [int]$t.Rotation } else { 0 })
+            Scaling      = $(if ($t.Active) { [int]$t.Scaling } else { 0 })
             RateNum      = $(if ($t.Active) { [int]$t.RateNum } else { 0 })
             RateDen      = $(if ($t.Active) { [int]$t.RateDen } else { 0 })
             BestMode     = $best
@@ -4678,6 +4698,7 @@ function Get-DeskDisplays {
             X            = 0
             Y            = 0
             Rotation     = 0
+            Scaling      = 0
             RateNum      = 0
             RateDen      = 0
             BestMode     = $null
@@ -5497,6 +5518,11 @@ function Switch-DisplayMode {
         # during it); that observed destination must not replace the good baseline on the next run.
         $desktopStore = Read-DesktopSnapshotStore
         $destinationKey = Get-DesktopSetKey -DevicePaths $wantedIds
+        # An older usable baseline is not permission to overwrite a live vendor-private transform.
+        # Refuse before any write/hook/apply: that current desktop cannot be captured for rollback.
+        if (@($monitors | Where-Object { $_.Active -and ([int]$_.Scaling -lt 0 -or [int]$_.Scaling -gt 4) }).Count -gt 0) {
+            throw (New-DisplayRefusal -Key 'switch.refused' -Values @($mode.Title) -LogValues @($mode.Key))
+        }
         $currentSnapshot = New-DesktopSnapshot -State $monitors
         $destinationSnapshot = $desktopStore.Snapshots[$destinationKey]
         $hadDestinationSnapshot = ($null -ne $destinationSnapshot)
@@ -5772,6 +5798,7 @@ function Switch-DisplayMode {
                 $actual = @($verifiedState | Where-Object { $_.Active -and $_.Id -eq $t.DevicePath })
                 if ($actual.Count -ne 1 -or $actual[0].Width -ne $t.Width -or
                     $actual[0].Height -ne $t.Height -or $actual[0].Rotation -ne $t.Rotation -or
+                    ([int]$t.Scaling -gt 0 -and [int]$actual[0].Scaling -ne [int]$t.Scaling) -or
                     [int]$actual[0].RateNum -le 0 -or [int]$actual[0].RateDen -le 0 -or
                     [int64]$actual[0].RateNum * [int64]$t.RateDen -ne
                     [int64]$t.RateNum * [int64]$actual[0].RateDen) { $restoreFailed = $true }

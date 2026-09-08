@@ -6,6 +6,64 @@
 Write-Host ''
 Write-Host 'exact physical desktop restoration' -ForegroundColor White
 
+Test-Case 'desktop scaling: capture restore and verification preserve centered content' {
+    $panel = New-FakeMonitor 'Panel' 'AAA0001' 'scaled-panel'
+    $panel.Primary = $true
+    $panel | Add-Member Scaling 2 -Force
+    $snapshot = New-DesktopSnapshot -State @($panel)
+    Assert-Equal 2 $snapshot.Displays[0].Scaling 'capture includes target scaling'
+    $plan = New-DesktopRestorePlan -Snapshot $snapshot -Wanted @($panel)
+    Assert-Equal 2 $plan.Targets[0].Scaling 'restoration requests centered content'
+    $panel.Scaling = 3
+    Assert-True (-not (Test-DesktopSnapshotMatch -Snapshot $plan.Expected -State @($panel))) 'stretching is not an exact restoration'
+}
+
+Test-Case 'desktop scaling: saved and protected records survive disk and subset derivation' {
+    $panel = New-FakeMonitor 'Panel' 'AAA0001' 'scaled-panel'
+    $panel.Primary = $true
+    $panel | Add-Member Scaling 4 -Force
+    $snapshot = New-DesktopSnapshot -State @($panel)
+    $store = New-DesktopSnapshotStore
+    $store.Snapshots[$snapshot.Key] = $snapshot
+    $store.ProtectedKey = $snapshot.Key
+    $store.ProtectedSnapshot = $snapshot
+    Write-DesktopSnapshotStore -Store $store
+    $back = Read-DesktopSnapshotStore
+    Assert-Equal 4 $back.Snapshots[$snapshot.Key].Displays[0].Scaling 'canonical record retains aspect-ratio scaling'
+    Assert-Equal 4 $back.ProtectedSnapshot.Displays[0].Scaling 'protected transient record retains scaling'
+    $subset = New-DesktopSubsetSnapshot -Wanted @($panel) -CurrentSnapshot $snapshot -Store $back
+    Assert-Equal 4 $subset.Displays[0].Scaling 'derived topology retains scaling'
+}
+
+Test-Case 'desktop scaling: older snapshots leave unknown scaling unspecified' {
+    $panel = New-FakeMonitor 'Panel' 'AAA0001' 'scaled-panel'
+    $panel.Primary = $true
+    $panel.PSObject.Properties.Remove('Scaling')
+    $snapshot = New-DesktopSnapshot -State @($panel)
+    Assert-Equal 0 $snapshot.Displays[0].Scaling 'missing legacy data is unknown rather than identity'
+    $panel | Add-Member Scaling 2 -Force
+    Assert-True (Test-DesktopSnapshotMatch -Snapshot $snapshot -State @($panel)) 'old records remain usable without an invented scaling constraint'
+    $panel.Scaling = 99
+    Assert-Null (New-DesktopSnapshot -State @($panel)) 'invalid enumerations cannot become a new baseline'
+    $panel.Scaling = 5
+    Assert-Null (New-DesktopSnapshot -State @($panel)) 'vendor-private transforms require context this tool cannot restore'
+    $panel.Scaling = 128
+    Assert-Null (New-DesktopSnapshot -State @($panel)) 'a preference is not an observed exact transform'
+}
+
+Test-Case 'desktop scaling: KeepMode retains the live transform rather than an old one' {
+    $panel = New-FakeMonitor 'Panel' 'AAA0001' 'scaled-panel'
+    $panel.Primary = $true
+    $panel | Add-Member Scaling 2 -Force
+    $snapshot = New-DesktopSnapshot -State @($panel)
+    $panel.Scaling = 4
+    $plan = New-DesktopRestorePlan -Snapshot $snapshot -Wanted @($panel) -KeepMode
+    Assert-Equal 4 $plan.Targets[0].Scaling 'saved-layout KeepMode keeps live scaling'
+    $generated = @(Get-SwitchTargets -Wanted @($panel) -KeepMode)
+    Assert-Equal 4 $generated[0].Scaling 'generated KeepMode keeps live scaling'
+    Assert-Equal 2 $snapshot.Displays[0].Scaling 'the canonical record remains unchanged'
+}
+
 function New-RestorationDesk {
     $left = New-FakeMonitor 'ACER XV272U' 'ACR1234' 'path-left'
     $left.X = -2560; $left.Y = 120; $left.Primary = $false

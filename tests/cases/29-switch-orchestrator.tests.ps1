@@ -100,6 +100,7 @@ $script:SwFakes = {
                     $m.Width = [int]$t[0].Width; $m.Height = [int]$t[0].Height; $m.Hz = [int]$t[0].Hz
                     if ($t[0].PSObject.Properties['X']) { $m.X = [int]$t[0].X; $m.Y = [int]$t[0].Y }
                     if ($t[0].PSObject.Properties['Rotation']) { $m.Rotation = [int]$t[0].Rotation }
+                    if ($t[0].PSObject.Properties['Scaling']) { $m | Add-Member Scaling ([int]$t[0].Scaling) -Force }
                     if ($t[0].PSObject.Properties['RateNum'] -and [int]$t[0].RateDen -gt 0) {
                         $m.RateNum = [int]$t[0].RateNum; $m.RateDen = [int]$t[0].RateDen
                     }
@@ -180,6 +181,54 @@ $script:SwFakes = {
         }
         return $true
     }
+}
+
+Test-Case 'switch scaling: a driver mismatch keeps the good desktop available for retry' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    foreach ($panel in $script:SwDesk) { $panel | Add-Member Scaling 2 -Force }
+    $key = (New-DesktopSnapshot -State $script:SwDesk).Key
+    Assert-True (Switch-DisplayMode -ModeKey 'solo:XG27AQDMGR' -Quiet).Ok 'solo succeeds with saved scaling'
+
+    function Wait-ForTopology {
+        param($WantedPaths)
+        foreach ($panel in $script:SwDesk) {
+            $panel.Active = ($WantedPaths -contains $panel.Id)
+            $panel.Scaling = 3
+        }
+        return $script:SwSettled
+    }
+    $failed = Switch-DisplayMode -ModeKey 'all' -Quiet
+    Assert-Equal 'partial' $failed.Outcome 'driver stretching instead of centering is a failure'
+    Assert-Equal 2 $script:SwStore.Snapshots[$key].Displays[0].Scaling 'the good scaling survives failure'
+    Assert-True $script:SwStore.UnsafeKeys.ContainsKey($key) 'the damaged destination is guarded'
+
+    function Wait-ForTopology {
+        param($WantedPaths)
+        foreach ($panel in $script:SwDesk) { $panel.Active = ($WantedPaths -contains $panel.Id) }
+        return $script:SwSettled
+    }
+    Assert-True (Switch-DisplayMode -ModeKey 'all' -Quiet).Ok 'retry restores the trusted transform'
+    Assert-Equal 2 $script:SwDesk[0].Scaling 'centered content returns'
+}
+
+Test-Case 'switch scaling: an older baseline cannot overwrite a live vendor-private transform' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $baseline = New-DesktopSnapshot -State $script:SwDesk
+    $script:SwStore.Snapshots[$baseline.Key] = $baseline
+    $script:SwDesk[0] | Add-Member Scaling 5 -Force
+    foreach ($mode in @('all', 'solo:XG27AQDMGR')) {
+        $refused = $false
+        try { [void](Switch-DisplayMode -ModeKey $mode -Quiet) } catch { $refused = $true }
+        Assert-True $refused 'unsupported live state is refused despite a readable baseline'
+        Assert-Equal 5 $script:SwDesk[0].Scaling 'the live driver transform is untouched'
+    }
+    Assert-Equal 0 $script:SwCalls.Count 'no hooks, layout or display mutation ran'
+    Assert-Equal '' $script:SwStore.PendingKey 'the refusal did not begin a transition'
+    Assert-Equal 0 $script:SwStore.Snapshots[$baseline.Key].Displays[0].Scaling 'the old canonical data is unchanged'
 }
 
 Test-Case 'switch: the set is already right, so the topology is not rebuilt' {
