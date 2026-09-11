@@ -1,8 +1,36 @@
 # Release readiness
 
-Status on 6 September 2026: **local candidate preparation, not a published release**.
-The application reports 1.0.0. Its CHANGELOG heading intentionally has no release date;
-`pack.ps1 -ExpectVersion 1.0.0` refuses publication until a dated section is committed.
+Status on 11 September 2026: **local candidate preparation, not a published release**.
+The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
+`pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
+
+## Remaining acceptance for the current candidate
+
+The integrated candidate includes imported physical-selector compatibility, opt-in startup
+restoration, per-monitor WPF DPI handling, tray placement/dismissal and saved taskbar labels.
+Earlier hardware evidence applies only to its recorded source, not automatically to this candidate.
+
+Before tagging:
+
+- Repeat All -> solo/subset -> All on the author's desk and the external three-monitor setup.
+  Compare physical primary, X/Y, rotation, resolution, refresh and restored window reachability.
+  Include an unavailable panel and confirm recovery leaves a usable desktop.
+- Start with a different visible panel than the last chosen mode. Defaults must preserve the
+  current desktop. Existing explicit restoreLastMode=true remains an intentional opt-in.
+- Move Settings between the 4K/2K screens, switch the active desk, and test narrow RU/UK windows.
+  Check tray scrolling, Exit, outside-click/Escape dismissal and the timer submenu on the real tray.
+- Test the exact ZIP on a clean Windows installation and overlay it on a backed-up installation.
+  Record Windows warnings, first launch, imported bindings, settings preservation and rollback.
+- Record the latest GitHub Actions result for the exact candidate commit. The old remote run
+  from September 6 is not acceptance for these changes.
+- Before the first public release, consolidate the still-unreleased 1.0.0 feature notes into the
+  chosen first-release section. The packer exports only the current version's section; publishing
+  1.0.1 as written would describe only the follow-up fixes rather than the complete first release.
+- The GitHub repository is currently private. Decide public distribution and verify README,
+  screenshot, download and issue links as an unauthenticated visitor before announcing it.
+
+The first release date and tag remain unset until applicable hardware acceptance is recorded.
+Untested laptop, dock and multi-GPU configurations must remain explicitly experimental.
 
 ## What the automated checks establish
 
@@ -91,11 +119,11 @@ sends anything. Logs are separate and can include paths and hook commands.
 1. Run all five gates, with the required analyzer. Commit the exact changes and verify
    that GitHub Actions succeeds for that commit as well.
 2. Build a local candidate with `tools/pack.ps1 -OutDir <candidate-folder> -NotesOut <notes-file>`.
-   The folder is a candidate even though the archive name includes 1.0.0. Check archive
+   The folder is a candidate even though the archive name includes 1.0.1. Check archive
    membership, SHA256, notes, script syntax and CLI startup from an isolated extraction.
 3. Complete the applicable hardware rows. Fix failures and repeat affected scenarios plus
    the full automated check. State any deliberately untested configurations as experimental.
-4. Set the actual date in CHANGELOG, commit, check and tag `v1.0.0` on that commit.
+4. Set the actual date in CHANGELOG, commit, check and tag `v1.0.1` on that commit.
    The release workflow separately checks and packages without installing dependencies in
    the publishing job. It refuses mismatched version or nonempty Unreleased content.
 5. Download the attached ZIP and hash from the release page and repeat first-run checks.
