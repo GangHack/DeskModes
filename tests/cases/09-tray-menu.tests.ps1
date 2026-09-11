@@ -136,6 +136,10 @@ Test-Case 'menu: completed rows fit above the taskbar after growing on open' {
 
 Test-Case 'menu: a tall menu scrolls and can grow again on a larger display' {
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    # These rectangles model two screen sizes. A top-level popup is also clamped to the
+    # host screen by WinForms, so a small CI desktop cannot represent the larger one.
+    # Native top-level placement is covered by the ShowInTaskbar case below.
+    $menu.TopLevel = $false
     try {
         foreach ($number in 1..40) { [void]$menu.Items.Add("Mode $number") }
         $small = New-Object System.Drawing.Rectangle 0, 0, 1000, 300
