@@ -170,10 +170,10 @@ function Get-DefaultSettings {
         # Remember where the windows sat for every desk layout and put them back when
         # returning to it (WindowLayout.ps1).
         restoreWindows  = $true
-        # Put back the last chosen mode after the computer is turned on. Windows brings
-        # up its own set of screens rather than the one chosen before shutdown (see
-        # Save-LastMode and Invoke-StartupRestore).
-        restoreLastMode = $true
+        # Leave Windows' current set of screens in place after startup unless restoring
+        # the last chosen mode was explicitly enabled (see Save-LastMode and
+        # Invoke-StartupRestore).
+        restoreLastMode = $false
         # Rules: "when this happens, become that". Checked in order, the first that fits
         # wins; while a rule "owns" the desk the others keep quiet (see
         # Get-RuleDecision).
@@ -1810,6 +1810,9 @@ public class NativeCcd {
 }
 
 public class NativeForeground {
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int virtualKey);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
 

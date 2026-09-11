@@ -43,6 +43,7 @@ function Set-RememberedMode {
 
 Test-Case 'startup: a mode chosen before the last shutdown comes back' {
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:LG ULTRAGEAR'
     Invoke-StartupRestore
     Assert-True ($null -ne $script:Invoked) 'switched'
@@ -55,6 +56,7 @@ Test-Case 'startup: a mode chosen before the last shutdown comes back' {
 Test-Case 'startup: the same session means the tray was restarted - do not touch the displays' {
     # Otherwise restarting the tray would undo Win+P or an edit made by hand in Windows settings.
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:LG ULTRAGEAR' (Get-SystemSessionId)
     Invoke-StartupRestore
     Assert-Null $script:Invoked 'left alone'
@@ -62,6 +64,7 @@ Test-Case 'startup: the same session means the tray was restarted - do not touch
 
 Test-Case 'startup: the right set already on means no balloon, only a layout check' {
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:XG27AQDMGR'
     Invoke-StartupRestore
     Assert-True ($null -ne $script:Invoked) 'still called - layout and primary may have drifted'
@@ -79,6 +82,7 @@ Test-Case 'startup: all-vs-work with the ASUS unplugged is the same desk, so no 
     $script:Invoked = $null
     $script:SwitchedOnce = $false
     $script:TestSettings = Get-DefaultSettings
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'all'
     Invoke-StartupRestore
     Assert-True ($null -ne $script:Invoked) 'still checks the layout'
@@ -89,6 +93,7 @@ Test-Case 'startup: a display that is not there is never restored to' {
     # The most expensive mistake there is: putting out a working monitor for the sake of one that is
     # not there is a black desk after the computer is turned on.
     Set-RestoreScene -UltraGearConnected $false
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:LG ULTRAGEAR'
     Invoke-StartupRestore
     Assert-Null $script:Invoked 'nothing was turned off'
@@ -96,6 +101,7 @@ Test-Case 'startup: a display that is not there is never restored to' {
 
 Test-Case 'startup: a mode key that no longer exists is not a crash' {
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:SOME OLD MONITOR'
     Invoke-StartupRestore
     Assert-Null $script:Invoked 'skipped'
@@ -103,6 +109,7 @@ Test-Case 'startup: a mode key that no longer exists is not a crash' {
 
 Test-Case 'startup: a hotkey pressed first wins - his choice is newer than ours' {
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     Set-RememberedMode 'solo:LG ULTRAGEAR'
     $script:SwitchedOnce = $true
     Invoke-StartupRestore
@@ -117,8 +124,33 @@ Test-Case 'startup: turned off in settings means nothing happens' {
     Assert-Null $script:Invoked 'off is off'
 }
 
+Test-Case 'startup: defaults preserve an active ASUS when a remembered LG is inactive but available' {
+    Set-RestoreScene
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'the startup default leaves the active screen alone'
+}
+
+Test-Case 'startup: defaults preserve an active LG instead of restoring another mode' {
+    Set-RestoreScene
+    $script:TestState[0].Active = $false
+    $script:TestState[1].Active = $true
+    Set-RememberedMode 'solo:XG27AQDMGR'
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'the startup default is independent of which screen is active'
+}
+
+Test-Case 'startup: defaults preserve a current multi-monitor desktop' {
+    Set-RestoreScene
+    $script:TestState[2].Active = $true
+    Set-RememberedMode 'solo:LG ULTRAGEAR'
+    Invoke-StartupRestore
+    Assert-Null $script:Invoked 'the current multi-monitor set stays in place'
+}
+
 Test-Case 'startup: nothing remembered at all means nothing happens' {
     Set-RestoreScene
+    $script:TestSettings.restoreLastMode = $true
     if (Test-Path $script:LastModeFile) { Remove-Item $script:LastModeFile -Force }
     Invoke-StartupRestore
     Assert-Null $script:Invoked 'first run ever'

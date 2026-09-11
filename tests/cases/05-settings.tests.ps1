@@ -8,7 +8,7 @@ Test-Case 'settings: defaults have the shape the rest of the code expects' {
     Assert-True $s.maximizeRefresh 'maximizeRefresh on'
     Assert-True $s.notifications 'notifications on'
     Assert-True $s.restoreWindows 'restoreWindows on by default'
-    Assert-True $s.restoreLastMode 'restoreLastMode on by default'
+    Assert-True (-not $s.restoreLastMode) 'restoreLastMode off by default'
     Assert-Equal 0 @($s.layout).Count 'layout empty'
     Assert-Equal '' $s.primary 'primary empty'
     Assert-Equal 0 @($s.combos.Keys).Count 'combos empty'
@@ -34,15 +34,20 @@ Test-Case 'settings: a half-written reapply keeps the other defaults' {
     Remove-Item $script:SettingsFile -Force
 }
 
-Test-Case 'settings: restoreLastMode survives a round-trip when turned off' {
-    # A missing key means "the default", that is, on — whereas an honest false has to make it
-    # through. restoreWindows has already broken on this pair.
-    Set-Content -Path $script:SettingsFile -Value '{ "restoreLastMode": false }' -Encoding UTF8
-    $s = Get-DisplaySettings
-    Assert-True (-not $s.restoreLastMode) 'false read from the file'
-    Remove-Item $script:SettingsFile -Force
+Test-Case 'settings: restoreLastMode preserves explicit values and defaults off when absent' {
+    foreach ($value in $false, $true) {
+        $s = Get-DefaultSettings
+        $s.restoreLastMode = $value
+        Assert-True (Save-DisplaySettings -Settings $s) "saved explicit $value"
+        Assert-Equal $value ([bool](Get-DisplaySettings).restoreLastMode) "explicit $value survived a round-trip"
+        Remove-Item $script:SettingsFile -Force
+        if (Test-Path ($script:SettingsFile + '.bak')) { Remove-Item ($script:SettingsFile + '.bak') -Force }
+    }
 
-    Assert-True (Get-DisplaySettings).restoreLastMode 'no file at all means the default, on'
+    Set-Content -Path $script:SettingsFile -Value '{ "notifications": true }' -Encoding UTF8
+    Assert-True (-not (Get-DisplaySettings).restoreLastMode) 'a file missing the key uses the off default'
+    Remove-Item $script:SettingsFile -Force
+    Assert-True (-not (Get-DisplaySettings).restoreLastMode) 'no file at all uses the off default'
 }
 
 Test-Case 'settings: round-trip through disk preserves everything' {

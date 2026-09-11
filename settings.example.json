@@ -27,7 +27,7 @@
         }
     },
     "restoreWindows": true,
-    "restoreLastMode": true,
+    "restoreLastMode": false,
     "reapply": {
         "onResume": true,
         "onUnplug": true,

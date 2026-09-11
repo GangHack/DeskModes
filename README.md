@@ -34,6 +34,10 @@ use a source checkout; a version number in the application is not a published re
 4. Switch using the tray menu or your hotkey. Enable **Start with Windows** in Behavior
    if you want the tray to return after sign-in.
 
+DeskModes leaves the screens Windows activated at startup in place by default. The optional
+**Restore the last mode at startup** setting replaces that set with your last manually chosen
+mode when the application starts. Resume, hotplug and process rules are separate Behavior settings.
+
 The interface follows Windows or your language choice: English, Russian, Ukrainian,
 Spanish, French and German. Choose it in **Settings → Behavior → Language** and save.
 Settings reopens automatically on the same page in the selected language. No JSON editing is required.

@@ -8,6 +8,40 @@
 Write-Host ''
 Write-Host 'the settings window' -ForegroundColor White
 
+Test-Case 'dialog: startup restoration follows its safe default and explicit setting' {
+    $missing = Get-DefaultSettings
+    $missing.Remove('restoreLastMode')
+    $enabled = Get-DefaultSettings
+    $enabled.restoreLastMode = $true
+    foreach ($case in @(
+        [pscustomobject]@{ Settings = (Get-DefaultSettings); Expected = $false; Name = 'defaults' }
+        [pscustomobject]@{ Settings = $missing; Expected = $false; Name = 'missing key' }
+        [pscustomobject]@{ Settings = $enabled; Expected = $true; Name = 'explicit true' }
+    )) {
+        $ui = New-DialogUi -Settings $case.Settings
+        try {
+            Assert-Equal $case.Expected ([bool]$ui.LastModeBox.IsChecked) $case.Name
+            $ui.LastModeBox.IsChecked = -not $case.Expected
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $case.Settings).Settings
+            Assert-Equal (-not $case.Expected) ([bool]$updated.restoreLastMode) "$($case.Name) chosen value"
+        }
+        finally { $ui.Window.Close() }
+    }
+}
+
+Test-Case 'dialog DPI: WPF accepts monitor scale changes under the PowerShell host' {
+    Initialize-WpfRuntime
+    # Ask WPF's resolved policy, not just AppContext: WPF caches these values, so setting
+    # them after the first visual was created would look configured but still not scale.
+    $policy = [System.Windows.Media.Visual].Assembly.GetType('MS.Internal.CoreAppContextSwitches')
+    $flags = [System.Reflection.BindingFlags]'Static,Public,NonPublic'
+    foreach ($name in 'DoNotScaleForDpiChanges', 'DoNotUsePresentationDpiCapabilityTier2OrGreater') {
+        $property = $policy.GetProperty($name, $flags)
+        Assert-True ($null -ne $property) "$name is available in the installed WPF runtime"
+        if ($property) { Assert-Equal $false ($property.GetValue($null, $null)) $name }
+    }
+}
+
 Test-Case 'dialog: Save keeps layout, primary and every non-UI field' {
     # The save branch is the real function, and it is what gets tested rather than a retelling of it.
     $settings = Get-DefaultSettings

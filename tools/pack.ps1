@@ -43,7 +43,7 @@ if (-not [System.IO.Path]::IsPathRooted($OutDir)) { $OutDir = Join-Path (Get-Loc
 # deliberately: a new file of the PROGRAM has to reach the user by itself, without editing the
 # packer, or a release will one day be built without it and nobody will notice. A new file for us,
 # the other way round, requires a line here — and that is a visible decision rather than a default.
-$script:DevDirs = @('tests/', 'tools/', 'docs/', '.github/')
+$script:DevDirs = @('tests/', 'tools/', 'docs/', 'tasks/', '.github/')
 $script:DevFiles = @(
     '.editorconfig'
     '.gitattributes'

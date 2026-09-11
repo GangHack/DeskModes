@@ -593,11 +593,85 @@ function Write-MenuForegroundNote {
     catch { }   # a note about the menu must never be the reason the menu itself fails
 }
 
+# AutoClose needs activation, which Windows can refuse to a tray window. Observe
+# fresh input while open without taking focus away from the foreground application.
+function Test-TrayMenuContainsPoint {
+    param([System.Windows.Forms.ToolStripDropDown]$Menu, [System.Drawing.Point]$Point)
+    if (-not $Menu.Visible) { return $false }
+    if ($Menu.Bounds.Contains($Point)) { return $true }
+    foreach ($item in $Menu.Items) {
+        if ($item -is [System.Windows.Forms.ToolStripDropDownItem] -and $item.HasDropDownItems -and
+            (Test-TrayMenuContainsPoint -Menu $item.DropDown -Point $Point)) { return $true }
+    }
+    return $false
+}
+
+function Update-TrayMenuDismissal {
+    param($State, [System.Drawing.Point]$Point, [bool]$MouseDown, [bool]$EscapeDown)
+    $click = $MouseDown -and -not $State.MouseDown
+    $escape = $EscapeDown -and -not $State.EscapeDown
+    $State.MouseDown = $MouseDown
+    $State.EscapeDown = $EscapeDown
+    if (-not $State.Menu.Visible) { return }
+    if ($escape) {
+        $State.Menu.Close()
+    }
+    elseif ($click -and -not (Test-TrayMenuContainsPoint -Menu $State.Menu -Point $Point)) {
+        $State.Menu.Close()
+    }
+}
+
+$script:MenuDismissTimer = New-Object System.Windows.Forms.Timer
+$script:MenuDismissTimer.Interval = 50
+$script:MenuDismissTimer.add_Tick({
+    Update-TrayMenuDismissal -State $script:MenuDismissState -Point ([System.Windows.Forms.Cursor]::Position) `
+        -MouseDown (([NativeForeground]::GetAsyncKeyState(1) -lt 0) -or
+                    ([NativeForeground]::GetAsyncKeyState(2) -lt 0) -or
+                    ([NativeForeground]::GetAsyncKeyState(4) -lt 0)) `
+        -EscapeDown ([NativeForeground]::GetAsyncKeyState(27) -lt 0)
+})
+$menu.add_Closed({ $script:MenuDismissTimer.Stop() })
+
+function Update-TrayMenuWorkingArea {
+    param(
+        [System.Windows.Forms.ContextMenuStrip]$Menu,
+        [System.Drawing.Rectangle]$WorkingArea
+    )
+
+    # NotifyIcon positions against the full screen, including the taskbar, using the size
+    # from BEFORE Opening rebuilds our rows. Fit the completed layout on Opened instead.
+    # MaximumSize keeps WinForms' scroll arrows available when even the whole work area
+    # cannot hold the rows. Recompute it each time: the tray can move to another display.
+    $Menu.MaximumSize = $WorkingArea.Size
+    $Menu.PerformLayout()
+    $x = [Math]::Max($WorkingArea.Left, [Math]::Min($Menu.Left, $WorkingArea.Right - $Menu.Width))
+    $y = [Math]::Max($WorkingArea.Top, [Math]::Min($Menu.Top, $WorkingArea.Bottom - $Menu.Height))
+    $Menu.Location = New-Object System.Drawing.Point $x, $y
+}
+
 # Only DWM can round the corners of the menu window (and only on Windows 11; on 10 the
 # call silently does nothing). A handle exists only for an open menu — which is why this
 # is here rather than at creation.
 $menu.add_Opened({
+    $script:MenuWorkingArea = [System.Windows.Forms.Screen]::FromPoint(
+        [System.Windows.Forms.Cursor]::Position).WorkingArea
+    # ShowInTaskbar applies its final bounds AFTER Opened returns. Queue the fit so it
+    # runs after that placement, or Windows immediately puts the menu over the taskbar again.
+    [void]$menu.BeginInvoke([System.Action]{
+        if ($menu.Visible) {
+            Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $script:MenuWorkingArea
+        }
+    })
     try { [NativeTheme]::TryRoundCorners($menu.Handle, $true) } catch { }   # not Windows 11 — the corners stay square
+    # Ignore input already held when the opening click shows the menu.
+    $script:MenuDismissState = @{
+        Menu = $menu
+        MouseDown = (([NativeForeground]::GetAsyncKeyState(1) -lt 0) -or
+                     ([NativeForeground]::GetAsyncKeyState(2) -lt 0) -or
+                     ([NativeForeground]::GetAsyncKeyState(4) -lt 0))
+        EscapeDown = ([NativeForeground]::GetAsyncKeyState(27) -lt 0)
+    }
+    $script:MenuDismissTimer.Start()
     Write-MenuForegroundNote
 })
 
@@ -1730,7 +1804,7 @@ finally {
     # application is no reason to lose them.
     try { Save-ActivityStore } catch { }   # on the way out there is nothing left to drop
     foreach ($timer in $script:WatchTimer, $script:StartupTimer, $script:ActivityTimer,
-                       $script:PowerTicker) {
+                       $script:PowerTicker, $script:MenuDismissTimer) {
         if ($timer) { $timer.Stop(); $timer.Dispose() }
     }
     if ($script:DisplayChanged) {

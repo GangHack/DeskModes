@@ -20,6 +20,7 @@
     'win.timer'                   = 'DeskModes — minuteur'
 
     'desk.taskbar'                = 'Barre des tâches'
+    'desk.taskbar.saved'          = 'Au changement'
 
     'nav.desk'                    = 'Votre bureau'
     'nav.modes'                   = 'Modes'
@@ -33,7 +34,7 @@
     'desk.live.hint'              = 'Actualisé automatiquement. Les positions, l''orientation et l''écran de la barre des tâches marqué d''une étoile viennent de Windows.'
     'desk.live.unavailable'       = 'Windows n''a signalé aucune disposition d''écrans.'
     'desk.saved'                  = 'Personnaliser la disposition au basculement'
-    'desk.saved.hint'             = 'La disposition Windows est conservée par défaut. Modifiez ici l''ordre ou l''écran de la barre des tâches pour la personnaliser.'
+    'desk.saved.hint'             = 'Choix enregistrés pour les prochains changements. Le moniteur sélectionné peut être éteint ; la disposition Windows actuelle est affichée au-dessus.'
     'desk.whichIsWhich'           = 'Lequel est lequel'
     'desk.whichIsWhich.tip'       = 'Affiche un instant le nom de chaque écran sur l''écran lui-même.'
     'desk.copy'                   = 'Utiliser la disposition Windows'
@@ -72,8 +73,8 @@
 
     'behavior.windows'            = 'Retenir la position des fenêtres'
     'behavior.windows.hint'       = 'Remettre les fenêtres là où elles étaient, séparément pour chaque jeu d''écrans.'
-    'behavior.lastMode'           = 'Restaurer le dernier mode'
-    'behavior.lastMode.hint'      = 'Revenir au mode que vous avez choisi, et non à celui que Windows a décidé.'
+    'behavior.lastMode'           = 'Restaurer le dernier mode au démarrage'
+    'behavior.lastMode.hint'      = 'Au démarrage, remplace les écrans actifs par le dernier mode choisi. Désactivé par défaut.'
     'behavior.diary'              = 'Tenir un journal de bord'
     'behavior.diary.hint'         = 'Local uniquement · Aucun titre de fenêtre · Supprimez activity.json et tout est oublié.'
     'behavior.reapply'            = 'Quand Windows réarrange le bureau'

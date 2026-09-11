@@ -5,6 +5,15 @@ A release is dated only when its tag is ready to publish.
 
 ## 1.0.1 — not released yet
 
+- Dismiss the tray menu on an outside click or Escape even when Windows did not activate it.
+- Label the configured taskbar as a choice for future switches, including when its display is off.
+
+- Leave the display set Windows activated at startup in place by default. Restoring the last
+  chosen mode remains available as an explicit Behavior setting.
+- Keep the tray menu inside the current monitor's working area, with scrolling when its rows
+  exceed the available height, so bottom commands no longer hide behind the taskbar.
+- Let WPF windows follow each monitor's Windows scale when moving between displays or switching
+  the active desk, instead of retaining the previous scale under Windows PowerShell 5.1.
 - Preserve the physical meaning of imported `id:` display selectors in groups, primary choices,
   layout, rules and per-monitor settings. Exact paths never fall back to a shared model name.
 - Migrate imported solo captions containing model, ShortId and connection token to the matching

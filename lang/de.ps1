@@ -21,6 +21,7 @@
     'win.timer'                   = 'DeskModes — Timer'
 
     'desk.taskbar'                = 'Taskleiste'
+    'desk.taskbar.saved'          = 'Beim Wechsel'
 
     'nav.desk'                    = 'Ihr Schreibtisch'
     'nav.modes'                   = 'Modi'
@@ -34,7 +35,7 @@
     'desk.live.hint'              = 'Wird automatisch aktualisiert. Positionen, Ausrichtung und der mit einem Stern markierte Taskleistenmonitor stammen aus Windows.'
     'desk.live.unavailable'       = 'Windows hat keine Bildschirmanordnung gemeldet.'
     'desk.saved'                  = 'Umschaltlayout anpassen'
-    'desk.saved.hint'             = 'Die Windows-Anordnung bleibt standardmäßig erhalten. Ändern Sie hier die Reihenfolge oder den Taskleistenbildschirm, um sie anzupassen.'
+    'desk.saved.hint'             = 'Gespeicherte Auswahl für künftige Wechsel. Der markierte Bildschirm kann derzeit ausgeschaltet sein; die aktuelle Windows-Anordnung steht oben.'
     'desk.whichIsWhich'           = 'Welcher ist welcher'
     'desk.whichIsWhich.tip'       = 'Zeigt den Namen jedes Monitors kurz auf ihm selbst an.'
     'desk.copy'                   = 'Windows-Anordnung verwenden'
@@ -73,8 +74,8 @@
 
     'behavior.windows'            = 'Fensterpositionen merken'
     'behavior.windows.hint'       = 'Fenster dorthin zurückholen, wo sie waren — getrennt für jeden Monitorsatz.'
-    'behavior.lastMode'           = 'Letzten Modus wiederherstellen'
-    'behavior.lastMode.hint'      = 'Zu dem Modus zurückkehren, den Sie gewählt haben, und nicht zu dem, den Windows sich ausgesucht hat.'
+    'behavior.lastMode'           = 'Letzten Modus beim Start wiederherstellen'
+    'behavior.lastMode.hint'      = 'Beim Start die aktiven Bildschirme durch den zuletzt gewählten Modus ersetzen. Standardmäßig aus.'
     'behavior.diary'              = 'Tagebuch führen'
     'behavior.diary.hint'         = 'Nur lokal · Keine Fenstertitel · Löschen Sie activity.json, und alles ist vergessen.'
     'behavior.reapply'            = 'Wenn Windows den Schreibtisch umräumt'

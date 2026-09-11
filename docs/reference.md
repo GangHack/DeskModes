@@ -266,7 +266,7 @@ Written by the Settings window, and safe to edit by hand. See
 | `maximizeRefresh` | restore the highest refresh rate when no protected desktop snapshot applies; an exact saved mode takes precedence |
 | `notifications` | show a balloon after switching |
 | `restoreWindows` | remember and restore window positions per display set |
-| `restoreLastMode` | re-apply the last chosen mode after the computer starts |
+| `restoreLastMode` | replace the active screens with the last chosen mode when the application starts. Off by default |
 | `reapply` | rebuild the desk when the world changes: `onResume`, `onUnplug`, `onPlug`. Edited in Settings |
 | `rules` | switch by itself when something happens. Edited in Settings. See [Rules](#rules) |
 | `hooks` | mode key → `{ "before": "...", "after": "..." }`; a bare string means *after*. Edited in the mode editor |
@@ -357,10 +357,10 @@ dropped: a display that went away leaves the arrangement in pieces, and those pi
 you would come back to otherwise. Switch modes yourself in the meantime and the postponed
 rebuild is forgotten — you have just said what you want.
 
-None of this ever overwrites the mode **you** chose. `restoreLastMode` brings back your last
-choice, not the last thing the switcher did on its own — otherwise a monitor that fell asleep
-at the wrong moment would quietly become your new default, and every event afterwards would
-confirm it.
+None of this ever overwrites the mode **you** chose. When explicitly enabled, `restoreLastMode`
+brings back your last choice at application startup, not the last thing the switcher did on its
+own — otherwise a monitor that fell asleep at the wrong moment would quietly become your new
+default, and every event afterwards would confirm it.
 
 ## Rules
 

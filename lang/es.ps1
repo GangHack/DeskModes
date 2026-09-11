@@ -20,6 +20,7 @@
     'win.timer'                   = 'DeskModes — temporizador'
 
     'desk.taskbar'                = 'Barra de tareas'
+    'desk.taskbar.saved'          = 'Al cambiar'
 
     'nav.desk'                    = 'Tu escritorio'
     'nav.modes'                   = 'Modos'
@@ -33,7 +34,7 @@
     'desk.live.hint'              = 'Se actualiza automáticamente. Las posiciones, la orientación y el monitor de la barra de tareas marcado con una estrella proceden de Windows.'
     'desk.live.unavailable'       = 'Windows no informó de una disposición de pantallas.'
     'desk.saved'                  = 'Personalizar disposición al cambiar'
-    'desk.saved.hint'             = 'La disposición de Windows se conserva de forma predeterminada. Cambia aquí el orden o la pantalla de la barra de tareas para personalizarla.'
+    'desk.saved.hint'             = 'Opciones guardadas para futuros cambios. La pantalla resaltada puede estar apagada ahora; la disposición actual de Windows aparece arriba.'
     'desk.whichIsWhich'           = 'Cuál es cuál'
     'desk.whichIsWhich.tip'       = 'Muestra un momento el nombre de cada pantalla sobre ella misma.'
     'desk.copy'                   = 'Usar disposición de Windows'
@@ -72,8 +73,8 @@
 
     'behavior.windows'            = 'Recordar la posición de las ventanas'
     'behavior.windows.hint'       = 'Devolver las ventanas a donde estaban, por separado para cada conjunto de pantallas.'
-    'behavior.lastMode'           = 'Restaurar el último modo'
-    'behavior.lastMode.hint'      = 'Volver al modo que elegiste tú, y no al que decidió Windows.'
+    'behavior.lastMode'           = 'Restaurar el último modo al iniciar'
+    'behavior.lastMode.hint'      = 'Al iniciar, sustituye las pantallas activas por el último modo elegido. Desactivado de forma predeterminada.'
     'behavior.diary'              = 'Llevar un diario'
     'behavior.diary.hint'         = 'Solo local · Sin títulos de ventana · Borra activity.json y se olvida todo.'
     'behavior.reapply'            = 'Cuando Windows recoloca el escritorio'

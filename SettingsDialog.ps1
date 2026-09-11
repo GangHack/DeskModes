@@ -38,6 +38,11 @@ function Initialize-WpfRuntime {
     if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
         throw 'The settings window needs an STA thread. Run powershell.exe without -MTA.'
     }
+    # powershell.exe targets an older framework, so WPF keeps system-DPI compatibility
+    # even though DisplayCore enabled per-monitor awareness. Opt in before WPF caches its
+    # policy: otherwise a window keeps the old monitor's scale after the desk switches.
+    [System.AppContext]::SetSwitch('Switch.System.Windows.DoNotScaleForDpiChanges', $false)
+    [System.AppContext]::SetSwitch('Switch.System.Windows.DoNotUsePresentationDpiCapabilityTier2OrGreater', $false)
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
     $script:WpfReady = $true
 }
@@ -521,7 +526,7 @@ $script:UiResourcesXaml = @'
                                 <Path x:Name="Star" Width="12" Height="12" Stretch="Uniform"
                                       Fill="{StaticResource DimBrush}" VerticalAlignment="Center"
                                       Data="M 6,0 L 7.6,4.2 L 12,4.4 L 8.6,7.2 L 9.8,11.5 L 6,9 L 2.2,11.5 L 3.4,7.2 L 0,4.4 L 4.4,4.2 Z"/>
-                                <TextBlock x:Name="Lbl" Text="%%T:desk.taskbar%%" FontSize="12"
+                                <TextBlock x:Name="Lbl" Text="%%T:desk.taskbar.saved%%" FontSize="12" TextWrapping="Wrap"
                                            Foreground="{StaticResource DimBrush}" Margin="5,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
@@ -2528,10 +2533,11 @@ function New-SettingsWindow {
 
     $ui.RefreshBox.IsChecked  = [bool]$Settings.maximizeRefresh
     $ui.NotifyBox.IsChecked   = [bool]$Settings.notifications
-    # A key missing from settings.json means "the default", that is, on: the file gets edited by
-    # hand, and half the keys may not be in it.
+    # Window-position restoration defaults on, so a hand-edited file missing that key stays on.
     $ui.WindowsBox.IsChecked  = ($null -eq $Settings.restoreWindows -or [bool]$Settings.restoreWindows)
-    $ui.LastModeBox.IsChecked = ($null -eq $Settings.restoreLastMode -or [bool]$Settings.restoreLastMode)
+    # Startup restoration defaults off: the screen Windows made active now may differ from the
+    # mode chosen yesterday, and replacing it can leave the visible desktop on the wrong panel.
+    $ui.LastModeBox.IsChecked = [bool]$Settings.restoreLastMode
     # The diary is the other way round: a missing key means "off". This is data about a person,
     # and it is not collected by default.
     $ui.StatsBox.IsChecked    = [bool]$Settings.stats

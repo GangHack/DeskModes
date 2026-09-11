@@ -28,6 +28,7 @@
     'win.timer'                   = 'DeskModes - Timer'
 
     'desk.taskbar'                = 'Taskbar'
+    'desk.taskbar.saved'          = 'Taskbar on switch'
 
     'nav.desk'                    = 'Your desk'
     'nav.modes'                   = 'Modes'
@@ -41,7 +42,7 @@
     'desk.live.hint'              = 'Refreshes automatically. Positions, orientation and the starred taskbar display come from Windows.'
     'desk.live.unavailable'       = 'Windows did not report a display layout.'
     'desk.saved'                  = 'Configured for switching'
-    'desk.saved.hint'             = 'These controls are saved for future switches. Change the order or choose the taskbar display to customize them.'
+    'desk.saved.hint'             = 'Saved choices for future switches. The highlighted display may be off now; the live Windows layout is shown above.'
     'desk.whichIsWhich'           = 'Which is which'
     'desk.whichIsWhich.tip'       = 'Show each display''s name on it for a moment.'
     'desk.copy'                   = 'Use Windows layout'
@@ -77,8 +78,8 @@
 
     'behavior.windows'            = 'Remember window positions'
     'behavior.windows.hint'       = 'Bring windows back where they were, separately for every display set.'
-    'behavior.lastMode'           = 'Restore the last mode'
-    'behavior.lastMode.hint'      = 'Come back to the mode you chose last, not to whatever Windows picked.'
+    'behavior.lastMode'           = 'Restore the last mode at startup'
+    'behavior.lastMode.hint'      = 'Replace the screens active at startup with the last mode you chose. Off by default.'
     'behavior.diary'              = 'Keep a diary'
     'behavior.diary.hint'         = 'Local only · No window titles · Delete activity.json to forget everything.'
     'behavior.reapply'            = 'When Windows rearranges the desk'

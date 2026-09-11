@@ -630,9 +630,16 @@ minutes later, by a switch made by hand:
 ```
 
 So we remember the choice ourselves. Every switch that made it to the end writes the mode key into
-`last-mode.json`, and the tray puts it back at startup — a second and a half after the shortcuts
-started working (any earlier is not allowed: until the message loop is running the menu does not open
-and no balloons show).
+`last-mode.json`. If startup restoration is enabled, the tray puts it back a second and a half after
+the shortcuts started working (any earlier is not allowed: until the message loop is running the
+menu does not open and no balloons show).
+
+Startup restoration is opt-in. On 2026-09-10 at 10:54:26 it restored `solo:LG ULTRAFINE`, chosen
+the previous evening, while ASUS held the visible desktop and the LG panel had been switched off at
+its button. Windows accepted the configuration and ASUS was disabled, but success only meant the
+topology request was applied; it did not prove that the destination panel showed a picture. A
+remembered available target can therefore replace the screen that is useful now. Fresh and
+half-written settings leave the current startup desktop alone.
 
 What is remembered is the **choice, not the result**: even if one monitor never came up, the person
 asked for this mode specifically.
@@ -667,8 +674,9 @@ power-on the answer does not change, while the uptime counter drifts slightly af
 `Win32_OperatingSystem.LastBootUpTime` would give the same thing but costs 300 ms — a noticeable
 fraction of a second at tray startup.
 
-It is turned off with the "Restore the last mode after turning the computer on" checkbox or with
-`"restoreLastMode": false` in `settings.json`.
+It is turned on with the "Restore the last mode at startup" checkbox or with
+`"restoreLastMode": true` in `settings.json`. This option covers application startup only; resume,
+hotplug and process rules remain separate explicit behaviors.
 
 ## Window positions
 
@@ -832,10 +840,18 @@ A dark title bar is `DwmSetWindowAttribute(20)` (attribute 19 on builds before 2
 appears, that is, in SourceInitialized. A refusal from any of the DWM calls is silently ignored — the
 window simply keeps a light title bar.
 
-A caveat about DPI: the process is declared per-monitor aware v2 (for the window snapshots' sake),
-while WPF without a manifest cannot do per-monitor properly — moving the Settings window between
-monitors of different scale may show slight softness. The window is static and is opened rarely; if it
-ever gets in the way, look towards Switch.System.Windows.DoNotScaleForDpiChanges.
+The process is declared per-monitor aware v2 for window snapshots. WPF also needs its own opt-in
+under the older framework target of powershell.exe. `Initialize-WpfRuntime` sets
+`Switch.System.Windows.DoNotScaleForDpiChanges=false` and
+`Switch.System.Windows.DoNotUsePresentationDpiCapabilityTier2OrGreater=false` before loading WPF.
+Without them, WPF keeps system-DPI compatibility even when the native process is per-monitor aware.
+The first switch enables monitor scale changes; the second enables the newer PMv2 handling.
+See Microsoft's [per-monitor guide](https://github.com/microsoft/WPF-Samples/blob/main/PerMonitorDPI/readme.md)
+and [.NET Framework 4.8 notes](https://devblogs.microsoft.com/dotnet/announcing-the-net-framework-4-8/).
+
+Verified on 2026-09-09 in Windows PowerShell 5.1: both resolved WPF policies were true before the
+fix and false afterwards. The regression reads WPF's cached policy, rather than merely reading
+back the AppContext settings. A physical 4K/2K switch still needs acceptance at the desk.
 
 ## Event handlers: .GetNewClosure() is banned (2026-08-19)
 

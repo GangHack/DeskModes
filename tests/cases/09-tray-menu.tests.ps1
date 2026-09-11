@@ -113,3 +113,151 @@ Test-Case 'menu: an unavailable mode stays readable too, just quieter' {
     }
     finally { $g.Dispose(); $bmp.Dispose() }
 }
+
+# Exercise the real WinForms layout without starting the tray or switching a display.
+. (Get-TrayFunctionSource 'Update-TrayMenuWorkingArea')
+
+Test-Case 'menu: completed rows fit above the taskbar after growing on open' {
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    try {
+        $area = New-Object System.Drawing.Rectangle 0, 0, 1280, 720
+        $menu.Location = New-Object System.Drawing.Point 1100, 680
+        foreach ($number in 1..24) {
+            $item = New-Object System.Windows.Forms.ToolStripMenuItem "Mode $number"
+            $item.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+            [void]$menu.Items.Add($item)
+        }
+        Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $area
+        Assert-True ($area.Contains($menu.Bounds)) 'every edge is inside the working area'
+        Assert-Equal 24 $menu.Items.Count 'no commands are removed to fit'
+    }
+    finally { $menu.Dispose() }
+}
+
+Test-Case 'menu: a tall menu scrolls and can grow again on a larger display' {
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    try {
+        foreach ($number in 1..40) { [void]$menu.Items.Add("Mode $number") }
+        $small = New-Object System.Drawing.Rectangle 0, 0, 1000, 300
+        Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $small
+        Assert-True ($small.Contains($menu.Bounds)) 'the menu fits the shorter display'
+        # ToolStripDropDownMenu uses its own scroll buttons, not Control.AutoScroll.
+        $flags = [System.Reflection.BindingFlags]'Instance,NonPublic'
+        $scroll = [System.Windows.Forms.ToolStripDropDownMenu].GetProperty('RequiresScrollButtons', $flags)
+        Assert-True ([bool]$scroll.GetValue($menu, $null)) 'overflow commands have scroll buttons'
+        $shortHeight = $menu.Height
+
+        $large = New-Object System.Drawing.Rectangle 0, 0, 1600, 1200
+        Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $large
+        Assert-True ($menu.Height -gt $shortHeight) 'a previous small screen does not pin the height'
+        Assert-True ($large.Contains($menu.Bounds)) 'the expanded menu still fits'
+        Assert-True (-not [bool]$scroll.GetValue($menu, $null)) 'scroll buttons disappear when all rows fit'
+    }
+    finally { $menu.Dispose() }
+}
+
+Test-Case 'menu: fitting honors taskbars at the top or left' {
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    try {
+        [void]$menu.Items.Add('Settings')
+        $area = New-Object System.Drawing.Rectangle 80, 60, 1000, 650
+        $menu.Location = New-Object System.Drawing.Point 0, 0
+        Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $area
+        Assert-True ($area.Contains($menu.Bounds)) 'offset working area contains the menu'
+        Assert-Equal $area.Left $menu.Left 'left taskbar is excluded'
+        Assert-Equal $area.Top $menu.Top 'top taskbar is excluded'
+    }
+    finally { $menu.Dispose() }
+}
+
+Test-Case 'menu: tray placement keeps the final rebuilt menu above the real taskbar' {
+    # NotifyIcon uses a different path from ContextMenuStrip.Show: it positions again
+    # after Opened. Exercise that exact path and the production handler, then drain the
+    # queued fit. This creates only a disposable test menu, never the real tray process.
+    $opened = (Get-TrayAst).FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+        $n.Expression.Extent.Text -eq '$menu' -and $n.Member.Value -eq 'add_Opened'
+    }, $true)
+    Assert-Equal 1 $opened.Count 'one production Opened handler'
+    $openedBody = [scriptblock]::Create($opened[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
+    function Write-MenuForegroundNote { }
+    $script:MenuDismissTimer = New-Object System.Windows.Forms.Timer
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.AutoClose = $false   # The probe does not claim foreground activation from the user.
+    [void]$menu.Items.Add('Previous layout')   # Opening replaces this smaller cached layout.
+    try {
+        $menu.add_Opening({
+            $menu.Items.Clear()
+            foreach ($number in 1..$script:TrayMenuTestRows) {
+                $item = New-Object System.Windows.Forms.ToolStripMenuItem "Mode $number"
+                $item.Padding = New-Object System.Windows.Forms.Padding 0, 4, 0, 4
+                [void]$menu.Items.Add($item)
+            }
+        })
+        $menu.add_Opened($openedBody)
+        $screen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position)
+        $show = $menu.GetType().GetMethod('ShowInTaskbar', [System.Reflection.BindingFlags]'Instance,NonPublic')
+        foreach ($rowCount in 24, 80, 24) {
+            $script:TrayMenuTestRows = $rowCount
+            [void]$show.Invoke($menu, @([int]($screen.Bounds.Right - 100), [int]($screen.Bounds.Bottom - 15)))
+            [System.Windows.Forms.Application]::DoEvents()
+            Assert-True ($screen.WorkingArea.Contains($menu.Bounds)) "$rowCount rows fit after native placement"
+            Assert-Equal $rowCount $menu.Items.Count 'all rebuilt commands remain present'
+            $key = $menu.GetType().GetMethod('ProcessDialogKey', [System.Reflection.BindingFlags]'Instance,NonPublic')
+            [void]$key.Invoke($menu, @([System.Windows.Forms.Keys]::End))
+            $last = $menu.Items[$menu.Items.Count - 1]
+            Assert-True $last.Selected 'the last command can be reached by keyboard'
+            Assert-True ($last.Bounds.Bottom -le $menu.Height) 'the last command scrolls into view'
+            $menu.Close()
+        }
+    }
+    finally { $menu.Dispose(); $script:MenuDismissTimer.Dispose() }
+}
+
+. (Get-TrayFunctionSource 'Test-TrayMenuContainsPoint')
+. (Get-TrayFunctionSource 'Update-TrayMenuDismissal')
+
+Test-Case 'menu: an unactivated menu closes on a fresh outside click or Escape' {
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.AutoClose = $false
+    [void]$menu.Items.Add('Settings')
+    $state = @{ Menu = $menu; MouseDown = $true; EscapeDown = $false }
+    $outside = New-Object System.Drawing.Point -30000, -30000
+    try {
+        $menu.Show(100, 100)
+        Update-TrayMenuDismissal -State $state -Point $outside -MouseDown $true -EscapeDown $false
+        Assert-True $menu.Visible 'the held opening click is ignored'
+        Update-TrayMenuDismissal -State $state -Point $outside -MouseDown $false -EscapeDown $false
+        Assert-True $menu.Visible 'moving outside without clicking keeps the menu open'
+        Update-TrayMenuDismissal -State $state -Point $outside -MouseDown $true -EscapeDown $false
+        Assert-True (-not $menu.Visible) 'a fresh outside click closes even without activation'
+        $menu.Show(100, 100)
+        Update-TrayMenuDismissal -State $state -Point $outside -MouseDown $false -EscapeDown $true
+        Assert-True (-not $menu.Visible) 'Escape closes even without activation'
+    }
+    finally { $menu.Dispose() }
+}
+
+Test-Case 'menu: clicks in the menu and its timer submenu do not dismiss it' {
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.AutoClose = $false
+    $parent = New-Object System.Windows.Forms.ToolStripMenuItem 'Timer'
+    [void]$parent.DropDownItems.Add('In an hour')
+    $parent.DropDown.AutoClose = $false
+    [void]$menu.Items.Add($parent)
+    $state = @{ Menu = $menu; MouseDown = $false; EscapeDown = $false }
+    try {
+        $menu.Show(100, 100)
+        $inside = New-Object System.Drawing.Point ($menu.Left + 8), ($menu.Top + 8)
+        Update-TrayMenuDismissal -State $state -Point $inside -MouseDown $true -EscapeDown $false
+        Assert-True $menu.Visible 'a menu click is handled by the normal item events'
+        $parent.ShowDropDown()
+        $sub = $parent.DropDown
+        $inside = New-Object System.Drawing.Point ($sub.Left + 8), ($sub.Top + 8)
+        Update-TrayMenuDismissal -State $state -Point $inside -MouseDown $false -EscapeDown $false
+        Update-TrayMenuDismissal -State $state -Point $inside -MouseDown $true -EscapeDown $false
+        Assert-True $menu.Visible 'a submenu click is inside the menu tree'
+        Assert-True $sub.Visible 'the timer options remain available'
+    }
+    finally { $menu.Dispose() }
+}
