@@ -75,7 +75,7 @@ new file of the program ships by itself, a new file for us has to be named there
 | File | Lines | Go here for |
 | --- | --- | --- |
 | `DisplayCore.ps1` | 5656 | the engine: state, switching, modes, brightness, rules, hooks. Embedded C# 864-2195, the compiled-assembly cache 2197-2305, `Switch-DisplayMode` at 4217 |
-| `SettingsDialog.ps1` | 6086 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup and the diary window. Building a window is separated from showing it so tests can build one and never show it |
+| `SettingsDialog.ps1` | 6086 | all WPF: the Settings window, the mode editor, the rule editor, the timer popup, the diary window and the four-screen first-steps tour. Building a window is separated from showing it so tests can build one and never show it |
 | `Displays.ps1` | 1511 | the app: tray icon, menu, hotkey registration, watchdogs, timers |
 | `Activity.ps1` | 583 | the diary, the report both the window and the page are built from, and that page |
 | `Set-Display.ps1` | 229 | the command line: argument parsing and printing, no logic |

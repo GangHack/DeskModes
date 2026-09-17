@@ -234,6 +234,7 @@ Test-Case 'settings language: modal rebuilds preserve the page, saved result and
             Settings=$Settings; State=$State; Positions=$Positions; Page=$Page; Result=$null
             StartupWasEnabled=$false; StartupBox=[pscustomobject]@{IsChecked=$false}
             SleepMinutes=-1; SleepWanted=-1; Baseline=''; OnSaved=$null; SaveBusy=$false
+            DeskBaselineFingerprint=''; DeskSavedLayout=$null; DeskSavedPrimary=$null; DeskApplyPending=$false
             LanguageCode=$script:LangCode; RestartOnLanguageChange=$false; ReloadLanguage=$false
             RequestedLanguage=$Settings.language; Window=$null
         }

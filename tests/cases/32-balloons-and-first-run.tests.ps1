@@ -69,8 +69,22 @@ $script:StartupTimer | Add-Member -MemberType ScriptMethod -Name Stop -Value { $
 # The tick's neighbours: the mode restore itself is tested in 16-restore-on-start, and here it only has
 # to stay out of the way.
 function Invoke-StartupRestore { }
-function Open-SettingsWindow { $script:SettingsOpened = $true }
+function Open-SettingsWindow { $script:SettingsOpened = $true; $script:Order += 'settings' }
 function Optimize-TrayMemory { }
+
+# The tour. $script:WelcomeAnswer is what the person pressed on its last screen, and
+# $script:WelcomeThrows is the window failing to build at all — the case the first run has to
+# survive by falling back to what it did before the tour existed.
+$script:WelcomeShown = $false
+$script:WelcomeAnswer = $true
+$script:WelcomeThrows = $false
+$script:Order = @()
+function Open-FirstSteps {
+    $script:WelcomeShown = $true
+    $script:Order += 'welcome'
+    if ($script:WelcomeThrows) { throw 'no window' }
+    return $script:WelcomeAnswer
+}
 
 # Show-Balloon reads the settings the way the whole tray does — through the function, never through the
 # variable. Ours is declared here rather than borrowed from an earlier file of cases: a test that reads
@@ -87,10 +101,14 @@ function Set-BalloonScene {
 }
 
 function Invoke-StartupTick {
-    param([bool]$First)
+    param([bool]$First, [bool]$Answer = $true, [bool]$Throws = $false)
     Set-BalloonScene -Notifications $true
     $script:SettingsOpened = $false
     $script:TimerStopped = $false
+    $script:WelcomeShown = $false
+    $script:WelcomeAnswer = $Answer
+    $script:WelcomeThrows = $Throws
+    $script:Order = @()
     $script:FirstRun = $First
     & $script:StartupTick
 }
@@ -188,16 +206,40 @@ Test-Case 'startup: a first run that could not save the settings says so' {
     }
 }
 
-Test-Case 'startup: the first run says where the menu is and opens Settings itself' {
+Test-Case 'startup: the first run shows the tour, then says where the menu is, then opens Settings' {
     # The welcome is shown from the startup timer, once the message loop is already running: before it a
     # balloon does not appear at all, and the Settings window would have stood across the startup. Which
     # is why the tick is run whole rather than read with the eye.
+    #
+    # The order matters as much as the parts. Settings used to open by itself onto the desk diagram —
+    # a page that answers "how do I arrange this" to somebody who does not yet know what a mode is.
     Invoke-StartupTick -First $true
     Assert-True $script:TimerStopped 'the one-shot timer stopped itself'
+    Assert-True $script:WelcomeShown 'the tour was shown'
+    Assert-Equal 'welcome settings' ($script:Order -join ' ') 'the tour first, the window after it'
     Assert-Equal 1 $script:tray.Shown 'one balloon'
     Assert-True ($script:tray.BalloonTipText -like '*Double-click*') 'which says how Settings opens'
     Assert-True ($script:tray.BalloonTipText -like '*right-click*') 'and where the display menu is'
     Assert-True $script:SettingsOpened 'and the window opened by itself'
+}
+
+Test-Case 'startup: a tour that was skipped opens no window behind itself' {
+    # Skip has to mean skip. A first run that answered "not now" and then got the Settings window
+    # anyway would be a dialog that does not do what it says.
+    Invoke-StartupTick -First $true -Answer $false
+    Assert-True $script:WelcomeShown 'the tour was shown'
+    Assert-True (-not $script:SettingsOpened) 'and nothing followed it'
+    Assert-Equal 1 $script:tray.Shown 'the balloon still points at the icon'
+}
+
+Test-Case 'startup: a tour that will not open leaves the old first run behind it' {
+    # The tour is the newest thing on the path a first run takes, and it must not be the thing that
+    # can break one. When its window cannot be built, what happens is exactly what happened before
+    # it existed: the balloon and the Settings window.
+    Invoke-StartupTick -First $true -Throws $true
+    Assert-Equal 1 $script:tray.Shown 'the balloon went out'
+    Assert-True $script:SettingsOpened 'and the window opened'
+    Assert-True $script:TimerStopped 'the start finished'
 }
 
 Test-Case 'startup: every later start is silent' {
@@ -205,6 +247,7 @@ Test-Case 'startup: every later start is silent' {
     Invoke-StartupTick -First $false
     Assert-Equal 0 $script:tray.Shown 'no welcome'
     Assert-True (-not $script:SettingsOpened) 'no window'
+    Assert-True (-not $script:WelcomeShown) 'and no tour'
     Assert-True $script:TimerStopped 'the timer still stops'
 }
 
@@ -234,16 +277,21 @@ Test-Case 'settings Save: the tray adopts language and hotkeys before the dialog
     $script:AppliedLanguage = ''
     $script:AppliedHotkeys = 0
     $script:AppliedBalloons = 0
+    $script:AppliedTrayText = 0
     function Set-ActiveSettings { param($NewSettings) $script:AppliedSettings = $NewSettings }
     function Initialize-Language { param([string]$Code) $script:AppliedLanguage = $Code; return $Code }
     function Register-Hotkeys { $script:AppliedHotkeys++ }
     function Show-Balloon { param($Title, $Text, $Kind, [switch]$Always) $script:AppliedBalloons++ }
+    function Update-TrayText { $script:AppliedTrayText++ }
 
     Invoke-SavedSettings -NewSettings $saved
 
     Assert-True ($script:AppliedSettings -eq $saved) 'the active settings change immediately'
     Assert-Equal 'ru' $script:AppliedLanguage 'the active language changes immediately'
     Assert-Equal 1 $script:AppliedHotkeys 'the shortcuts are registered immediately'
+    # The icon's tooltip carries a mode's TITLE, and a Save can have changed the language it is
+    # in or the name of the combination the desk is sitting in.
+    Assert-Equal 1 $script:AppliedTrayText 'and the tooltip is rebuilt in the new language'
     Assert-Equal 1 $script:AppliedBalloons 'the in-window Save is acknowledged'
 }
 

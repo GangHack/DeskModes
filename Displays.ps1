@@ -135,6 +135,9 @@ function Invoke-SavedSettings {
     Set-ActiveSettings $NewSettings
     [void](Initialize-Language -Code $NewSettings.language)
     Register-Hotkeys
+    # The tooltip carries a mode's TITLE, which changes with the language and with a combination
+    # being renamed - both of which a Save can have just done.
+    Update-TrayText
     Show-Balloon (Get-Text -Key 'balloon.saved') (Get-Text -Key 'balloon.saved.body') -Always
 }
 
@@ -146,6 +149,9 @@ function Invoke-SavedSettings {
 # configuration-changed event.
 
 $script:StateCache = $null
+# Which mode the desk is in, by key. Filled by every cache refresh and read by the icon's
+# tooltip; empty means the desk matches no mode, which is an ordinary state and not a failure.
+$script:ActiveModeKey = ''
 # A successful refresh advances this even when the desk itself is unchanged. Rule ownership reads
 # it across Invoke-Mode so a failed refresh cannot pass the old source desk off as the switch result.
 $script:StateCacheGeneration = 0
@@ -192,6 +198,21 @@ function Update-StateCache {
         # the desk out of it: everybody who asks later (the menu, the Settings window, the
         # startup migration) gets it without going near the disk again.
         $script:DeskCache = @(Get-DeskDisplays -State $script:StateCache)
+        # And which mode that desk IS, for the icon's tooltip. The KEY and not the title: the
+        # title is language-dependent, and this cache outlives a language change (see
+        # Update-TrayText, which resolves it every time it is asked).
+        #
+        # Here rather than in Update-TrayText because that one is called once a second while a
+        # sleep timer is armed, and working the mode out costs a walk of every mode there is.
+        $script:ActiveModeKey = ''
+        try {
+            $settings = Get-ActiveSettings
+            if ($settings) {
+                $modes = @(Get-DisplayModes -State $script:StateCache -Settings $settings)
+                $script:ActiveModeKey = [string](Get-ActiveModeKey -State $script:StateCache -Modes $modes)
+            }
+        }
+        catch { Write-DisplayLog "cache: could not name the active mode - $($_.Exception.Message)" }
         $script:StateCacheGeneration++
     }
     catch {
@@ -306,6 +327,22 @@ function Get-RuleModeMemberIds {
              ForEach-Object { [string]$_.Id } | Where-Object { $_ } | Sort-Object -Unique)
 }
 
+# A background rule may turn off the whole source desk only after one of its own destination displays is
+# already carrying a picture. Windows can report a sleeping panel as available and even accept its CCD
+# path without the monitor producing a signal; switching from two lit LGs to that dark ASUS left no screen
+# from which to recover. A person's hotkey remains allowed to wake a new display, while a rule waits until
+# the target has been switched on manually and the cache observes it as active.
+function Test-RuleSwitchHasActiveAnchor {
+    param([string]$ModeKey, $State)
+
+    $requested = @(Get-RuleModeMemberIds -ModeKey $ModeKey -State $State)
+    if ($requested.Count -eq 0) { return $false }
+    $active = @($State | Where-Object { $_ -and $_.Active -and -not $_.Disconnected } |
+                ForEach-Object { [string]$_.Id } | Where-Object { $_ })
+    if ($active.Count -eq 0) { return $false }
+    return (@($active | Where-Object { $requested -contains $_ }).Count -gt 0)
+}
+
 # A claim has anchors that our switch actually put in the requested set, and an allowed envelope made
 # from the requested set plus displays initially left on. This accepts A -> AB as B wakes, and ABC ->
 # AB as C finally goes out, without accepting A -> B or a newly introduced D. Known false means the
@@ -394,13 +431,21 @@ function Invoke-RulesCheck {
 
     switch ($decision.Action) {
         'switch' {
+            $requestedIds = @(Get-RuleModeMemberIds -ModeKey ([string]$decision.Mode) -State $state)
+            if (-not (Test-RuleSwitchHasActiveAnchor -ModeKey ([string]$decision.Mode) -State $state)) {
+                $note = '{0}|inactive destination' -f [string]$decision.Mode
+                if ($note -ne $script:RuleLastBlocked) {
+                    Write-DisplayLog ("rule: not switching to {0} - none of its displays is active" -f $decision.Mode)
+                    $script:RuleLastBlocked = $note
+                }
+                break
+            }
             $script:RuleOwnedIndex = [int]$decision.RuleIndex
             $script:RuleOwnedBack = [string]$decision.Back
             $script:RuleOwnedSig = Get-RuleSignature -Rule $rules[[int]$decision.RuleIndex]
             $script:RuleOwnedTaken = $false
             $script:RuleReturnTries = 0
             $script:RuleLastBlocked = ''
-            $requestedIds = @(Get-RuleModeMemberIds -ModeKey ([string]$decision.Mode) -State $state)
             $generationBefore = $script:StateCacheGeneration
             Write-DisplayLog ("rule: {0} -> {1}" -f $decision.Reason, $decision.Mode)
             Invoke-Mode $decision.Mode -Auto
@@ -1092,8 +1137,24 @@ function Update-TrayText {
         # "sleep" are verbs, and a language that declines them cannot take them ready-made.
         $tray.Text = '{0} - {1}' -f $script:AppName,
                      (Get-Text -Key ('tray.timer.' + $script:PowerAction) -Values @((Format-Duration (Get-PowerRemaining))))
+        return
     }
-    else { $tray.Text = $script:AppName }
+    # The mode the desk is in. This is the one place Windows itself offers to say something under
+    # the cursor, and it used to say the program's name and nothing more - to a person who at that
+    # moment wanted to know which of their modes was on, and had to open the menu to find out.
+    #
+    # The title is resolved here rather than cached with the key, so it is in whatever language
+    # the tray is speaking now. NotifyIcon.Text is capped (63 characters on the older shell), and
+    # a name past that would throw and leave the icon with no tooltip at all.
+    $title = ''
+    if ($script:ActiveModeKey) {
+        try { $title = [string](Get-ModeTitleFromKey -Key $script:ActiveModeKey) }
+        catch { $title = '' }
+    }
+    if (-not $title) { $tray.Text = $script:AppName; return }
+    $text = '{0} - {1}' -f $script:AppName, $title
+    if ($text.Length -gt 63) { $text = $text.Substring(0, 62) + [string][char]0x2026 }
+    $tray.Text = $text
 }
 
 function Start-PowerTimer {
@@ -1329,6 +1390,55 @@ function Open-SettingsWindow {
     Optimize-TrayMemory
 }
 
+# The four first-steps screens, from the tray menu and from the first run. Shown with this desk's
+# own monitors and its own shortcuts in them (Get-WelcomeFacts), and answering $true only when the
+# person asked for the Settings window on the last one.
+#
+# A body here rather than in the menu handler for the reason Open-SettingsWindow has one: a
+# function runs in script scope, and inside .GetNewClosure() neither $script: nor a function name
+# resolves.
+function Open-FirstSteps {
+    $settings = Get-ActiveSettings
+    $facts = Get-WelcomeFacts -State (Get-CachedDesk) -Settings $settings
+    return [bool](Show-WelcomeDialog -Displays $facts.Displays -Shortcuts $facts.Shortcuts `
+                                     -Language ([string]$settings.language) `
+                                     -OnLanguage { param($code) Set-TrayLanguage -Code $code })
+}
+
+# The language chosen in the tour's footer, on its way into settings.json and into the tray. The
+# same key the Behavior page writes, so the two cannot drift; not Invoke-SavedSettings, which
+# re-registers the shortcuts and pops a "Settings saved" balloon - nothing here touched a shortcut,
+# and a balloon over a window somebody is still reading is noise.
+#
+# A refusal to write is not worth stopping the tour for: the language holds for this run, the log
+# says why it will not hold for the next, and the person is in the middle of a first run.
+function Set-TrayLanguage {
+    param([string]$Code)
+
+    $settings = Get-ActiveSettings
+    $settings.language = [string]$Code
+    Set-ActiveSettings $settings
+    [void](Initialize-Language -Code $settings.language)
+    Update-TrayText   # the tooltip names the mode, and that name has just changed language
+    if (-not (Save-DisplaySettings $settings)) {
+        Write-DisplayLog 'welcome: the language was changed for this run but could not be saved'
+    }
+}
+
+# The menu item on top of it. The first run wants the ANSWER (it has a balloon to show between the
+# tour and the window); a click on the menu wants the whole errand done.
+function Open-WelcomeWindow {
+    $wanted = $false
+    try { $wanted = Open-FirstSteps }
+    catch {
+        Write-DisplayLog "welcome: the window failed - $($_.Exception.Message)"
+        Show-Balloon (Get-Text -Key 'balloon.welcomeFailed') $_.Exception.Message 'Error'
+    }
+    if ($wanted) { Open-SettingsWindow }
+    # A WPF window, like the settings one, leaves a working set behind it.
+    Optimize-TrayMemory
+}
+
 # --- the menu ---------------------------------------------------------------
 # Rebuilt on every open: the set of connected monitors changes, and the item for one that
 # was pulled out has to be visible as unavailable rather than lying.
@@ -1348,6 +1458,7 @@ function Add-MenuHeader {
 }
 
 $menu.add_Opening({
+    param($sender, $e)
     $scale = Get-UiScale
     $iconPx = Get-ScaledPx -Value 16 -Scale $scale
     $sidePad = Get-ScaledPx -Value 4 -Scale $scale
@@ -1554,9 +1665,16 @@ $menu.add_Opening({
     if (-not (Get-ActiveSettings).stats) {
         # The diary is off — the item is visible, but it explains why it is empty instead of
         # opening a page full of zeroes.
+        #
+        # It used to explain that in a balloon, which is a dead end: the answer to "why is this
+        # empty" is one switch away, the balloon named the switch, and the person still had to go
+        # and find it. So the item opens the page that switch is on instead, and the balloon says
+        # the same thing from beside the icon the window came out of.
         $statsItem.Text = Get-Text -Key 'menu.statisticsOff'
         $statsItem.add_Click({
             Show-Balloon (Get-Text -Key 'balloon.diaryOff') (Get-Text -Key 'balloon.diaryOff.body') 'Warning'
+            Open-SettingsWindow -Page 'behavior'
+            Optimize-TrayMemory
         })
     }
     else {
@@ -1583,6 +1701,14 @@ $menu.add_Opening({
     $settingsItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $settingsItem.add_Click({ Open-SettingsWindow })
     [void]$menu.Items.Add($settingsItem)
+
+    # Between Settings and the log, which is where the two kinds of "I do not know what is going
+    # on" part company: this one is the person who has not learned the program yet, and everything
+    # below it is the person whose desk has just gone wrong.
+    $welcomeItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.welcome')
+    $welcomeItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
+    $welcomeItem.add_Click({ Open-WelcomeWindow })
+    [void]$menu.Items.Add($welcomeItem)
 
     $logItem = New-Object System.Windows.Forms.ToolStripMenuItem (Get-Text -Key 'menu.openLog')
     $logItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
@@ -1613,6 +1739,11 @@ $menu.add_Opening({
     $exitItem.Padding = New-Object System.Windows.Forms.Padding 0, $itemPad, 0, $itemPad
     $exitItem.add_Click({ [System.Windows.Forms.Application]::Exit() })
     [void]$menu.Items.Add($exitItem)
+
+    # WinForms presets Cancel when the menu starts empty, before calling Opening.
+    # The first tray click builds all rows here, so decide from the populated menu;
+    # otherwise ShowInTaskbar leaves an unpainted window until the second click.
+    $e.Cancel = ($menu.Items.Count -eq 0)
 })
 
 # NotifyIcon owns the right button and opens its ContextMenuStrip. Settings follows the desktop's
@@ -1643,6 +1774,7 @@ $script:LastVanishIds = @()
 $script:LastDeskLine = ''
 
 Update-StateCache   # so the first menu open is as fast as all the others, and the names are known
+Update-TrayText     # and the icon names the mode it is in from the very first hover
 
 # The cache is refreshed on the system's event: a monitor could have been switched on, off
 # or reconnected past our application too.
@@ -1653,6 +1785,9 @@ Update-StateCache   # so the first menu open is as fast as all the others, and t
 $script:DisplayChanged = {
     $before = @($script:PresentIds)
     Update-StateCache
+    # The refresh has just worked out which mode this desk is, so the tooltip catches up here -
+    # this handler is what fires after every switch, ours and Windows' own.
+    Update-TrayText
     # The configured row remains the person's working copy; only the live diagram and facts follow
     # a primary, position or topology change that happened outside this window.
     Update-OpenSettingsDesk -State (Get-CachedDesk)
@@ -1782,10 +1917,21 @@ $script:StartupTimer.add_Tick({
     # or that its menu is the right-hand one. Here rather than right after the settings are
     # created: by this point the message loop is running, and before it a balloon does not
     # show, while the Settings window would have stood across the startup.
+    #
+    # The tour comes FIRST and the Settings window only if it was asked for. What used to happen
+    # was that Settings opened by itself onto the desk diagram — a page that answers "how do I
+    # arrange this" to somebody who does not yet know what a mode is or where the program went
+    # once the window closes. The balloon stays: the tour explains the tray icon, and the balloon
+    # then points at it on the screen, which no window can do.
     if ($script:FirstRun) {
+        # True if the tour cannot be built at all — then this behaves exactly as it did before it
+        # existed, Settings and all, rather than leaving a first run with nothing on the screen.
+        $goToSettings = $true
+        try { $goToSettings = [bool](Open-FirstSteps) }
+        catch { Write-DisplayLog "startup: the first-steps window failed - $($_.Exception.Message)" }
         try {
             Show-Balloon $script:AppName (Get-Text -Key 'balloon.firstRun')
-            Open-SettingsWindow
+            if ($goToSettings) { Open-SettingsWindow }
         }
         catch { Write-DisplayLog "startup: first-run welcome failed - $($_.Exception.Message)" }
     }

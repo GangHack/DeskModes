@@ -79,6 +79,8 @@ function New-RestorationDesk {
     $portrait.X = 2560; $portrait.Y = -180; $portrait.Primary = $false
     $portrait.Width = 1080; $portrait.Height = 1920; $portrait.Hz = 75
     $portrait.Rotation = 4; $portrait.RateNum = 75; $portrait.RateDen = 1
+    $portrait | Add-Member SourceWidth 1920 -Force
+    $portrait | Add-Member SourceHeight 1080 -Force
     return @($left, $primary, $portrait)
 }
 
@@ -93,6 +95,8 @@ Test-Case 'desktop snapshot: every physical display property survives capture' {
     Assert-Equal 4 $samsung.Rotation 'portrait flipped rotation'
     Assert-Equal 1080 $samsung.Width 'portrait width'
     Assert-Equal 1920 $samsung.Height 'portrait height'
+    Assert-Equal 1920 $samsung.SourceWidth 'CCD source width remains unrotated'
+    Assert-Equal 1080 $samsung.SourceHeight 'CCD source height remains unrotated'
     Assert-Equal 75 $samsung.RateNum 'exact refresh numerator'
     Assert-Equal 1 $samsung.RateDen 'exact refresh denominator'
 }
@@ -123,6 +127,8 @@ Test-Case 'desktop snapshot store: exact layouts survive disk and damaged bytes 
     Assert-Equal 'another-set' $back.PendingKey 'an interrupted destination remains guarded'
     Assert-True $back.UnsafeKeys.ContainsKey('another-set') 'failed sets survive independently of the current pending set'
     Assert-Equal 4 $back.Snapshots[$snapshot.Key].Displays[2].Rotation 'rotation survived JSON'
+    Assert-Equal 1920 $back.Snapshots[$snapshot.Key].Displays[2].SourceWidth 'source width survived JSON'
+    Assert-Equal 1080 $back.Snapshots[$snapshot.Key].Displays[2].SourceHeight 'source height survived JSON'
 
     Set-Content -Path $script:DesktopSnapshotsFile -Value '{not json' -Encoding UTF8
     Assert-Equal 0 @((Read-DesktopSnapshotStore).Snapshots.Keys).Count 'damaged state reads as empty'
@@ -141,8 +147,70 @@ Test-Case 'desktop restore plan: a saved desk requests exact positions rotation 
     Assert-Equal 2560 $samsung.X 'saved X is requested'
     Assert-Equal (-180) $samsung.Y 'saved Y is requested'
     Assert-Equal 4 $samsung.Rotation 'saved rotation is requested'
+    Assert-Equal 1920 $samsung.SourceWidth 'the native source mode is not replaced by rotated desktop bounds'
+    Assert-Equal 1080 $samsung.SourceHeight 'the native source mode height stays physical'
     Assert-Equal 75 $samsung.RateNum 'saved exact numerator is requested'
     Assert-Equal 1 $samsung.RateDen 'saved exact denominator is requested'
+}
+
+Test-Case 'desktop snapshot store: only legacy records infer missing native source dimensions' {
+    $snapshot = New-DesktopSnapshot -State (New-RestorationDesk)
+    $legacy = [ordered]@{
+        version = 2; protectedKey = ''; protectedSnapshot = $null; pendingKey = ''; pendingSourceKey = ''
+        unsafeKeys = @(); snapshots = @([ordered]@{
+            key = $snapshot.Key; primaryId = $snapshot.PrimaryId
+            displays = @($snapshot.Displays | ForEach-Object {
+                [ordered]@{ id = $_.Id; label = $_.Label; x = $_.X; y = $_.Y; width = $_.Width
+                    height = $_.Height; hz = $_.Hz; rotation = $_.Rotation; scaling = $_.Scaling
+                    rateNum = $_.RateNum; rateDen = $_.RateDen }
+            })
+        })
+    }
+    [System.IO.File]::WriteAllText($script:DesktopSnapshotsFile,
+        (($legacy | ConvertTo-Json -Depth 6 -Compress) + "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+
+    $back = Read-DesktopSnapshotStore
+
+    Assert-Equal 1920 $back.Snapshots[$snapshot.Key].Displays[2].SourceWidth `
+        'legacy logical height becomes the portrait source width'
+    Assert-Equal 1080 $back.Snapshots[$snapshot.Key].Displays[2].SourceHeight `
+        'legacy logical width becomes the portrait source height'
+}
+
+Test-Case 'desktop snapshot: inconsistent native source dimensions are rejected' {
+    # Load-bearing, not pedantry. The two readings disagree while a mode is changing - which is what a
+    # fullscreen game does on launch and on exit - and a null snapshot is what makes every caller stand
+    # down instead of sending half-read geometry to SetDisplayConfig and blanking the desk.
+    $desk = New-RestorationDesk
+    $desk[2].SourceWidth = 1080; $desk[2].SourceHeight = 1920
+    Assert-Null (New-DesktopSnapshot -State $desk) 'positive rotated logical bounds cannot pose as a CCD source'
+
+    $desk = New-RestorationDesk
+    $desk[2].SourceWidth = 0; $desk[2].SourceHeight = 0
+    Assert-Null (New-DesktopSnapshot -State $desk) 'explicit zero source dimensions are transient rather than legacy'
+
+    $desk = New-RestorationDesk
+    $desk[2].PSObject.Properties.Remove('SourceWidth'); $desk[2].PSObject.Properties.Remove('SourceHeight')
+    Assert-Null (New-DesktopSnapshot -State $desk) 'a current reading cannot use the legacy inference path'
+
+    # A refusal that nobody can see was the fair half of the original complaint: it still says so.
+    $desk = New-RestorationDesk
+    $desk[2].SourceWidth = 1080; $desk[2].SourceHeight = 1920
+    $before = (Get-Content $script:LogFile -Raw -ErrorAction SilentlyContinue)
+    [void](New-DesktopSnapshot -State $desk)
+    $after = (Get-Content $script:LogFile -Raw -ErrorAction SilentlyContinue)
+    Assert-True ($after.Length -gt $before.Length -and $after -like '*standing down*') 'the refusal is written to the log'
+
+    $snapshot = New-DesktopSnapshot -State (New-RestorationDesk)
+    $store = New-DesktopSnapshotStore; $store.Snapshots[$snapshot.Key] = $snapshot
+    Write-DesktopSnapshotStore -Store $store
+    $raw = Get-Content $script:DesktopSnapshotsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    $raw.snapshots[0].displays[2].sourceWidth = 1080
+    $raw.snapshots[0].displays[2].sourceHeight = 1920
+    [System.IO.File]::WriteAllText($script:DesktopSnapshotsFile,
+        (($raw | ConvertTo-Json -Depth 6 -Compress) + "`r`n"), (New-Object System.Text.UTF8Encoding $true))
+    Assert-Equal 0 @((Read-DesktopSnapshotStore).Snapshots.Keys).Count `
+        'a version 3 record with plausible but inconsistent dimensions is rejected'
 }
 
 Test-Case 'desktop restore plan: an explicit primary moves the whole saved geometry together' {
@@ -260,7 +328,8 @@ Test-Case 'recheck subset: connected groups keep internal offsets when their bri
     $desk = @()
     for ($i = 0; $i -lt 5; $i++) {
         $m = New-FakeMonitor -Label ('Panel' + $i) -ShortId ('ID' + $i) -Id ('path-' + $i)
-        $m.Width = 1920; $m.Height = 1080; $m.X = $i * 1920; $m.Y = 0; $m.Primary = ($i -eq 0)
+        $m.Width = 1920; $m.Height = 1080; $m.SourceWidth = 1920; $m.SourceHeight = 1080
+        $m.X = $i * 1920; $m.Y = 0; $m.Primary = ($i -eq 0)
         $desk += $m
     }
     $desk[4].Y = 200
@@ -279,7 +348,9 @@ Test-Case 'recheck subset: a vertical gap closes on its original axis' {
     $desk = New-RestorationDesk
     for ($i = 0; $i -lt 3; $i++) {
         $desk[$i].X = 0; $desk[$i].Y = $i * 1440
-        $desk[$i].Width = 2560; $desk[$i].Height = 1440; $desk[$i].Primary = ($i -eq 0)
+        $desk[$i].Width = 2560; $desk[$i].Height = 1440
+        $desk[$i].SourceWidth = 2560; $desk[$i].SourceHeight = 1440
+        $desk[$i].Rotation = 1; $desk[$i].Primary = ($i -eq 0)
     }
     $source = New-DesktopSnapshot -State $desk
     $subset = New-DesktopSubsetSnapshot -Wanted @($desk[0], $desk[2]) -CurrentSnapshot $source -Store (New-DesktopSnapshotStore)

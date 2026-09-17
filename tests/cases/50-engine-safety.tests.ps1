@@ -45,6 +45,7 @@ Test-Case 'desktop subset: the trusted current desk wins over a smaller stale su
         $current[$i].X = $i * 1920
     }
     $current[0].Width = 1080; $current[0].Height = 1920; $current[0].Rotation = 4
+    $current[0].SourceWidth = 1920; $current[0].SourceHeight = 1080
     $current[0].Hz = 75; $current[0].RateNum = 75; $current[0].RateDen = 1
     $currentSnapshot = New-DesktopSnapshot -State $current
     $stale = @(

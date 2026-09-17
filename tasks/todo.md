@@ -1,31 +1,22 @@
-# Startup preservation implementation
+# Current desktop apply and clear settings
 
-## Task 1: Default to the current desktop
+Owner: GPT-5.6 Luna. Parent performs independent read-only review before completion.
 
-Owner: Sol. Dependencies: none. Scope: engine/defaults, Settings fallback, example settings and focused tests.
+- [x] Implement guarded apply-current-desktop behavior and fake-hardware regressions.
+- [x] Add Save and apply action, localized explanations/current mode override hint, and honest result handling.
+- [x] Sort live Displays rows and refresh all live views after successful apply.
+- [x] Render localized previews and run tools/check.ps1; record exact results.
+- [x] Parent review of hardware boundary; address findings and repeat necessary verification.
+- [x] Replace the duplicate desk Apply button with a localized footer Save/apply action and keyboard-accessible options menu.
+- [x] Preserve desk apply intent only for direct edits, including stable identity refreshes and edit/undo baselines.
 
-- [x] Set the default to false and preserve explicit stored values.
-- [x] Make the checkbox reflect default/missing/explicit settings correctly.
-- [x] Add the regression matrix from the plan and explicitly enable restore in opt-in tests.
+No commit, publication, live hardware test, settings mutation or tray restart is part of implementation verification.
 
-Verification: run the relevant existing settings, startup and Settings-window cases; demonstrate the new default regression fails before the fix and passes after it.
+Verification recorded during implementation:
 
-## Task 2: Explain the startup choice
+- `tests/run-tests.ps1 -File 29`: 271 assertions passed, including exact active-set CCD, pending/unsafe recovery, changed-desktop recovery instructions and readiness-signalled mutex coverage.
+- `tests/run-tests.ps1 -File 10`: 374 assertions passed, including footer dispatch/menu wiring, Save-only and retry/success states, stable identity refreshes, edit/undo baselines, save-first failure wording, persistence wording, mode precedence hint and live row ordering.
+- `tools/check.ps1`: all parse, encoding, language and test gates passed; 2,593 assertions passed. PSScriptAnalyzer was unavailable and skipped with the documented warning.
+- `render-preview.ps1 -Fake -Language en`, `-Language uk` and `-Language ru`: all ten preview images written successfully; English, Ukrainian and Russian desk previews inspected for clipping and layout.
 
-Owner: Sol. Dependencies: Task 1. Scope: localization, README, changelog, engineering notes and release exclusions if needed.
-
-- [x] Explain startup restoration and its effect on current screens in relevant UI translations and documentation.
-- [x] Record the behavior change without changing release version or date.
-- [x] Keep planning artifacts out of shipped program files; preserve unrelated edits.
-
-Verification: inspect text against runtime behavior, run language gate, and inspect localized layout when sizing is affected.
-
-## Task 3: Verify and apply the user's preference
-
-Owner: Sol; independent review by planning owner. Dependencies: Tasks 1 and 2.
-
-- [x] Run all five gates using `tools/check.ps1` in Windows PowerShell 5.1.
-- [x] Save only the user's startup restoration preference as false through supported settings functions and confirm other values are preserved.
-- [x] Review the final diff and report tests, runtime preference and outstanding hardware confirmation separately.
-
-Verification: full check output, persisted-settings comparison and independent diff review. Do not switch real displays, restart the tray, reboot, commit or publish.
+Parent final verification: inspected the hardware boundary and localized footer previews, resolved the persisted-unverified recovery wording, updated the language-rebuild test fixture for desk action state, and reran tools/check.ps1 on the final shared snapshot: exit 0, 2,593 assertions passed. PSScriptAnalyzer was unavailable and skipped. No live hardware switching was performed.

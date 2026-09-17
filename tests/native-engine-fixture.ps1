@@ -71,7 +71,7 @@ public class NativeCcd {
 
 $core = Join-Path (Split-Path $PSScriptRoot -Parent) 'DisplayCore.ps1'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($core, [ref]$null, [ref]$null)
-foreach ($name in @('Test-DisplayNameMatch', 'Get-CcdPathChoice', 'Get-LayoutPositions', 'Invoke-CcdFullConfigAttempt',
+foreach ($name in @('Test-DisplayNameMatch', 'Get-DesktopSourceSize', 'Get-DesktopSourceExtent', 'Get-CcdPathChoice', 'Get-LayoutPositions', 'Invoke-CcdFullConfigAttempt',
                      'Set-CcdFullConfig', 'Set-CcdTopology', 'New-LayoutResult', 'Invoke-CcdLayoutAttempt')) {
     $function = $ast.Find({
         param($node)
@@ -106,8 +106,10 @@ $paths[1] = New-FakePath -AdapterLow 2 -TargetId 1
 [NativeCcd]::AllPaths = $paths
 $targets = @(
     [pscustomobject]@{ DevicePath = 'panel0'; Label = 'A'; Width = 1920; Height = 1080
+        SourceWidth = 1920; SourceHeight = 1080
         Hz = 60; RateNum = 60000; RateDen = 1000; Rotation = 1; X = 0; Y = 0 }
     [pscustomobject]@{ DevicePath = 'panel1'; Label = 'B'; Width = 1920; Height = 1080
+        SourceWidth = 1920; SourceHeight = 1080
         Hz = 60; RateNum = 60000; RateDen = 1000; Rotation = 1; X = 1920; Y = 0 }
 )
 
@@ -116,6 +118,37 @@ if (-not (Set-CcdFullConfig -Targets $targets -PrimaryPath 'panel0' -Exact) -or
     [NativeCcd]::AppliedCount -ne 2) {
     throw 'Two adapters with source id zero did not produce two applied paths.'
 }
+
+# The live three-monitor failure used the rotated 1080x1920 desktop bounds as the Samsung CCD source
+# surface and validation returned 31. Exact restoration must send its native 1920x1080 source together
+# with rotation 4 while leaving both landscape Acer paths unchanged.
+$livePaths = New-Object 'NativeCcd+PATH_INFO[]' 3
+$livePaths[0] = New-FakePath -AdapterLow 1 -TargetId 0
+$livePaths[1] = New-FakePath -AdapterLow 2 -TargetId 1
+$livePaths[2] = New-FakePath -AdapterLow 3 -TargetId 2
+[NativeCcd]::AllPaths = $livePaths
+$liveTargets = @(
+    [pscustomobject]@{ DevicePath = 'panel0'; Label = 'XV272U 159293'; Width = 2560; Height = 1440
+        SourceWidth = 2560; SourceHeight = 1440; Hz = 144; RateNum = 144; RateDen = 1
+        Rotation = 1; Scaling = 1; X = 0; Y = 0 }
+    [pscustomobject]@{ DevicePath = 'panel1'; Label = 'XV272U 1828DC'; Width = 2560; Height = 1440
+        SourceWidth = 2560; SourceHeight = 1440; Hz = 144; RateNum = 144; RateDen = 1
+        Rotation = 1; Scaling = 1; X = -2560; Y = 0 }
+    [pscustomobject]@{ DevicePath = 'panel2'; Label = 'LF22T35'; Width = 1080; Height = 1920
+        SourceWidth = 1920; SourceHeight = 1080; Hz = 75; RateNum = 75; RateDen = 1
+        Rotation = 4; Scaling = 1; X = 2560; Y = -203 }
+)
+[NativeCcd]::AppliedCount = 0
+if (-not (Set-CcdFullConfig -Targets $liveTargets -PrimaryPath 'panel0' -Exact) -or
+    [NativeCcd]::AppliedCount -ne 3) { throw 'The live three-monitor exact restore shape was refused.' }
+$liveSamsungPath = @([NativeCcd]::AppliedPaths | Where-Object { $_.targetInfo.id -eq 2 })[0]
+$liveSamsungMode = [NativeCcd]::AppliedModes[$liveSamsungPath.sourceInfo.modeInfoIdx]
+if ($liveSamsungMode.srcWidth -ne 1920 -or $liveSamsungMode.srcHeight -ne 1080 -or
+    $liveSamsungMode.srcPosX -ne 2560 -or $liveSamsungMode.srcPosY -ne -203 -or
+    $liveSamsungPath.targetInfo.rotation -ne 4) {
+    throw 'The live Samsung exact restore did not preserve source size, position and rotation.'
+}
+[NativeCcd]::AllPaths = $paths
 
 # A sleeping path returns zero scaling; an active path can retain a different one. Both must receive
 # the explicitly saved transform, not whichever fallback value QueryDisplayConfig happened to return.
@@ -226,6 +259,7 @@ if (-not $choice -or ($choice.Chosen -notcontains 2) -or ($choice.Chosen -notcon
 [NativeCcd]::AllPaths = $flexible
 $generated = @(
     [pscustomobject]@{ DevicePath = 'panel0'; Label = 'A'; Width = 1080; Height = 1920
+        SourceWidth = 1920; SourceHeight = 1080
         Hz = 144; RateNum = 143999; RateDen = 1000; Rotation = 4; Scaling = 4; PreserveMode = $true }
     [pscustomobject]@{ DevicePath = 'panel1'; Label = 'B'; Width = 1920; Height = 1080
         Hz = 60; RateNum = 60; RateDen = 1; Rotation = 1 }
@@ -237,7 +271,7 @@ $applied = @([NativeCcd]::AppliedPaths | Where-Object { $_.targetInfo.id -eq 0 }
 $appliedMode = [NativeCcd]::AppliedModes[$applied.sourceInfo.modeInfoIdx]
 if ($applied.targetInfo.rotation -ne 4 -or $applied.targetInfo.scaling -ne 4 -or
     $applied.targetInfo.refreshRate.Numerator -ne 143999 -or
-    $applied.targetInfo.refreshRate.Denominator -ne 1000 -or $appliedMode.srcWidth -ne 1080 -or
-    $appliedMode.srcHeight -ne 1920) { throw 'Generated KeepMode lost the active exact portrait mode at the native boundary.' }
+    $applied.targetInfo.refreshRate.Denominator -ne 1000 -or $appliedMode.srcWidth -ne 1920 -or
+    $appliedMode.srcHeight -ne 1080) { throw 'Generated KeepMode lost the active exact portrait mode at the native boundary.' }
 
 Write-Output 'native engine fixture passed'

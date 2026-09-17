@@ -17,7 +17,7 @@
 Write-Host ''
 Write-Host 'who owns the desk after a rule fires' -ForegroundColor White
 
-. (Get-TrayFunctionSource 'Get-RuleModeMemberIds', 'New-RuleDeskClaim', 'Get-RuleDeskRelation',
+. (Get-TrayFunctionSource 'Get-RuleModeMemberIds', 'Test-RuleSwitchHasActiveAnchor', 'New-RuleDeskClaim', 'Get-RuleDeskRelation',
                           'Reset-RuleOwnership', 'Invoke-RulesCheck')
 # Invoke-RulesCheck reads this to know when to stop offering the desk back; the tray's own number.
 . (Get-TrayVariableSource '$script:AutoRetryLimit', '$script:StateCacheGeneration')
@@ -86,7 +86,7 @@ function Invoke-Mode {
 # One rule: while that process is running, the desk belongs to the game display.
 function Set-RuleScene {
     param([string]$Outcome = 'done', [string]$Mode = 'combo:Work', [bool]$Running = $true,
-          [string]$Back = '')
+          [string]$Back = '', [bool]$TargetReady = $true)
 
     $script:RoSettings = Get-DefaultSettings
     $script:RoSettings.combos['Work'] = [ordered]@{ displays = @('WORK'); primary = '' }
@@ -100,6 +100,7 @@ function Set-RuleScene {
         (New-FakeMonitor 'OTHER' 'OTHER' 'other' $false)
     )
     Set-RoModeDesk -ModeKey $Mode
+    if ($TargetReady) { @($script:RoState | Where-Object Label -eq 'GAME')[0].Active = $true }
     $script:RoInvoked = @()
     $script:RoOutcome = $Outcome
     $script:RoPartialActive = @()
@@ -117,6 +118,14 @@ function Set-RuleOwned {
     $script:RuleOwnedSig = Get-RuleSignature -Rule $script:RoSettings.rules[0]
     $script:RuleOwnedTaken = $true
     $script:RuleReturnTries = 0
+}
+
+Test-Case 'rule: an inactive destination cannot take away every active display' {
+    Set-RuleScene -TargetReady:$false
+    Invoke-RulesCheck
+
+    Assert-Equal 0 $script:RoInvoked.Count 'the rule leaves the working display alone'
+    Assert-Equal -1 $script:RuleOwnedIndex 'the rule claims no desk it did not switch'
 }
 
 Test-Case 'rule: a switch that happened takes the desk' {

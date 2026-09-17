@@ -98,6 +98,10 @@ $script:SwFakes = {
                 $t = @($Targets | Where-Object { $_.DevicePath -eq $m.Id } | Select-Object -First 1)
                 if ($t.Count -gt 0) {
                     $m.Width = [int]$t[0].Width; $m.Height = [int]$t[0].Height; $m.Hz = [int]$t[0].Hz
+                    if ($t[0].PSObject.Properties['SourceWidth'] -and $t[0].PSObject.Properties['SourceHeight']) {
+                        $m.SourceWidth = [int]$t[0].SourceWidth; $m.SourceHeight = [int]$t[0].SourceHeight
+                    }
+                    else { $m.SourceWidth = $m.Width; $m.SourceHeight = $m.Height }
                     if ($t[0].PSObject.Properties['X']) { $m.X = [int]$t[0].X; $m.Y = [int]$t[0].Y }
                     if ($t[0].PSObject.Properties['Rotation']) { $m.Rotation = [int]$t[0].Rotation }
                     if ($t[0].PSObject.Properties['Scaling']) { $m | Add-Member Scaling ([int]$t[0].Scaling) -Force }
@@ -128,7 +132,13 @@ $script:SwFakes = {
         }
         if ($script:SwVerifyMismatch) {
             $hit = @($script:SwDesk | Where-Object { $_.Active } | Select-Object -First 1)
-            if ($hit.Count -gt 0) { $hit[0].Rotation = $(if ($hit[0].Rotation -eq 1) { 2 } else { 1 }) }
+            if ($hit.Count -gt 0) {
+                $hit[0].Rotation = $(if ($hit[0].Rotation -eq 1) { 2 } else { 1 })
+                if ($hit[0].Rotation -eq 2 -or $hit[0].Rotation -eq 4) {
+                    $hit[0].SourceWidth = $hit[0].Height; $hit[0].SourceHeight = $hit[0].Width
+                }
+                else { $hit[0].SourceWidth = $hit[0].Width; $hit[0].SourceHeight = $hit[0].Height }
+            }
         }
         return $script:SwSettled
     }
@@ -252,6 +262,7 @@ Test-Case 'switch: all returns to the original physical desk after a solo mode' 
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
     $script:SwDesk[2].Width = 1080; $script:SwDesk[2].Height = 1920; $script:SwDesk[2].Hz = 75
+    $script:SwDesk[2].SourceWidth = 1920; $script:SwDesk[2].SourceHeight = 1080
     $script:SwDesk[2].X = 2560; $script:SwDesk[2].Y = -180
     $script:SwDesk[2].Rotation = 4; $script:SwDesk[2].RateNum = 75; $script:SwDesk[2].RateDen = 1
     $script:SwSettings = New-SwitchSettings
@@ -279,6 +290,7 @@ Test-Case 'switch: a failed exact restore cannot poison the baseline after resta
 
     $baselineDesk = New-SwitchDesk
     $baselineDesk[2].Width = 1080; $baselineDesk[2].Height = 1920; $baselineDesk[2].Hz = 75
+    $baselineDesk[2].SourceWidth = 1920; $baselineDesk[2].SourceHeight = 1080
     $baselineDesk[2].Rotation = 4; $baselineDesk[2].RateNum = 75; $baselineDesk[2].RateDen = 1
     $baseline = New-DesktopSnapshot -State $baselineDesk
     $script:SwStore.Snapshots[$baseline.Key] = $baseline
@@ -336,6 +348,7 @@ Test-Case 'switch: a failed first solo restore retries from the trusted larger d
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
     $script:SwDesk[2].Width = 1080; $script:SwDesk[2].Height = 1920; $script:SwDesk[2].Hz = 75
+    $script:SwDesk[2].SourceWidth = 1920; $script:SwDesk[2].SourceHeight = 1080
     $script:SwDesk[2].Rotation = 4; $script:SwDesk[2].RateNum = 75; $script:SwDesk[2].RateDen = 1
     $script:SwSettings = New-SwitchSettings
     $soloKey = Get-DesktopSetKey -DevicePaths @('path-xg')
@@ -359,6 +372,7 @@ Test-Case 'switch: automatic reapply restores the saved desk instead of adopting
     $script:SwSettings = New-SwitchSettings
     $baselineDesk = New-SwitchDesk
     $baselineDesk[2].Width = 1080; $baselineDesk[2].Height = 1920; $baselineDesk[2].Hz = 75
+    $baselineDesk[2].SourceWidth = 1920; $baselineDesk[2].SourceHeight = 1080
     $baselineDesk[2].Rotation = 4; $baselineDesk[2].RateNum = 75; $baselineDesk[2].RateDen = 1
     $baseline = New-DesktopSnapshot -State $baselineDesk
     $script:SwStore.Snapshots[$baseline.Key] = $baseline
@@ -514,7 +528,7 @@ Test-Case 'switch: a combination deleted in the settings is named, not numbered'
     try { [void](Switch-DisplayMode -ModeKey 'combo:Movie night' -Quiet) }
     catch { $failed = $_.Exception.Message }
 
-    Assert-Equal "The combination 'Movie night' no longer exists in the settings." $failed 'the name comes back as typed'
+    Assert-Equal "The mode 'Movie night' no longer exists in the settings." $failed 'the name comes back as typed'
 }
 
 Test-Case 'switch: a mode nobody knows is refused by its key' {
@@ -608,6 +622,7 @@ Test-Case 'switch: KeepMode restores saved geometry with the live mode and keeps
 
     [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
     $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080
+    $script:SwDesk[0].SourceWidth = 1920; $script:SwDesk[0].SourceHeight = 1080
     $script:SwDesk[0].Hz = 120; $script:SwDesk[0].RateNum = 120000; $script:SwDesk[0].RateDen = 1000
     $kept = Switch-DisplayMode -ModeKey 'all' -KeepMode -Quiet
 
@@ -720,9 +735,11 @@ Test-Case 'switch: KeepMode refuses a live size that overlaps saved sleeping geo
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
     $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080
+    $script:SwDesk[0].SourceWidth = 1920; $script:SwDesk[0].SourceHeight = 1080
     $script:SwDesk[1].X = 1920
     [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
     $script:SwDesk[0].Width = 2560
+    $script:SwDesk[0].SourceWidth = 2560
     $script:SwCalls = @()
 
     $failed = ''
@@ -737,8 +754,10 @@ Test-Case 'switch: KeepMode refuses live dimensions observed under a different r
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
     $script:SwDesk[0].Width = 1080; $script:SwDesk[0].Height = 1920; $script:SwDesk[0].Rotation = 4
+    $script:SwDesk[0].SourceWidth = 1920; $script:SwDesk[0].SourceHeight = 1080
     [void](Switch-DisplayMode -ModeKey 'solo:LG ULTRAGEAR' -Quiet)
     $script:SwDesk[0].Width = 1920; $script:SwDesk[0].Height = 1080; $script:SwDesk[0].Rotation = 1
+    $script:SwDesk[0].SourceWidth = 1920; $script:SwDesk[0].SourceHeight = 1080
     $script:SwCalls = @()
 
     $failed = ''
@@ -1245,6 +1264,8 @@ Test-Case 'transition recovery: asynchronously settled geometry still restores p
     [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
     $script:RecoveryLiveWindows = 'displaced windows'; $script:SwVerifyMismatch = $false
     $script:SwDesk[0].Rotation = 1
+    $script:SwDesk[0].SourceWidth = $script:SwDesk[0].Width
+    $script:SwDesk[0].SourceHeight = $script:SwDesk[0].Height
     $script:SwCalls = @()
     $retried = Switch-DisplayMode -ModeKey 'all' -Quiet
     Assert-True $retried.Ok 'the already settled geometry verifies'
@@ -1257,6 +1278,7 @@ Test-Case 'transition recovery: a crash before apply preserves an identified unc
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
     $script:SwDesk[2].Width = 1440; $script:SwDesk[2].Height = 2560; $script:SwDesk[2].Rotation = 4
+    $script:SwDesk[2].SourceWidth = 2560; $script:SwDesk[2].SourceHeight = 1440
     $source = New-DesktopSnapshot -State $script:SwDesk
     $script:SwStore.Snapshots[$source.Key] = $source
     $script:SwStore.PendingKey = Get-DesktopSetKey -DevicePaths @('path-ug')
@@ -1350,4 +1372,135 @@ Test-Case 'transition recovery: explicit adoption resolves a different failed de
     $script:LastRestore = [datetime]::MinValue
     [void](Restore-BestModes -DebounceMs 0)
     Assert-Equal '75' ($script:RecoveryRequestedHz -join ',') 'a later drift is repaired to the adopted rate'
+}
+
+Test-Case 'apply now: preserves only the active physical set and exact modes' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.layout = @('LG ULTRAFINE', 'LG ULTRAGEAR')
+    $script:SwSettings.layoutOverride = $true
+    $script:SwSettings.primary = 'LG ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
+    $script:SwDesk[0].RateNum = 119999; $script:SwDesk[0].RateDen = 1000
+    $script:SwDesk[1].RateNum = 59997; $script:SwDesk[1].RateDen = 1000
+
+    $result = Set-CurrentDesktop -Settings $script:SwSettings -PrimaryId 'path-uf' -PrimaryLabel 'LG ULTRAFINE'
+    Assert-True $result.Ok 'the active desk applies successfully'
+    Assert-Equal 'path-uf' $script:SwFullPrimary 'the selected active display becomes primary'
+    Assert-Equal @('path-ug', 'path-uf') @($script:SwFullTargets | ForEach-Object { $_.DevicePath }) 'only the original active physical IDs reach CCD'
+    Assert-True $script:SwFullExact 'the request preserves the exact desktop'
+    Assert-Equal 119999 $script:SwDesk[0].RateNum 'the first exact refresh numerator survives'
+    Assert-Equal 59997 $script:SwDesk[1].RateNum 'the second exact refresh numerator survives'
+    Assert-Equal 1 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'one CCD request is made'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'hook:*' -or $_ -like 'windows:*' }).Count 'no mode side effects run'
+    Assert-Equal '' $script:SwStore.PendingKey 'successful verification clears the pending marker'
+    Assert-Equal 'path-uf' $script:SwStore.ProtectedSnapshot.PrimaryId 'the verified current desk is protected'
+}
+
+Test-Case 'apply now: an arrangement already in place arms no unverified boundary' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+
+    # Ticking the taskbar radio on the display that is already primary reaches here: the plan comes out
+    # equal to the live desk, so nothing is sent to CCD. Writing a pending marker for that would leave an
+    # untouched desk flagged unverified, which parks the watchdog and refuses every later apply.
+    $result = Set-CurrentDesktop -Settings $script:SwSettings
+    Assert-True $result.Ok 'a desk already in the wanted arrangement applies successfully'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'no CCD request is made'
+    Assert-Equal '' $script:SwStore.PendingKey 'no transition boundary is recorded'
+    Assert-Equal '' $script:SwStore.PendingSourceKey 'and no source is left pointing at one'
+    $liveKey = Get-DesktopSetKey -DevicePaths @('path-ug', 'path-uf')
+    Assert-True (-not $script:SwStore.UnsafeKeys.ContainsKey($liveKey)) 'the untouched desk is never marked unsafe'
+}
+
+Test-Case 'apply now: a stored exact baseline survives an apply that keeps a degraded live mode' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $baseline = New-DesktopSnapshot -State $script:SwDesk
+    $script:SwStore.Snapshots[$baseline.Key] = $baseline
+
+    # An app left the panel at 60 Hz. Apply now keeps the live mode by design, but learning it over the
+    # stored baseline would degrade every later exact restore of this desk - the switch path guards the
+    # same write for the same reason.
+    $script:SwDesk[0].Hz = 60; $script:SwDesk[0].RateNum = 60000; $script:SwDesk[0].RateDen = 1000
+
+    $result = Set-CurrentDesktop -Settings $script:SwSettings
+    Assert-True $result.Ok 'the apply itself still succeeds'
+    Assert-Equal 143999 $script:SwStore.Snapshots[$baseline.Key].Displays[0].RateNum `
+        'the exact baseline is not rewritten with the degraded live rate'
+}
+
+Test-Case 'apply now: an inactive selected primary is refused before CCD' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $result = Set-CurrentDesktop -Settings $script:SwSettings -PrimaryId 'path-xg' -PrimaryLabel 'XG27AQDMGR'
+    Assert-True (-not $result.Ok) 'an inactive primary is refused'
+    Assert-Equal 'refused' $result.Outcome 'the result explains a hard refusal'
+    Assert-Equal 0 @($script:SwCalls | Where-Object { $_ -like 'full:*' }).Count 'CCD is untouched'
+}
+
+Test-Case 'apply now: a refused CCD request clears its marker when the source remains unchanged' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.layoutOverride = $true
+    $script:SwSettings.primary = 'LG ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
+    $script:SwFullOk = $false
+    $result = Set-CurrentDesktop -Settings $script:SwSettings -PrimaryId 'path-uf' -PrimaryLabel 'LG ULTRAFINE'
+    Assert-True (-not $result.Ok) 'CCD refusal is reported'
+    Assert-Equal '' $script:SwStore.PendingKey 'an unchanged source can be retried'
+    Assert-True (-not $script:SwStore.UnsafeKeys.ContainsKey($script:SwStore.ProtectedKey)) 'the unchanged source is not left unsafe'
+}
+
+Test-Case 'apply now: a changed failed observation remains guarded' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $script:SwSettings.layoutOverride = $true
+    $script:SwSettings.primary = 'LG ULTRAFINE'
+    $script:SwSettings.primaryOverride = $true
+    function Set-CcdFullConfig {
+        param($Targets, [string]$PrimaryPath, $Order, [switch]$Exact)
+        $script:SwDesk[0].X += 17
+        return $true
+    }
+    $result = Set-CurrentDesktop -Settings $script:SwSettings -PrimaryId 'path-uf' -PrimaryLabel 'LG ULTRAFINE'
+    Assert-True (-not $result.Ok) 'verification failure is reported'
+    Assert-Equal (Get-Text -Key 'desk.apply.recovery') $result.Message 'a changed desktop gets recovery instructions instead of a futile retry'
+    Assert-True $script:SwStore.PendingKey 'the unverified destination remains pending'
+    $observedKey = Get-DesktopSetKey -DevicePaths @('path-ug', 'path-uf')
+    Assert-True $script:SwStore.UnsafeKeys.ContainsKey($observedKey) 'the changed observation is guarded from the watchdog'
+}
+
+Test-Case 'apply now: a busy switch mutex is distinct from a refusal' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk -ThirdActive:$false
+    $script:SwSettings = New-SwitchSettings
+    $eventName = 'Local\DeskModesApplyReady-' + [guid]::NewGuid().ToString('N')
+    $ready = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $eventName)
+    $job = Start-Job -ArgumentList $eventName -ScriptBlock {
+        param($readyName)
+        $lock = New-Object System.Threading.Mutex($true, 'Local\DeskModesSwitch')
+        $signal = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $readyName)
+        $signal.Set()
+        $signal.Dispose()
+        Start-Sleep -Seconds 3
+        $lock.ReleaseMutex(); $lock.Dispose()
+    }
+    try {
+        Assert-True $ready.WaitOne(5000) 'the helper owns the mutex before the apply starts'
+        $result = Set-CurrentDesktop -Settings $script:SwSettings
+        Assert-Equal 'busy' $result.Outcome 'the busy outcome is explicit'
+        Assert-True $result.Retry 'a busy apply can be retried'
+    }
+    finally {
+        $ready.Dispose()
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
 }

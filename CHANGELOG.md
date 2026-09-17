@@ -1,12 +1,49 @@
-# Changelog
+﻿# Changelog
 
 User-visible changes. The version shown by DeskModes is defined in DisplayCore.ps1.
 A release is dated only when its tag is ready to publish.
 
 ## 1.0.1 — not released yet
 
+- Keep background rules from turning off every active display while all displays in their destination
+  are still inactive. The rule waits until one destination display is visibly active instead.
+- Open a short four-screen introduction on the first run, ahead of the Settings window: what a
+  mode is, that the program lives in the tray and how its menu opens, the shortcuts this run just
+  assigned listed by name, and what happens when a display does not come up. It can be skipped
+  from any screen and reopens from the tray menu and from Settings → About.
+- Offer the interface language in the head of that introduction, so it can be chosen before
+  anything else is read. It follows Windows until it is changed, here or later in Behavior, and
+  the tour reopens on the same screen in the language picked.
+- Group the tour and a link to the full reference into a Help section at the top of the About
+  page, above the version and the diagnostics.
+- Call a user-made set of displays a **mode** everywhere it is read, instead of alternating
+  between "mode" and "combination" between the page, the button and the editor's own heading.
+- Fold the configured desk away on **Your desk** until it means something, and say under its
+  heading which of the two states the page is in: switching keeps the Windows layout drawn above
+  it, or it uses this order and this taskbar display. Opening or closing it changes no setting.
+- Name the mode the desk is in in the tray icon's tooltip, which used to carry the program's
+  name and nothing else.
+- Stop a mode's row cutting a word in half: three settings are named in full and the rest are
+  counted, with the whole list in the row's tooltip.
+- Answer a plain Save inside the window — settings written, displays untouched — rather than
+  only in a notification behind it.
+- Open Behavior from **Statistics (diary is off)**, where the switch that fills it lives, instead
+  of explaining the emptiness in a notification and leaving the person to find the switch.
+- Restore exact portrait display layouts with their CCD source dimensions instead of reusing the
+  rotated desktop bounds, which Windows rejects when returning from a single-display mode.
+- Keep separate window snapshots for different resolutions of the same display set and move an
+  inaccessible title bar into the current working area before restoring the saved window state.
+
+- Paint the tray menu on the first click after startup by clearing WinForms' empty-menu
+  cancellation after its rows have been built.
+
+- Highlight a configured taskbar display only when its primary override is enabled; inactive
+  legacy choices no longer look like a request to move the taskbar.
+
 - Dismiss the tray menu on an outside click or Escape even when Windows did not activate it.
 - Label the configured taskbar as a choice for future switches, including when its display is off.
+- Make the Settings footer's primary action follow direct desk edits, with a compact menu for saving
+  only or applying the saved configuration to the active displays now.
 
 - Leave the display set Windows activated at startup in place by default. Restoring the last
   chosen mode remains available as an explicit Behavior setting.

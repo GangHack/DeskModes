@@ -128,9 +128,10 @@ Test-Case 'desk: no card is drawn wider than the card it sits in' {
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'desk: the taskbar display is the one outlined' {
+Test-Case 'desk: an explicit taskbar override is the one outlined' {
     $settings = Get-DefaultSettings
     $settings.primary = 'LG ULTRAGEAR'
+    $settings.primaryOverride = $true
     $ui = New-DialogUi -Settings $settings
     try {
         $picked = @($ui.DeskPanel.Children | Where-Object { $_.Tag.Radio.IsChecked })

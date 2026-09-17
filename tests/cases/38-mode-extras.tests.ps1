@@ -291,7 +291,6 @@ Test-Case "dialog: a mode's row says which of its settings are set" {
     $settings.brightness['all'] = 80
     $settings.contrast['all'] = 65
     $settings.audio['all'] = 'ROG'
-    $settings.hooks['all'] = [ordered]@{ before = ''; after = 'x.cmd' }
     $ui = New-DialogUi -Settings $settings
     try {
         $mode = @($ui.Modes | Where-Object { $_.Key -eq 'all' })[0]
@@ -299,8 +298,34 @@ Test-Case "dialog: a mode's row says which of its settings are set" {
         Assert-True ($sub -like '*brightness 80*') 'the brightness is named'
         Assert-True ($sub -like '*contrast 65*') 'the contrast is named'
         Assert-True ($sub -like '*audio*') 'the sound is named'
-        Assert-True ($sub -like '*command*') 'the command is named'
         Assert-True ($sub -notlike '*ROG*') "but not the device's name - that is what makes the row wrap"
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case "dialog: past three settings the row counts the rest instead of cutting a word in half" {
+    # The row is one line with an ellipsis on the end, so the fourth fact used to arrive as
+    # "cont..." - half of "contrast", which reads as a rendering fault rather than as a list that
+    # goes on. Three whole facts and a count; the tooltip still carries every one of them.
+    $settings = Get-DefaultSettings
+    $settings.brightness['all'] = 80
+    $settings.contrast['all'] = 65
+    $settings.audio['all'] = 'ROG'
+    $settings.hooks['all'] = [ordered]@{ before = ''; after = 'x.cmd' }
+    $settings.hdr['all'] = @{ 'LG ULTRAGEAR' = $true }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'all' })[0]
+        $sub = Get-ModeRowSubtitle -Ui $ui -Mode $mode
+        Assert-True ($sub -like '*+2*') 'the two that did not fit are counted'
+        Assert-True ($sub -notlike '*command*') 'and the last of them is not half-printed'
+        Assert-True ($sub -like '*brightness 80*') 'the first three are whole'
+
+        $tip = Get-ModeRowTooltip -Ui $ui -Mode $mode
+        Assert-True ($tip -like '*command*') 'the tooltip names what the row counted away'
+        Assert-True ($tip -notlike '*+2*') 'and counts nothing itself'
+        # The ceiling is put back, or every row after this one would print all six.
+        Assert-Equal 3 $script:ModeRowFacts 'the cap is restored after the tooltip is built'
     }
     finally { $ui.Window.Close() }
 }

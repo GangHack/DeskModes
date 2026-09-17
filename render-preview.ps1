@@ -363,6 +363,20 @@ try {
     $ruleEd = New-RuleEditorWindow -Rule $rule -Modes (Get-RuleTargetModes -Ui $ui) -Dark (Test-DarkTheme)
     try { Save-WindowSnapshot -Window $ruleEd.Window -Path $ruleOut }
     finally { $ruleEd.Window.Close(); $script:ActiveRuleUi = $null }
+
+    # The first-steps tour, one image per screen. All four and not just the first: the whole point
+    # of the window is that it reads as four pages of one thing, and the only place a heading that
+    # wrapped in German or a shortcut card that ran off the bottom becomes visible is the picture.
+    $facts = Get-WelcomeFacts -State $state -Settings $settings -Modes $modes
+    $welcome = New-WelcomeWindow -Displays $facts.Displays -Shortcuts $facts.Shortcuts
+    try {
+        Show-WindowOffscreen -Window $welcome.Window
+        for ($step = 0; $step -lt $welcome.Pages.Count; $step++) {
+            Set-WelcomeStep -Ui $welcome -Step $step
+            Save-WindowImage -Window $welcome.Window -Path (Get-OutPath ('-welcome-' + ($step + 1)))
+        }
+    }
+    finally { $welcome.Window.Close(); $script:ActiveWelcome = $null }
 }
 finally {
     $ui.Window.Close()

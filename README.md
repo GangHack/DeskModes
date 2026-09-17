@@ -25,8 +25,13 @@ use a source checkout; a version number in the application is not a published re
 1. Extract the release ZIP into a folder you can write to, such as a folder under your
    user account. Keep the whole `DeskModes` folder together; do not run from inside the ZIP.
    A source checkout works too: `git clone https://github.com/GangHack/DeskModes.git`.
-2. Double-click **Displays.cmd**. The tray icon appears and Settings opens on the first run.
-   Double-left-click the tray icon to reopen Settings; right-click it for the switching menu.
+2. Double-click **Displays.cmd**. The tray icon appears and a short **First steps** tour opens,
+   followed by Settings. The interface language is in the head of the tour — it follows Windows
+   until you change it there or in Behavior. The tour can be skipped from any screen and reopens
+   from the tray menu or from **Settings → About → First steps**.
+   Double-left-click the tray icon to reopen Settings;
+   right-click it for the switching menu. If the icon is not visible, open the `^` arrow on the
+   taskbar and drag it out — Windows hides new tray icons there.
    If Windows shows a warning, review the source and publisher before choosing to run it.
 3. On **Your desk**, use **Use Windows layout** if the current arrangement is correct,
    or arrange the cards and choose the taskbar display. In **Modes**, add a combination,
@@ -39,7 +44,8 @@ DeskModes leaves the screens Windows activated at startup in place by default. T
 mode when the application starts. Resume, hotplug and process rules are separate Behavior settings.
 
 The interface follows Windows or your language choice: English, Russian, Ukrainian,
-Spanish, French and German. Choose it in **Settings → Behavior → Language** and save.
+Spanish, French and German. Choose it on the first screen of **First steps**, or in
+**Settings → Behavior → Language** and save.
 Settings reopens automatically on the same page in the selected language. No JSON editing is required.
 The `.cmd` launchers choose Windows PowerShell 5.1 even if your terminal uses PowerShell 7.
 

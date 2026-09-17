@@ -425,6 +425,33 @@ $script:UiResourcesXaml = @'
             </Setter>
         </Style>
 
+        <!-- The same fold, used as a CARD'S HEADING instead of as a rule between two sections of
+             one. No line above it - the card's own border is that line already, and a second one
+             a point below it read as a mistake - and H2's size and weight, because folding a
+             section away must not demote its heading to body text. -->
+        <Style x:Key="DiscloseHead" TargetType="Button" BasedOn="{StaticResource Disclose}">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="0,0,0,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="Toggle" TargetType="CheckBox">
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -944,11 +971,28 @@ $script:SettingsWindowXaml = @'
 
                                  The -4 cancels the cards' own outer margins, so the leftmost
                                  screen lines up with the card's padding rather than 4 points in. -->
+                            <!-- Folded away until it means something. Two drawings of the same
+                                 desk, one under the other, was the question this page kept being
+                                 asked - which of these two is the real one? - and the answer for
+                                 most desks is that the second one is not anything yet: switching
+                                 keeps Windows' own layout unless somebody overrides it. So the
+                                 heading now says which of the two states it is in, and the
+                                 drawing only appears when it is opened or when there is already
+                                 an override to see (Update-DeskCustomState). -->
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource H2}" Text="%%T:desk.saved%%"/>
-                                    <TextBlock Style="{StaticResource Hint}" Text="%%T:desk.saved.hint%%"/>
-                                    <UniformGrid x:Name="DeskPanel" Rows="1" Margin="-4,6,-4,0"/>
+                                    <Button x:Name="DeskCustomBtn" Style="{StaticResource DiscloseHead}"
+                                            AutomationProperties.Name="%%T:desk.saved%%"/>
+                                    <TextBlock x:Name="DeskCustomState" Style="{StaticResource Hint}"
+                                               Margin="0,2,0,0"/>
+                                    <StackPanel x:Name="DeskCustomPanel" Visibility="Collapsed">
+                                        <TextBlock Style="{StaticResource Hint}" Text="%%T:desk.saved.hint%%"/>
+                                        <UniformGrid x:Name="DeskPanel" Rows="1" Margin="-4,6,-4,0"/>
+                                        <TextBlock x:Name="DeskApplyHint" Style="{StaticResource Hint}"
+                                                   Text="%%T:desk.apply.hint%%" Margin="0,8,0,0"/>
+                                        <TextBlock x:Name="CurrentModeHint" Style="{StaticResource Hint}"
+                                                   TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource Card}">
@@ -1112,6 +1156,7 @@ $script:SettingsWindowXaml = @'
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBox x:Name="BackHotkeyBox" Style="{StaticResource Input}" Width="150" Height="30" TextAlignment="Center"/>
                                             <Button x:Name="ClearBackHotkeyBtn" Style="{StaticResource Btn}" Content="&#x00D7;"
+                                                    AutomationProperties.Name="%%T:hotkey.clear%%"
                                                     FontSize="15" Width="30" Height="30" Padding="0" Margin="6,0,0,0"
                                                     ToolTip="%%T:hotkey.clear%%"/>
                                         </StackPanel>
@@ -1327,6 +1372,42 @@ $script:SettingsWindowXaml = @'
                     </StackPanel>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,4,24,4">
                         <StackPanel>
+                            <!-- Above the version, and that is the whole point of it. Once the tray
+                                 icon has stopped being new, About is where a person goes looking for
+                                 "how does this work" - and what used to be waiting there was a
+                                 version string, three links to GitHub and a diagnostics button. The
+                                 tour and the reference stand first now; the facts a bug report needs
+                                 are still a card below, where a bug report goes looking for them. -->
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource H2}" Text="%%T:about.help%%"/>
+                                    <TextBlock Style="{StaticResource Hint}" Text="%%T:about.help.hint%%"/>
+                                    <Grid Style="{StaticResource RowFirst}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.welcome%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.welcome.hint%%"/>
+                                        </StackPanel>
+                                        <Button x:Name="WelcomeBtn" Grid.Column="1" Style="{StaticResource Btn}"
+                                                Content="%%T:about.welcome.show%%" VerticalAlignment="Center" MinWidth="140"/>
+                                    </Grid>
+                                    <Grid Style="{StaticResource Row}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource RowTitle}" Text="%%T:about.reference%%"/>
+                                            <TextBlock Style="{StaticResource RowSub}" Text="%%T:about.reference.hint%%"/>
+                                        </StackPanel>
+                                        <Button x:Name="HelpBtn" Grid.Column="1" Style="{StaticResource Btn}"
+                                                Content="%%T:common.open%%" VerticalAlignment="Center" MinWidth="140"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                             <!-- Every button in this card is the same width. Three of them were
                                  132 and "Open the log" was 108, which read as one of them having
                                  come out wrong rather than as four doors.
@@ -1440,10 +1521,22 @@ $script:SettingsWindowXaml = @'
                  is none is a question a person has to stop and answer. -->
             <Border Grid.Row="1" Background="{StaticResource FooterBrush}"
                     BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="24,10">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
-                    <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ApplyStatus" Grid.Column="0" Style="{StaticResource Hint}"
+                               TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"
+                               Visibility="Collapsed"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
+                        <Button x:Name="SaveOptionsBtn" Style="{StaticResource BtnAccent}" Content="▼"
+                                MinWidth="32" Margin="2,0,0,0" ToolTip="%%T:desk.saveOptions.tip%%"
+                                AutomationProperties.Name="%%T:desk.saveOptions.name%%"/>
+                        <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
@@ -1494,6 +1587,7 @@ $script:ModeEditorXaml = @'
                 <StackPanel Orientation="Horizontal">
                     <TextBox x:Name="HotkeyBox" Style="{StaticResource Input}" Width="150" Height="30" TextAlignment="Center"/>
                     <Button x:Name="ClearHotkeyBtn" Style="{StaticResource Btn}" Content="&#x00D7;"
+                            AutomationProperties.Name="%%T:hotkey.clear%%"
                             FontSize="15" Width="30" Height="30" Padding="0" Margin="6,0,0,0"
                             ToolTip="%%T:hotkey.clear%%"/>
                 </StackPanel>
@@ -2160,6 +2254,75 @@ function Get-UiFingerprint {
             [string][bool]$Ui.StartupBox.IsChecked + '|' + [string](Get-UiSleepMinutes -Ui $Ui))
 }
 
+# The desk has its own small baseline because the general fingerprint includes every setting. A card can
+# be moved and moved back while other edits remain; comparing this canonical row keeps that undo from
+# turning a plain Save into an accidental physical apply.
+function Get-UiDeskIdentity {
+    param($Info)
+
+    if (-not $Info) { return '' }
+    # Labels can be promoted when Windows re-identifies duplicate panels. The device id remains the
+    # same across that refresh; cards created without a live device (tests and remembered entries)
+    # use their label as the only identity available.
+    if ($Info.DisplayId) { return 'id:' + [string]$Info.DisplayId }
+    return 'label:' + [string]$Info.Label
+}
+
+function Get-UiDeskState {
+    param($Ui)
+
+    $identities = @()
+    $primary = ''
+    foreach ($card in @($Ui.DeskPanel.Children)) {
+        $info = $card.Tag
+        if (-not $info) { continue }
+        $identity = Get-UiDeskIdentity -Info $info
+        $identities += $identity
+        if ($info.Radio -and $info.Radio.IsChecked) { $primary = $identity }
+    }
+    $sameLayout = ($null -ne $Ui.DeskSavedLayout -and
+                   (($identities -join "
+") -eq (@($Ui.DeskSavedLayout) -join "
+")))
+    $samePrimary = ($null -ne $Ui.DeskSavedPrimary -and [string]$primary -eq [string]$Ui.DeskSavedPrimary)
+    $layoutOverride = [bool]$Ui.Settings.layoutOverride
+    $primaryOverride = [bool]$Ui.Settings.primaryOverride
+    if ($Ui.AdoptLiveDesk) {
+        $layoutOverride = $false
+        $primaryOverride = $false
+    }
+    elseif ($Ui.LayoutEdited -and -not $sameLayout) { $layoutOverride = $true }
+    elseif ($Ui.LayoutEdited -and $sameLayout) { $layoutOverride = [bool]$Ui.Settings.layoutOverride }
+    if ($Ui.PrimaryEdited -and -not $samePrimary) { $primaryOverride = $true }
+    elseif ($Ui.PrimaryEdited -and $samePrimary) { $primaryOverride = [bool]$Ui.Settings.primaryOverride }
+    return [ordered]@{
+        layout = @($identities)
+        primary = [string]$primary
+        layoutOverride = $layoutOverride
+        primaryOverride = $primaryOverride
+    }
+}
+
+function Get-UiDeskFingerprint {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.DeskPanel) { return '' }
+    return ((Get-UiDeskState -Ui $Ui) | ConvertTo-Json -Depth 4 -Compress)
+}
+
+function Test-UiDeskApplyNeeded {
+    param($Ui)
+
+    if (-not $Ui) { return $false }
+    if ($Ui.DeskApplyPending) { return $true }
+    if ($Ui.AdoptLiveDesk) { return $false }
+    # Live identity refreshes may change labels, but only a direct desk action creates apply intent.
+    # Without this guard a harmless refresh could make the main Save button touch the desktop.
+    if (-not $Ui.LayoutEdited -and -not $Ui.PrimaryEdited) { return $false }
+    if (-not $Ui.DeskBaselineFingerprint) { return $false }
+    return ((Get-UiDeskFingerprint -Ui $Ui) -ne [string]$Ui.DeskBaselineFingerprint)
+}
+
 # Written down when the window is built, and again once Show-SettingsDialog has asked Windows for
 # the two settings that are Windows' own: it is "as it opened" that has to be remembered, and
 # those two arrive a moment after the markup does.
@@ -2168,6 +2331,11 @@ function Set-UiBaseline {
 
     if (-not $Ui) { return }
     $Ui.Baseline = Get-UiFingerprint -Ui $Ui
+    $Ui.DeskBaselineFingerprint = Get-UiDeskFingerprint -Ui $Ui
+    $desk = Get-UiDeskState -Ui $Ui
+    $Ui.DeskSavedLayout = @($desk.layout)
+    $Ui.DeskSavedPrimary = [string]$desk.primary
+    $Ui.DeskApplyPending = $false
 }
 
 function Test-UiEdited {
@@ -2192,15 +2360,78 @@ function Test-UiEdited {
 # WINDOW and not to the page, and hiding Save with edits standing behind it would strand them on
 # a page with no way to save.
 #
-# Asked only when a page comes up, which is enough and is the point: neither of those two pages
-# can change a setting, so the answer cannot go stale while one of them is open.
+# Recomputed whenever a page or a desk control changes, so a pending desk action remains visible
+# while a person moves through the window and cannot be hidden by navigation.
 function Update-UiFooter {
     param($Ui)
 
     if (-not $Ui -or -not $Ui.SaveBtn -or -not $Ui.CancelBtn) { return }
-    $quiet = (($Ui.Page -eq 'diary' -or $Ui.Page -eq 'about') -and -not (Test-UiEdited -Ui $Ui))
+    $deskApply = Test-UiDeskApplyNeeded -Ui $Ui
+    $Ui.MainActionApply = [bool]$deskApply
+    $Ui.SaveBtn.Content = $(if ($deskApply) { Get-Text -Key 'desk.saveApply' } else { Get-Text -Key 'common.save' })
+    $Ui.SaveBtn.ToolTip = $(if ($deskApply) { Get-Text -Key 'desk.saveApply.tip' } else { Get-Text -Key 'common.save.tip' })
+    # Enter reaches the default button from anywhere in the window, including a page that shows none of
+    # this. Writing settings.json that way is what a person expects; reconfiguring the physical desktop
+    # is not, and there is no confirmation between the keypress and SetDisplayConfig. So while the main
+    # action is a physical apply the button stops being the default, and the window-level Enter handler
+    # installed in New-SettingsWindow performs the plain Save instead. Clicking still applies.
+    $Ui.SaveBtn.IsDefault = (-not $deskApply)
+    $quiet = (($Ui.Page -eq 'diary' -or $Ui.Page -eq 'about') -and -not (Test-UiEdited -Ui $Ui) -and -not $deskApply)
     $Ui.SaveBtn.Visibility = $(if ($quiet) { 'Collapsed' } else { 'Visible' })
+    if ($Ui.SaveOptionsBtn) { $Ui.SaveOptionsBtn.Visibility = $(if ($quiet) { 'Collapsed' } else { 'Visible' }) }
+    if ($quiet -and $Ui.ApplyStatus) { $Ui.ApplyStatus.Visibility = 'Collapsed' }
     $Ui.CancelBtn.Content = $(if ($quiet) { Get-Text -Key 'common.close' } else { Get-Text -Key 'common.cancel' })
+    # Here rather than on each desk card's own handler: this runs after every edit already, and a
+    # second place that had to remember to call it is a place that will forget.
+    Update-DeskCustomState -Ui $Ui
+}
+
+# The arrow is a real keyboard-focusable button, and its menu is built once with the same palette as the
+# window. Keeping both choices here means the main button can follow desk intent without hiding Save-only.
+function Initialize-SaveOptionsMenu {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.SaveOptionsBtn) { return }
+    $menu = New-Object System.Windows.Controls.ContextMenu
+    $menu.Background = $Ui.Window.FindResource('CardBrush')
+    $menu.Foreground = $Ui.Window.FindResource('TextBrush')
+    $menu.BorderBrush = $Ui.Window.FindResource('CardBorderBrush')
+    $menu.Padding = New-Object System.Windows.Thickness 4, 4, 4, 4
+
+    $saveOnly = New-Object System.Windows.Controls.MenuItem
+    $saveOnly.Header = Get-Text -Key 'desk.saveOnly'
+    $saveOnly.ToolTip = Get-Text -Key 'desk.saveOnly.tip'
+    $saveOnly.Tag = $Ui
+    $saveOnly.Padding = New-Object System.Windows.Thickness 12, 7, 12, 7
+    $saveOnly.Background = $menu.Background
+    $saveOnly.Foreground = $menu.Foreground
+    $saveOnly.add_Click({ [void](Invoke-SettingsSave -Ui $this.Tag) })
+
+    $saveApply = New-Object System.Windows.Controls.MenuItem
+    $saveApply.Header = Get-Text -Key 'desk.saveApplyNow'
+    $saveApply.ToolTip = Get-Text -Key 'desk.saveApplyNow.tip'
+    $saveApply.Tag = $Ui
+    $saveApply.Padding = New-Object System.Windows.Thickness 12, 7, 12, 7
+    $saveApply.Background = $menu.Background
+    $saveApply.Foreground = $menu.Foreground
+    $saveApply.add_Click({ [void](Invoke-SettingsApply -Ui $this.Tag) })
+
+    [void]$menu.Items.Add($saveOnly)
+    [void]$menu.Items.Add($saveApply)
+    $Ui.SaveOnlyItem = $saveOnly
+    $Ui.SaveApplyItem = $saveApply
+    $Ui.SaveMenu = $menu
+    $Ui.SaveOptionsBtn.ContextMenu = $menu
+    $menu.PlacementTarget = $Ui.SaveOptionsBtn
+    $menu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Top
+}
+
+function Invoke-SettingsMainAction {
+    param($Ui)
+
+    if (-not $Ui) { return $null }
+    if ($Ui.MainActionApply) { return (Invoke-SettingsApply -Ui $Ui) }
+    return (Invoke-SettingsSave -Ui $Ui)
 }
 
 function Set-UiPage {
@@ -2377,6 +2608,18 @@ function New-SettingsWindow {
         AddRuleBtn        = $win.FindName('AddRuleBtn')
         ReadDeskBtn       = $win.FindName('ReadDeskBtn')
         IdentifyBtn       = $win.FindName('IdentifyBtn')
+        DeskApplyHint     = $win.FindName('DeskApplyHint')
+        DeskCustomBtn     = $win.FindName('DeskCustomBtn')
+        DeskCustomState   = $win.FindName('DeskCustomState')
+        DeskCustomPanel   = $win.FindName('DeskCustomPanel')
+        # Three states, not two. $null is "nobody has touched the fold, so follow the override";
+        # $true and $false are a person's own click, and that outranks the override from then on.
+        # Without the third state, a desk that already has an override could not be folded away
+        # at all - and one that a person opened to arrange would shut under them on their first
+        # edit, taking the cards out from under the cursor (see Update-DeskCustomState).
+        DeskCustomOpened  = $null
+        ApplyStatus       = $win.FindName('ApplyStatus')
+        CurrentModeHint   = $win.FindName('CurrentModeHint')
         # The shortcut that goes back to the mode before this one. Not in Hotkeys: that map is keyed
         # by MODE, and everything that reads it - the rows, the orphan rows, the editor's "somebody
         # else has this key" check - would take a key called back for a mode called back.
@@ -2384,6 +2627,9 @@ function New-SettingsWindow {
         # The rules as the tray reads them, edited in place. Filled by Import-RuleSettings.
         Rules             = (New-Object System.Collections.ArrayList)
         SaveBtn           = $win.FindName('SaveBtn')
+        SaveOptionsBtn    = $win.FindName('SaveOptionsBtn')
+        SaveOnlyItem      = $null
+        SaveApplyItem     = $null
         CancelBtn         = $win.FindName('CancelBtn')
         StartupBox        = $win.FindName('StartupBox')
         RefreshBox        = $win.FindName('RefreshBox')
@@ -2408,6 +2654,13 @@ function New-SettingsWindow {
         StartupWasEnabled = $false
         OnSaved           = $null
         SaveBusy          = $false
+        ApplyBusy         = $false
+        MainActionApply   = $false
+        DeskBaselineFingerprint = ''
+        DeskSavedLayout   = $null
+        DeskSavedPrimary  = ''
+        DeskApplyPending  = $false
+        SaveMenu          = $null
         LanguageCode      = [string]$script:LangCode
         RestartOnLanguageChange = $false
         ReloadLanguage    = $false
@@ -2474,6 +2727,8 @@ function New-SettingsWindow {
         Result            = $null
     }
 
+    Initialize-SaveOptionsMenu -Ui $ui
+
     # The combos go into a working list: the window edits that, and settings.json is rewritten
     # from it whole on Save. The name the combo had in the file is deliberately NOT kept beside
     # it: everything keyed by mode moves the instant the name changes (Move-UiModeKey), so
@@ -2513,6 +2768,7 @@ function New-SettingsWindow {
         if ($e.WidthChanged) { Update-LiveDesk -Ui $sender.Tag }
     })
     Update-DisplaysTable -Ui $ui
+    Update-CurrentModeHint -Ui $ui
     Update-ModesPanel -Ui $ui -InitialModes $Modes -InitialHotkeys $Settings.hotkeys
 
     # The way-back shortcut, out of the same map the modes' shortcuts came from, into a field of its
@@ -2654,10 +2910,28 @@ function New-SettingsWindow {
         Invoke-RuleEditor -Ui $ui -Rule $null
     })
 
+    # While the footer's main action is a physical apply, Update-UiFooter clears IsDefault on it, so
+    # Enter no longer reaches a button at all. Catch it here and do the harmless half - Save - so the
+    # key keeps the meaning it has everywhere else in the window. Bubbling, not preview, on purpose:
+    # the hotkey capture field marks Enter handled on its own way up and must keep winning.
+    $win.add_KeyDown({
+        param($sender, $e)
+        if ($e.Key -ne [System.Windows.Input.Key]::Enter) { return }
+        $ui = $script:ActiveUi
+        if (-not $ui -or -not $ui.MainActionApply) { return }
+        if ($ui.SaveBtn -and $ui.SaveBtn.Visibility -ne 'Visible') { return }
+        $e.Handled = $true
+        [void](Invoke-SettingsSave -Ui $ui)
+    })
+
     # The About page's four doors. Each one is a line, and each one goes through Open-UiTarget:
     # a browser or Explorer refusing to start must not take the window down with it.
     $win.FindName('RepoBtn').add_Click({ Open-UiTarget -Target $script:RepoUrl })
     $win.FindName('IssueBtn').add_Click({ Open-UiTarget -Target $script:IssuesUrl })
+    $win.FindName('HelpBtn').add_Click({ Open-UiTarget -Target $script:HelpUrl })
+    # The tour again, modal to this window. Nothing is read out of it and nothing is written back:
+    # it teaches, and the page behind it is where anything actually changes.
+    $win.FindName('WelcomeBtn').add_Click({ Show-SettingsWelcome })
     $win.FindName('FolderBtn').add_Click({ Open-UiTarget -Target $script:ToolRoot })
     $win.FindName('LogBtn').add_Click({
         if (Test-Path $script:LogFile) { Open-UiTarget -Target $script:LogFile }
@@ -2689,8 +2963,28 @@ function New-SettingsWindow {
     $ui.SaveBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        [void](Invoke-SettingsSave -Ui $ui)
+        [void](Invoke-SettingsMainAction -Ui $ui)
     })
+
+    $ui.SaveOptionsBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui -or -not $ui.SaveMenu) { return }
+        $ui.SaveMenu.IsOpen = $true
+    })
+
+    # The fold over the configured desk. It only ever OPENS from here: shutting it is what an
+    # override going away does, and a person who opened it to arrange a row keeps it.
+    $ui.DeskCustomBtn.add_Click({
+        $ui = $script:ActiveUi
+        if (-not $ui) { return }
+        $ui.DeskCustomOpened = -not ([string]$ui.DeskCustomPanel.Visibility -eq 'Visible')
+        Update-DeskCustomState -Ui $ui
+    })
+
+    # The fold's own caption is built here rather than waiting for the first Update-UiFooter: a
+    # window that has been built but not shown is what the tests and render-preview.ps1 hold, and
+    # a heading that is still empty in those is a heading nobody would notice was empty.
+    Update-DeskCustomState -Ui $ui
 
     # Last, after every control and handler is ready. If construction throws before here there is
     # no half-built window for the tray's singleton guard to mistake for one it can activate.
@@ -2716,6 +3010,43 @@ function Set-DisclosureOpen {
     # back to a caret and a lowercase v, which read as punctuation. U+25B4/U+25BE are.
     $Button.Content = $(if ($Open) { [string][char]0x25B4 } else { [string][char]0x25BE }) +
                       '  ' + $Label
+}
+
+# Is the desk row an override at all, or is it only echoing what Windows already does? The
+# window's own answer rather than the file's: an edit made a second ago has to count, and
+# Get-UiDeskState is what Save would write.
+function Test-UiDeskCustomised {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.DeskPanel) { return $false }
+    try {
+        $desk = Get-UiDeskState -Ui $Ui
+        return ([bool]$desk.layoutOverride -or [bool]$desk.primaryOverride)
+    }
+    catch {
+        # Never the reason the page will not draw. Open reads as "there is something to see",
+        # which is the harmless way round.
+        Write-DisplayLog "settings dialog: could not tell whether the desk is customised - $($_.Exception.Message)"
+        return $true
+    }
+}
+
+# The fold over the configured desk, and the line under it that says which of the two states this
+# page is in. Called from Update-UiFooter, so it follows every edit without a handler of its own
+# on each card.
+function Update-DeskCustomState {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.DeskCustomBtn) { return }
+    $customised = Test-UiDeskCustomised -Ui $Ui
+    $Ui.DeskCustomState.Text = Get-Text -Key $(if ($customised) { 'desk.saved.on' } else { 'desk.saved.off' })
+    # A person's own click outranks the override; until there has been one, the override decides.
+    $open = $(if ($null -ne $Ui.DeskCustomOpened) { [bool]$Ui.DeskCustomOpened } else { $customised })
+    Set-DisclosureOpen -Button $Ui.DeskCustomBtn -Panel $Ui.DeskCustomPanel `
+                       -Label (Get-Text -Key 'desk.saved') -Open $open
+    # A band that was Collapsed measured zero, so the cards inside it were drawn against
+    # DeskCardAssumed. One pass now, and the row's own SizeChanged corrects it a frame later.
+    if ($open) { Update-DeskShapes -Ui $Ui }
 }
 
 function Set-EditorMoreVisible {
@@ -2903,10 +3234,12 @@ function Update-DeskPanel {
         Add-DeskCard -Ui $Ui -Label $card.Label -Display $card.Display
     }
 
+    # Legacy primary values are inactive without primaryOverride. Highlighting one would
+    # promise a taskbar move that the switcher will never request.
     # The taskbar star goes on the FIRST match against the setting, left to right: that is
     # exactly how the switcher picks it too. Setting it inside the card-building loop is not
     # allowed — each next match would clear the previous one, and the last would win.
-    if ($settings.primary) {
+    if ($settings.primaryOverride -and $settings.primary) {
         foreach ($child in @($Ui.DeskPanel.Children)) {
             $info = $child.Tag
             if (-not $info) { continue }
@@ -3004,7 +3337,7 @@ function Add-DeskCard {
     $radio.HorizontalAlignment = 'Center'
     $radio.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
     # Windows will not put the taskbar on a display that is not there, so neither will this. It
-    # still SHOWS as chosen when settings.primary names it — that setting is a pattern, and it
+    # still SHOWS as chosen when an explicit primary override names it — that setting is a pattern, and it
     # matched this card — and Read-SettingsFromUi still reads a disabled radio, so the choice
     # survives being looked at while the monitor is unplugged.
     $radio.IsEnabled = $connected
@@ -3099,7 +3432,10 @@ function Add-DeskCard {
     $move = {
         Move-DeskCard -Panel $this.Tag.Panel -Card $this.Tag.Card -Delta $this.Tag.Delta
         $this.Tag.Ui.LayoutEdited = $true
+        $this.Tag.Ui.AdoptLiveDesk = $false
+        if ($this.Tag.Ui.ApplyStatus) { $this.Tag.Ui.ApplyStatus.Visibility = 'Collapsed' }
         Update-DeskShapes -Ui $this.Tag.Ui
+        Update-UiFooter -Ui $this.Tag.Ui
     }
     $left.add_Click($move)
     $right.add_Click($move)
@@ -3110,7 +3446,12 @@ function Add-DeskCard {
     $radio.add_Checked({ Update-DeskShapes -Ui $this.Tag })
     # Click, unlike Checked, is only raised by a person (mouse or keyboard). The window checks a
     # saved primary while building, and that must not silently become an explicit override.
-    $radio.add_Click({ $this.Tag.PrimaryEdited = $true })
+    $radio.add_Click({
+        $this.Tag.PrimaryEdited = $true
+        $this.Tag.AdoptLiveDesk = $false
+        if ($this.Tag.ApplyStatus) { $this.Tag.ApplyStatus.Visibility = 'Collapsed' }
+        Update-UiFooter -Ui $this.Tag
+    })
 
     [void]$panel.Children.Add($outer)
 }
@@ -3130,7 +3471,37 @@ function Update-DisplaysTable {
 
     $win = $Ui.Window
     $rows = @()
-    foreach ($m in @($Ui.State | Where-Object { $_ })) {
+    $stateRows = @($Ui.State | Where-Object { $_ } | ForEach-Object {
+        $m = $_
+        $pos = $null
+        if ($Ui.Positions -and $Ui.Positions.Contains([string]$m.Id)) { $pos = $Ui.Positions[[string]$m.Id] }
+        $hasStatePosition = ($m.Active -and $null -ne $m.PSObject.Properties['X'] -and
+                             $null -ne $m.PSObject.Properties['Y'])
+        $hasPosition = ($m.Active -and (($pos -and $null -ne $pos.X -and $null -ne $pos.Y) -or $hasStatePosition))
+        if ($m.Active) {
+            [pscustomobject]@{ Display = $m; Active = $true; HasPosition = $hasPosition
+                X = [int]$(if ($pos -and $null -ne $pos.X) { $pos.X } elseif ($hasStatePosition) { $m.X } else { 0 })
+                Y = [int]$(if ($pos -and $null -ne $pos.Y) { $pos.Y } elseif ($hasStatePosition) { $m.Y } else { 0 })
+                Label = [string]$m.Label; Id = [string]$m.Id; LayoutIndex = [int]::MaxValue }
+        }
+        else {
+            $index = [int]::MaxValue
+            for ($i = 0; $i -lt @($Ui.Settings.layout).Count; $i++) {
+                if (Test-DisplayNameMatch -Pattern ([string]$Ui.Settings.layout[$i]) -Label $m.Label -ShortId $m.ShortId -Id $m.Id) {
+                    $index = $i; break
+                }
+            }
+            [pscustomobject]@{ Display = $m; Active = $false; HasPosition = $false; X = 0; Y = 0
+                Label = [string]$m.Label; Id = [string]$m.Id; LayoutIndex = $index }
+        }
+    })
+
+    $orderedState = @($stateRows | Sort-Object @{ Expression = { if ($_.Active) { 0 } else { 1 } } },
+        @{ Expression = { if ($_.Active -and $_.HasPosition) { 0 } elseif ($_.Active) { 1 } else { 2 } } },
+        @{ Expression = { if ($_.Active) { $_.X } else { $_.LayoutIndex } } },
+        @{ Expression = { if ($_.Active) { $_.Y } else { 0 } } }, Label, Id |
+        ForEach-Object { $_.Display })
+    foreach ($m in $orderedState) {
         $now = Get-Text -Key 'display.off'
         if ($m.Disconnected) { $now = Get-Text -Key 'display.notConnected' }
         elseif ($m.Active)   {
@@ -3216,6 +3587,23 @@ function Update-DisplaysTable {
     }
 }
 
+# The general taskbar choice is used by ordinary mode switching, but a combo's own primary is more
+# specific and wins there. Keep that precedence visible beside the editable desk row, naming the mode
+# currently in front of the person so a Save and apply action is not mistaken for a mode change.
+function Update-CurrentModeHint {
+    param($Ui)
+
+    if (-not $Ui -or -not $Ui.CurrentModeHint) { return }
+    $Ui.CurrentModeHint.Visibility = 'Collapsed'
+    if (-not $Ui.State -or -not $Ui.Settings) { return }
+    $modes = @(Get-DisplayModes -State $Ui.State -Settings $Ui.Settings)
+    $key = Get-ActiveModeKey -State $Ui.State -Modes $modes
+    $mode = @($modes | Where-Object { $_.Key -eq $key } | Select-Object -First 1)
+    if ($mode.Count -eq 0 -or $mode[0].Kind -ne 'combo' -or -not $mode[0].Primary) { return }
+    $Ui.CurrentModeHint.Text = Get-Text -Key 'desk.modeOverride' -Values @([string]$mode[0].Title)
+    $Ui.CurrentModeHint.Visibility = 'Visible'
+}
+
 # The desk as Windows holds it this second: the displays that are on, left to right by the position
 # Windows gave them, and whichever of them carries the taskbar. A pure function of the state and the
 # positions, so the button that applies it is one line and this is what gets tested.
@@ -3286,6 +3674,8 @@ function Update-SettingsLiveDesk {
     Update-DeskCardIdentities -Ui $Ui -State $Ui.State
     Update-LiveDesk -Ui $Ui
     Update-DisplaysTable -Ui $Ui
+    Update-CurrentModeHint -Ui $Ui
+    Update-UiFooter -Ui $Ui
     return $true
 }
 
@@ -3369,8 +3759,13 @@ function Invoke-DeskRead {
     $Ui.AdoptLiveDesk = $true
     $Ui.LayoutEdited = $false
     $Ui.PrimaryEdited = $false
+    # This is the one control that exists to back out of desk intent, so it has to clear the retry flag
+    # as well: Test-UiDeskApplyNeeded answers from it before it ever looks at AdoptLiveDesk, and a failed
+    # apply would otherwise leave the footer demanding another one that the person just walked away from.
+    $Ui.DeskApplyPending = $false
     Update-DeskShapes -Ui $Ui
     Update-LiveDesk -Ui $Ui
+    Update-UiFooter -Ui $Ui
     return $true
 }
 
@@ -5277,6 +5672,12 @@ function Get-LevelSummary {
     return ''
 }
 
+# How many of a mode's settings a row names before it stops naming them and counts the rest.
+# Three is what fits beside the displays and the shortcut at the window's own width. It used to
+# be all six, cut by the ellipsis wherever the row ran out - and what a person saw was "cont...",
+# half of "contrast", which reads as a rendering fault rather than as a list that goes on.
+$script:ModeRowFacts = 3
+
 # The whole caption of a mode's row: what the mode is, then one short word per setting hidden
 # behind its Edit button. One word each and no more — the row must not wrap, and the list is as
 # long as the desk has modes.
@@ -5284,23 +5685,47 @@ function Get-ModeRowSubtitle {
     param($Ui, $Mode)
 
     $key = [string]$Mode.Key
-    $parts = @(Get-ModeSubtitle -Mode $Mode)
-    if ($Ui.Levels.Contains($key))   { $parts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun (Get-Text -Key 'noun.brightness') }
-    if ($Ui.Contrast.Contains($key)) { $parts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun (Get-Text -Key 'noun.contrast') }
+    # What the mode IS always leads and is never counted away: a row whose displays were replaced
+    # by "+4" would be a row about nothing.
+    $lead = @(Get-ModeSubtitle -Mode $Mode)
+    $facts = @()
+    if ($Ui.Levels.Contains($key))   { $facts += Get-LevelSummary -Model $Ui.Levels[$key]   -Noun (Get-Text -Key 'noun.brightness') }
+    if ($Ui.Contrast.Contains($key)) { $facts += Get-LevelSummary -Model $Ui.Contrast[$key] -Noun (Get-Text -Key 'noun.contrast') }
     if ($Ui.Picture.Contains($key)) {
         # "picture" and not "picture preset": this caption is the one thing on the row that gets
         # trimmed, and the word "preset" is eight characters saying what the section it comes
         # from is called.
         $count = @($Ui.Picture[$key].Keys).Count
-        $parts += $(if ($count -eq 1) { Get-Text -Key 'summary.picture' }
+        $facts += $(if ($count -eq 1) { Get-Text -Key 'summary.picture' }
                     else { Get-PluralText -Key 'summary.pictureOn' -Count $count })
     }
     # The device's name is not printed: it is long enough to push the row into a second line,
     # and the row's job is to say that the setting is there at all.
-    if ($Ui.Hdr.Contains($key))      { $parts += (Get-Text -Key 'summary.hdr') }
-    if ($Ui.Audio.Contains($key))    { $parts += (Get-Text -Key 'summary.audio') }
-    if ($Ui.Hooks.Contains($key))    { $parts += (Get-Text -Key 'summary.hook') }
-    return (@($parts | Where-Object { $_ }) -join $script:UiDot)
+    if ($Ui.Hdr.Contains($key))      { $facts += (Get-Text -Key 'summary.hdr') }
+    if ($Ui.Audio.Contains($key))    { $facts += (Get-Text -Key 'summary.audio') }
+    if ($Ui.Hooks.Contains($key))    { $facts += (Get-Text -Key 'summary.hook') }
+
+    $facts = @($facts | Where-Object { $_ })
+    if ($facts.Count -gt $script:ModeRowFacts) {
+        $hidden = $facts.Count - $script:ModeRowFacts
+        $facts = @($facts[0..($script:ModeRowFacts - 1)]) + (Get-Text -Key 'summary.more' -Values @($hidden))
+    }
+    return ((@($lead) + $facts | Where-Object { $_ }) -join $script:UiDot)
+}
+
+# The same caption without the counting: what the row's tooltip carries, and what a person gets
+# when they want the whole list rather than the three that fit.
+function Get-ModeRowTooltip {
+    param($Ui, $Mode)
+
+    $facts = $script:ModeRowFacts
+    try {
+        # A ceiling nothing can reach rather than a second copy of the list above: two builders of
+        # one sentence disagree the first time either is edited.
+        $script:ModeRowFacts = [int]::MaxValue
+        return (Get-ModeRowSubtitle -Ui $Ui -Mode $Mode)
+    }
+    finally { $script:ModeRowFacts = $facts }
 }
 
 # Entries tied to modes, in the order of the modes themselves. What does not match that order
@@ -5449,7 +5874,8 @@ function Update-ModesPanel {
             # click away behind Edit, and the tooltip carries it meanwhile.
             $sub.TextWrapping = 'NoWrap'
             $sub.TextTrimming = 'CharacterEllipsis'
-            $sub.ToolTip = $subText
+            # The tooltip carries every fact, including the ones the row counted away as "+2".
+            $sub.ToolTip = Get-ModeRowTooltip -Ui $Ui -Mode $mode
             [void]$textStack.Children.Add($sub)
         }
         [void]$row.Children.Add($textStack)
@@ -6185,14 +6611,25 @@ function Read-SettingsFromUi {
     # Before that the row is a view of old settings, and writing it back used to turn an ordinary
     # Save into a new physical-layout override.
     $labels = @()
+    $identities = @()
     $primary = ''
+    $primaryIdentity = ''
     foreach ($card in @($Ui.DeskPanel.Children)) {
         $info = $card.Tag
         if (-not $info) { continue }
         $labels += [string]$info.Label
-        if ($info.Radio -and $info.Radio.IsChecked) { $primary = [string]$info.Label }
+        $identity = Get-UiDeskIdentity -Info $info
+        $identities += $identity
+        if ($info.Radio -and $info.Radio.IsChecked) {
+            $primary = [string]$info.Label
+            $primaryIdentity = $identity
+        }
     }
-    if ($Ui.LayoutEdited) {
+    $sameSavedLayout = ($null -ne $Ui.DeskSavedLayout -and
+                        (($identities -join "
+") -eq (@($Ui.DeskSavedLayout) -join "
+")))
+    if ($Ui.LayoutEdited -and -not $sameSavedLayout) {
         $updated.layout = $labels
         $updated.layoutOverride = $true
     }
@@ -6204,7 +6641,8 @@ function Read-SettingsFromUi {
         $updated.layout = @($Settings.layout)
         $updated.layoutOverride = [bool]$Settings.layoutOverride
     }
-    if ($Ui.PrimaryEdited) {
+    $sameSavedPrimary = ($null -ne $Ui.DeskSavedPrimary -and [string]$primaryIdentity -eq [string]$Ui.DeskSavedPrimary)
+    if ($Ui.PrimaryEdited -and -not $sameSavedPrimary) {
         $updated.primary = $primary
         $updated.primaryOverride = $true
     }
@@ -6309,6 +6747,113 @@ function Show-SettingsWarning {
     }
 }
 
+function Get-UiSelectedPrimary {
+    param($Ui)
+
+    foreach ($card in @($Ui.DeskPanel.Children)) {
+        $info = $card.Tag
+        if ($info -and $info.Radio -and $info.Radio.IsChecked) {
+            return [pscustomobject]@{
+                Id    = $(if ($info.DisplayId) { [string]$info.DisplayId } else { '__missing__' })
+                Label = [string]$info.Label
+            }
+        }
+    }
+    return $null
+}
+
+# Save and apply is a two-phase user action. Save owns validation and durable persistence; only after it
+# succeeds do we ask the core to touch Windows. Keeping the phases separate leaves the form and settings
+# file honest when a concurrent switch or a changing monitor set makes the physical apply fail.
+function Invoke-SettingsApply {
+    param($Ui)
+
+    if (-not $Ui -or $Ui.SaveBusy -or $Ui.ApplyBusy) { return (New-SwitchResult -ModeKey 'current' -Outcome 'busy') }
+    $Ui.ApplyBusy = $true
+    try {
+        if (-not (Invoke-SettingsSave -Ui $Ui)) { return $null }
+        # A language change closes the window from inside that same Save and still reports success. The
+        # form is being torn down and Show-SettingsDialog is about to rebuild it, so this Ui can no longer
+        # show a status line or own a warning: settings are durable, and the apply belongs to the window
+        # that comes back, where the footer will still be offering it.
+        if ($Ui.ReloadLanguage) { return $null }
+        # Invoke-SettingsSave advances the desk baseline and clears intent. Restore the explicit request
+        # before touching Windows so a failed apply remains an obvious retry in the footer.
+        $Ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $Ui
+        $selected = Get-UiSelectedPrimary -Ui $Ui
+        try {
+            $result = Set-CurrentDesktop -Settings $Ui.Settings `
+                -PrimaryId $(if ($Ui.Settings.primaryOverride -and $selected) { $selected.Id } else { '' }) `
+                -PrimaryLabel $(if ($selected) { $selected.Label } else { '' })
+        }
+        catch {
+            Write-DisplayLog "settings dialog: apply now failed - $($_.Exception.Message)"
+            $result = New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.failed')
+        }
+
+        # Refresh all live views after an attempted physical apply. A refusal can still leave Windows in a
+        # changed state, and hiding that behind the old canvas would make the next retry unsafe.
+        if (Test-Path Function:\Update-StateCache) { Update-StateCache }
+        if ((Test-Path Function:\Get-CachedDesk) -and (Test-Path Function:\Update-OpenSettingsDesk)) {
+            Update-OpenSettingsDesk -State (Get-CachedDesk)
+        }
+        else {
+            try {
+                $fresh = @(Get-DeskDisplays -State @(Get-DisplayState))
+                $positions = Get-CcdSourcePositions
+                [void](Update-SettingsLiveDesk -Ui $Ui -State $fresh -Positions $positions)
+            }
+            catch { Write-DisplayLog "settings dialog: could not refresh after apply now - $($_.Exception.Message)" }
+        }
+
+        if ($result.Ok) {
+            $Ui.DeskApplyPending = $false
+            if ($Ui.ApplyStatus) {
+                $Ui.ApplyStatus.Text = [string]$result.Message
+                $Ui.ApplyStatus.Visibility = 'Visible'
+            }
+            return $result
+        }
+        # Save has already succeeded, so the warning must say both facts: the chosen settings are durable and
+        # the current desktop still needs another attempt. The main footer action remains Apply for that retry.
+        $reason = $(if ($result -and $result.Message) { [string]$result.Message } else { Get-Text -Key 'desk.apply.failed' })
+        $statusKey = 'desk.apply.savedButFailed'
+        # The desktop really did change and verify here - only its snapshot could not be written - so this
+        # is a different sentence from a refusal. Read it off the result's own code: Message is written
+        # for a person and translated, and comparing against it breaks the moment the wording does.
+        if ($result -and [string]$result.Code -eq 'persistFailed') {
+            $statusKey = 'desk.apply.savedButPersistFailed'
+        }
+        $status = Get-Text -Key $statusKey -Values @($reason)
+        if ($Ui.ApplyStatus) {
+            $Ui.ApplyStatus.Text = $status
+            $Ui.ApplyStatus.Visibility = 'Visible'
+        }
+        Show-SettingsWarning -Text $status -Owner $Ui.Window
+        $Ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $Ui
+        return $result
+    }
+    catch {
+        Write-DisplayLog "settings dialog: apply now failed - $($_.Exception.Message)"
+        $result = New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.failed')
+        $status = Get-Text -Key 'desk.apply.savedButFailed' -Values @($result.Message)
+        if ($Ui.ApplyStatus) {
+            $Ui.ApplyStatus.Text = $status
+            $Ui.ApplyStatus.Visibility = 'Visible'
+        }
+        Show-SettingsWarning -Text $status -Owner $Ui.Window
+        $Ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $Ui
+        return $result
+    }
+    finally {
+        $Ui.ApplyBusy = $false
+        Update-UiFooter -Ui $Ui
+    }
+}
+
 # Commit the current form without ending its modal lifetime. The in-memory working copy advances
 # only after settings.json is durable, so a failed write can be corrected and retried without the
 # tray, the form and the file disagreeing about which version is active.
@@ -6350,6 +6895,17 @@ function Invoke-SettingsSave {
         $Ui.Settings = $updated
         $Ui.Result = $updated
         Set-UiBaseline -Ui $Ui
+        # A plain Save used to leave the window looking exactly as it had a moment before, and the
+        # only answer was a balloon behind it. The question that left is always the same one: did
+        # that change my screens? On a Save that half-failed the warning box has already said more
+        # than this line could, so the line stays out of its way.
+        if ($Ui.ApplyStatus) {
+            if ($externalFailed) { $Ui.ApplyStatus.Visibility = 'Collapsed' }
+            else {
+                $Ui.ApplyStatus.Text = Get-Text -Key 'settings.savedOnly'
+                $Ui.ApplyStatus.Visibility = 'Visible'
+            }
+        }
         if ($externalFailed) {
             # The normal fingerprint contains the requested checkbox and timeout. Keep it unequal
             # until a later Save confirms those external Windows settings, including on pages that
@@ -6366,6 +6922,9 @@ function Invoke-SettingsSave {
                 Show-SettingsWarning -Text (Get-Text -Key 'settings.applyFailed') -Owner $Ui.Window
             }
         }
+        # A Save can change a combination's own taskbar choice while the same desk is active. Refresh the
+        # explanation immediately so it does not describe the old precedence until the next display event.
+        Update-CurrentModeHint -Ui $Ui
         # Rebuild translated markup only after the durable save and tray callback. The modal
         # owner resumes after Close and carries the page and any refused system edits forward.
         if ($Ui.RestartOnLanguageChange -and
@@ -7325,4 +7884,591 @@ function New-StatsUi {
     $script:ActiveStatsUi = $ui
     Update-StatsView -Ui $ui
     return $ui
+}
+
+# --- the first steps --------------------------------------------------------
+# Four screens, shown once on the run that had to create settings.json and reachable for good
+# afterwards from the tray menu and from About. What it exists for is the gap between "the icon
+# appeared" and "I know what this is": the tray icon is silent by design, the shortcuts were
+# handed out without being announced, and the Settings window that used to open by itself on the
+# first run opens on the desk diagram - which answers a question nobody has asked yet.
+#
+# Two rules hold its shape:
+#
+#   * IT IS SKIPPABLE, ALWAYS. Every screen carries the way out, the last one included, and
+#     nothing here is a step a person has to complete before the program will work. The tour
+#     changes no setting and writes no file: pressing Escape on the first frame leaves exactly
+#     the state the old first run left.
+#   * TWO OF THE FOUR NAME THIS DESK. The monitors Windows found and the shortcuts this very run
+#     assigned are read out by name (Get-WelcomeFacts in Displays.ps1 collects them). A tour that
+#     says "your displays" in general is a tour that gets clicked through; one that says
+#     "Ctrl+Alt+F1 - Only LG ULTRAGEAR" is one somebody reads to the end.
+#
+# The height is a number rather than SizeToContent on purpose: the four screens are of different
+# lengths, and a window that resized under the cursor between Next and Next moved the button the
+# person was aiming at. Everything sits in a ScrollViewer so the longest translation still fits.
+
+$script:WelcomeXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="%%T:win.welcome%%"
+        Width="560" Height="470" MinWidth="460" MinHeight="380"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
+        Background="%%BG%%" Foreground="%%TEXT%%"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        UseLayoutRounding="True">
+    <Window.Resources>
+%%RES%%
+        <!-- A point of the tour: a glyph in the accent colour and a sentence that wraps beside it.
+             A Grid and not a horizontal StackPanel - a StackPanel gives its children infinite
+             width, and every one of these sentences would have run off the right edge on one line. -->
+        <Style x:Key="PointGrid" TargetType="Grid">
+            <Setter Property="Margin" Value="0,12,0,0"/>
+        </Style>
+        <Style x:Key="PointIcon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="Margin" Value="0,1,0,0"/>
+        </Style>
+        <Style x:Key="Point" TargetType="TextBlock" BasedOn="{StaticResource RowTitle}"/>
+        <!-- The quieter half of a screen: the aside that is true but is not the point. Same size
+             as a hint elsewhere in the program, and no bottom margin - PointGrid owns the rhythm. -->
+        <Style x:Key="PointSub" TargetType="TextBlock" BasedOn="{StaticResource RowSub}">
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel LastChildFill="True">
+        <!-- The footer of the Settings window, down to the rule above it: this window is opened
+             from that one as often as it is from the tray, and two footers that disagreed about
+             where the primary button stands would read as two programs. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource FooterBrush}"
+                BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="20,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="DotRow" Orientation="Horizontal" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <!-- The way out stands to the LEFT of the two that go on, away from the
+                         cursor's path between Next and Next. It is never hidden, on any screen:
+                         Escape reaches it, and a dialog whose Escape does nothing is a trap. -->
+                    <Button x:Name="SkipBtn" Style="{StaticResource BtnSubtle}" Content="%%T:welcome.skip%%"
+                            MinWidth="84" Margin="0,0,12,0" IsCancel="True"/>
+                    <Button x:Name="BackBtn" Style="{StaticResource Btn}" Content="%%T:welcome.back%%" MinWidth="84"/>
+                    <Button x:Name="NextBtn" Style="{StaticResource BtnAccent}" Content="%%T:welcome.next%%"
+                            MinWidth="124" Margin="8,0,0,0" IsDefault="True"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- The head is docked rather than scrolled: it carries the language, and a control that
+             slid out from under the cursor on the one screen tall enough to scroll would be a
+             control nobody trusts. The four pages scroll beneath it.
+
+             The counter and the language share the first line; the heading has the next one to
+             itself. They were on one line to begin with, and "Экраны наборами, у каждого своё имя"
+             next to a drop-down wrapped to two - a heading that changes shape with the language
+             is how a window starts looking accidental. -->
+        <Grid DockPanel.Dock="Top" Margin="24,16,24,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StepText" Style="{StaticResource RowSub}" VerticalAlignment="Center" Margin="0"/>
+            <!-- The language where an installer keeps it: on the first screen a person ever sees,
+                 not six clicks into a settings page they have not found yet. It follows Windows
+                 until it is touched, and touching it here is the same choice Behavior offers -
+                 the same drop-down, filled by the same function, written to the same key.
+
+                 Hidden when the tour is opened from About: the Behavior page is on the window
+                 directly underneath, and two live pickers over one setting is a way to lose an
+                 edit. -->
+            <StackPanel x:Name="LanguageGroup" Grid.Column="1" Orientation="Horizontal"
+                        VerticalAlignment="Center" Margin="16,0,0,0">
+                <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                           FontSize="15" VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{StaticResource DimBrush}"/>
+                <ComboBox x:Name="LanguageBox" Style="{StaticResource Select}" Height="30" MinWidth="170"
+                          VerticalAlignment="Center" ToolTip="%%T:welcome.language.tip%%"
+                          AutomationProperties.Name="%%T:behavior.language%%"/>
+            </StackPanel>
+            <TextBlock x:Name="TitleText" Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource H1}"
+                       Margin="0,2,0,0"/>
+        </Grid>
+        <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto" Padding="24,0,24,8">
+            <StackPanel>
+                <!-- 1. what a mode is, and what is on this desk -->
+                <StackPanel x:Name="Page1">
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE8A9;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Point}" Text="%%T:welcome.1.body%%"/>
+                    </Grid>
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE7F4;"/>
+                        <TextBlock x:Name="DeskLine" Grid.Column="1" Style="{StaticResource Point}"/>
+                    </Grid>
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE73E;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource PointSub}" Text="%%T:welcome.1.portable%%"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 2. where the program is, once this window is gone -->
+                <StackPanel x:Name="Page2" Visibility="Collapsed">
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE8A9;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Point}" Text="%%T:welcome.2.menu%%"/>
+                    </Grid>
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE713;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Point}" Text="%%T:welcome.2.settings%%"/>
+                    </Grid>
+                    <!-- The one sentence in this window that answers a support question rather
+                         than teaching anything: Windows 11 puts a new tray icon in the overflow
+                         and shows nothing at all on the taskbar. "It did not start" is what that
+                         looks like from the other side. -->
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE7BA;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource PointSub}" Text="%%T:welcome.2.hidden%%"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 3. the shortcuts this run just handed out -->
+                <StackPanel x:Name="Page3" Visibility="Collapsed">
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE765;"/>
+                        <TextBlock x:Name="ShortcutLead" Grid.Column="1" Style="{StaticResource Point}"/>
+                    </Grid>
+                    <Border Style="{StaticResource Card}" Margin="26,10,0,0">
+                        <StackPanel x:Name="ShortcutList"/>
+                    </Border>
+                    <Grid Style="{StaticResource PointGrid}" Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE7BA;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource PointSub}" Text="%%T:welcome.3.taken%%"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 4. the promise that nothing here can leave you without a picture -->
+                <StackPanel x:Name="Page4" Visibility="Collapsed">
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE73E;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Point}" Text="%%T:welcome.4.safety%%"/>
+                    </Grid>
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE72B;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource Point}" Text="%%T:welcome.4.back%%"/>
+                    </Grid>
+                    <Grid Style="{StaticResource PointGrid}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource PointIcon}" Text="&#xE946;"/>
+                        <TextBlock Grid.Column="1" Style="{StaticResource PointSub}" Text="%%T:welcome.4.help%%"/>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
+'@
+
+# How many shortcut lines the third screen prints before it says "and N more". Five is what the
+# card holds at the window's own height without the page starting to scroll; a desk of eight
+# monitors would otherwise have pushed the aside below it out of sight.
+$script:WelcomeShortcutsShown = 5
+
+# The window being worked with right now (see the comment about handlers above: nothing here
+# closes over anything, and every handler takes its state from this).
+$script:ActiveWelcome = $null
+
+# The monitors on the desk and the shortcuts that reach the modes, as lines of text. Here rather
+# than in Displays.ps1 because the About page asks the same question of a window that is already
+# open, and two collectors would answer it differently the first time one of them was edited.
+#
+# -Settings and -State are named on purpose: both callers pass both, and positionally those two
+# get swapped sooner or later.
+function Get-WelcomeFacts {
+    param($State, $Settings, $Modes = $null)
+
+    $displays = @()
+    $shortcuts = @()
+    try {
+        foreach ($d in @(@($State) | Where-Object { $_ -and -not $_.Disconnected })) {
+            $label = [string]$d.Label
+            # Through Get-DisplayTitle, like every other name a person reads here: the raw Label
+            # of two identical panels carries a sixteen-character connection fingerprint, and a
+            # tour that opened with "Acer XV272U {1111111111111111}" would look broken.
+            if ($label) { $displays += (Get-DisplayTitle -Label $label) }
+        }
+        # The window's own list when there is one - the Settings window may hold modes a person
+        # added and has not saved yet, and a tour opened from it that ignored them would be lying
+        # about the desk on the screen behind it.
+        $list = $Modes
+        if (-not $list) { $list = @(Get-DisplayModes -State $State -Settings $Settings) }
+        foreach ($mode in @($list)) {
+            if (-not $mode) { continue }
+            $keys = ''
+            # An ordered dictionary and a hashtable both answer a missing key with $null; a
+            # PSCustomObject read back from JSON does not answer at all, which is why this asks
+            # the map rather than indexing it blind.
+            if ($Settings -and $Settings.hotkeys -and $Settings.hotkeys.Contains([string]$mode.Key)) {
+                $keys = [string]$Settings.hotkeys[[string]$mode.Key]
+            }
+            if (-not $keys) { continue }
+            $shortcuts += [pscustomobject]@{ Keys = $keys; Title = [string]$mode.Title }
+        }
+    }
+    catch {
+        # A tour that cannot name the desk is still worth showing: the sentences that teach do not
+        # depend on any of this, and the two personal lines fall back to their general wording.
+        Write-DisplayLog "welcome: could not describe this desk - $($_.Exception.Message)"
+    }
+    return [pscustomobject]@{ Displays = @($displays); Shortcuts = @($shortcuts) }
+}
+
+# One line of the shortcut card: the keys, then the mode they reach. Two columns and not one
+# string - the keys are what the eye goes back to, and a column of them only lines up if it is
+# a column.
+function Add-WelcomeShortcut {
+    param($Panel, [string]$Keys, [string]$Title, [bool]$First)
+
+    $row = New-Object System.Windows.Controls.Grid
+    if (-not $First) { $row.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0 }
+    $left = New-Object System.Windows.Controls.ColumnDefinition
+    $left.Width = [System.Windows.GridLength]::Auto
+    $row.ColumnDefinitions.Add($left)
+    $right = New-Object System.Windows.Controls.ColumnDefinition
+    $row.ColumnDefinitions.Add($right)
+
+    $keyText = New-Object System.Windows.Controls.TextBlock
+    $keyText.Text = $Keys
+    $keyText.FontWeight = [System.Windows.FontWeights]::SemiBold
+    $keyText.MinWidth = 110      # MinWidth, never Width: "Ctrl+Shift+Win+F12" is wider than this
+    $keyText.Margin = New-Object System.Windows.Thickness 0, 0, 12, 0
+    [void]$row.Children.Add($keyText)
+
+    $titleText = New-Object System.Windows.Controls.TextBlock
+    $titleText.Text = $Title
+    $titleText.TextWrapping = [System.Windows.TextWrapping]::Wrap
+    $titleText.Foreground = $Panel.FindResource('DimBrush')
+    [System.Windows.Controls.Grid]::SetColumn($titleText, 1)
+    [void]$row.Children.Add($titleText)
+
+    [void]$Panel.Children.Add($row)
+}
+
+# Which of the four is on screen. Everything the window shows about itself - the counter, the
+# heading, the dots, what the two buttons say and whether Back can be pressed - is derived here
+# and nowhere else, so a fifth screen is a line in $titles and nothing more.
+function Set-WelcomeStep {
+    param($Ui, [int]$Step)
+
+    if (-not $Ui) { return }
+    $count = $Ui.Pages.Count
+    if ($Step -lt 0) { $Step = 0 }
+    if ($Step -ge $count) { $Step = $count - 1 }
+    $Ui.Step = $Step
+
+    for ($i = 0; $i -lt $count; $i++) {
+        $Ui.Pages[$i].Visibility = $(if ($i -eq $Step) { 'Visible' } else { 'Collapsed' })
+        $Ui.Dots[$i].Background = $(if ($i -eq $Step) { $Ui.DotOn } else { $Ui.DotOff })
+    }
+    $Ui.StepText.Text = Get-Text -Key 'welcome.step' -Values @(($Step + 1), $count)
+    $Ui.TitleText.Text = Get-Text -Key ('welcome.' + ($Step + 1) + '.title')
+    $Ui.BackBtn.IsEnabled = ($Step -gt 0)
+
+    $last = ($Step -eq $count - 1)
+    # On the last screen the primary button stops being "one more page" and becomes the one thing
+    # this tour is for. Opened from About there is nothing to open - the window it would open is
+    # the window underneath - so there it says Done and closes.
+    if ($last) {
+        $Ui.NextBtn.Content = $(if ($Ui.InSettings) { Get-Text -Key 'welcome.done' } else { Get-Text -Key 'welcome.setup' })
+        $Ui.SkipBtn.Content = Get-Text -Key 'common.close'
+    }
+    else {
+        $Ui.NextBtn.Content = Get-Text -Key 'welcome.next'
+        $Ui.SkipBtn.Content = Get-Text -Key 'welcome.skip'
+    }
+    # Opened from About, Done and Close do the same thing, and two buttons that differ only in
+    # weight are a choice a person has to stop and make. Only one of them stays.
+    $Ui.SkipBtn.Visibility = $(if ($last -and $Ui.InSettings) { 'Collapsed' } else { 'Visible' })
+    # The scroll position belongs to the screen that was on, not to the one arriving.
+    $Ui.Scroll.ScrollToTop()
+}
+
+function New-WelcomeWindow {
+    param(
+        # The monitors Windows can see, by the names the rest of the program calls them.
+        [string[]]$Displays = @(),
+        # Keys/Title pairs out of Get-WelcomeFacts.
+        $Shortcuts = @(),
+        # Opened from the About page rather than from the tray: the last screen has no Settings
+        # window to offer, because it is standing in front of one.
+        [switch]$InSettings,
+        # What settings.json says the language is, for the footer's drop-down to open on.
+        # 'auto' — follow Windows, which is what a first run has just written.
+        [string]$Language = 'auto'
+    )
+
+    Initialize-WpfRuntime
+
+    $dark = Test-DarkTheme
+    $palette = Get-UiPalette -Dark $dark
+    $win = Convert-UiXaml -Xaml $script:WelcomeXaml -Palette $palette
+    Register-WindowTheme -Window $win -Dark $dark
+
+    $ui = [pscustomobject]@{
+        Window     = $win
+        Dark       = $dark
+        Scroll     = $win.FindName('Scroll')
+        StepText   = $win.FindName('StepText')
+        TitleText  = $win.FindName('TitleText')
+        BackBtn    = $win.FindName('BackBtn')
+        NextBtn    = $win.FindName('NextBtn')
+        SkipBtn    = $win.FindName('SkipBtn')
+        Pages      = @($win.FindName('Page1'), $win.FindName('Page2'),
+                       $win.FindName('Page3'), $win.FindName('Page4'))
+        Dots       = @()
+        DotOn      = $win.FindResource('AccentBrush')
+        # Not MiniBrush: in the light theme that is four values away from the footer it sits on,
+        # and the row of dots read as one dot with nothing beside it.
+        DotOff     = $win.FindResource('InputBorderBrush')
+        Step       = 0
+        InSettings = [bool]$InSettings
+        # The same two fields the Settings window carries, and for the same reason: a window is
+        # built in one language and cannot be re-labelled in place, so a language change closes
+        # this one and Show-WelcomeDialog builds the next on the screen it was left on.
+        LanguageBox    = $win.FindName('LanguageBox')
+        LanguageGroup  = $win.FindName('LanguageGroup')
+        LanguageCode   = [string]$Language
+        ReloadLanguage = $false
+        # Filling the drop-down selects an item, and a selection made in code is not a person's
+        # click. Without this the window would ask to be rebuilt the moment it was built.
+        LangBusy   = $false
+        # True only when the person asked for the Settings window on the last screen. Skipping,
+        # Escape and the title bar's cross all leave it false, and the tray opens nothing.
+        Result     = $false
+    }
+
+    # The desk, by name. Falls back to a sentence that says Windows has not answered yet rather
+    # than to an empty line: "On your desk right now: ." is a bug, not a fact.
+    $names = @($Displays | Where-Object { $_ })
+    $win.FindName('DeskLine').Text = $(
+        if ($names.Count -gt 0) { Get-Text -Key 'welcome.1.desk' -Values @(($names -join ', ')) }
+        else { Get-Text -Key 'welcome.1.deskNone' })
+
+    $list = @($Shortcuts | Where-Object { $_ })
+    $panel = $win.FindName('ShortcutList')
+    $win.FindName('ShortcutLead').Text = $(
+        if ($list.Count -gt 0) { Get-Text -Key 'welcome.3.body' } else { Get-Text -Key 'welcome.3.none' })
+    $shown = 0
+    foreach ($item in $list) {
+        if ($shown -ge $script:WelcomeShortcutsShown) { break }
+        Add-WelcomeShortcut -Panel $panel -Keys ([string]$item.Keys) -Title ([string]$item.Title) -First ($shown -eq 0)
+        $shown++
+    }
+    if ($list.Count -gt $shown) {
+        $more = New-Object System.Windows.Controls.TextBlock
+        $more.Text = Get-PluralText -Key 'welcome.3.more' -Count ($list.Count - $shown)
+        $more.Foreground = $panel.FindResource('DimBrush')
+        $more.FontSize = 12
+        $more.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+        [void]$panel.Children.Add($more)
+    }
+    # A card with nothing in it is a plate; the sentence above already says why there is nothing.
+    if ($panel.Children.Count -eq 0) { $panel.Parent.Visibility = 'Collapsed' }
+
+    $dotRow = $win.FindName('DotRow')
+    $dots = @()
+    foreach ($page in $ui.Pages) {
+        $dot = New-Object System.Windows.Controls.Border
+        $dot.Width = 7; $dot.Height = 7
+        $dot.CornerRadius = New-Object System.Windows.CornerRadius 4
+        $dot.Margin = New-Object System.Windows.Thickness 0, 0, 6, 0
+        [void]$dotRow.Children.Add($dot)
+        $dots += $dot
+    }
+    $ui.Dots = $dots
+
+    # The same drop-down as Behavior's, filled by the same function off the same field: two
+    # fillers over one setting would disagree about "Follow Windows" the first time either moved.
+    if ($ui.InSettings) { $ui.LanguageGroup.Visibility = 'Collapsed' }
+    else {
+        $ui.LangBusy = $true
+        try { Set-UiLanguageBox -Ui $ui -Settings @{ language = [string]$Language } }
+        finally { $ui.LangBusy = $false }
+        # Read back rather than trusting what came in: a code with no file under lang\ falls back
+        # to "Follow Windows" in the box, and the two have to agree or the first click on any
+        # other language would look like no change at all.
+        $ui.LanguageCode = Get-UiLanguage -Ui $ui
+    }
+
+    # The window is built — from this point on the handlers find it here.
+    $script:ActiveWelcome = $ui
+
+    $ui.LanguageBox.add_SelectionChanged({
+        $ui = $script:ActiveWelcome
+        if (-not $ui -or $ui.LangBusy) { return }
+        $code = Get-UiLanguage -Ui $ui
+        if ($code -eq $ui.LanguageCode) { return }
+        $ui.LanguageCode = $code
+        $ui.ReloadLanguage = $true
+        # Not an answer: .Result stays where it was, so a language chosen on screen two does not
+        # count as "set up my desk". The loop in Show-WelcomeDialog reopens on the same screen.
+        try { $ui.Window.DialogResult = $false } catch { }
+    })
+
+    $ui.BackBtn.add_Click({
+        $ui = $script:ActiveWelcome
+        if ($ui) { Set-WelcomeStep -Ui $ui -Step ($ui.Step - 1) }
+    })
+    $ui.NextBtn.add_Click({
+        $ui = $script:ActiveWelcome
+        if (-not $ui) { return }
+        if ($ui.Step -lt $ui.Pages.Count - 1) { Set-WelcomeStep -Ui $ui -Step ($ui.Step + 1); return }
+        $ui.Result = (-not $ui.InSettings)
+        # A window that was never shown cannot be given a DialogResult, and the tests build one
+        # and press this without showing it. The answer is already down; closing is the rest.
+        try { $ui.Window.DialogResult = $true } catch { }
+    })
+    $ui.SkipBtn.add_Click({
+        $ui = $script:ActiveWelcome
+        if (-not $ui) { return }
+        try { $ui.Window.DialogResult = $false } catch { }
+    })
+
+    Set-WelcomeStep -Ui $ui -Step 0
+    return $ui
+}
+
+# Answers $true when the person pressed "Set up my desk" on the last screen, and $false for every
+# other way out — Skip, Escape, the cross. The caller opens the Settings window on a $true and
+# nothing at all on a $false; nothing here writes a setting either way.
+function Show-WelcomeDialog {
+    param(
+        [string[]]$Displays = @(),
+        $Shortcuts = @(),
+        # The Settings window, when this is the About page asking. It makes the tour modal to that
+        # window rather than to the desktop, so it cannot be lost behind the one that opened it.
+        $Owner = $null,
+        # What settings.json says right now. A first run has just written 'auto'.
+        [string]$Language = 'auto',
+        # Called with the chosen code after the language has been switched, for the caller to put
+        # it in settings.json and for the tray to relabel its own menu and balloons. The tour does
+        # not write the file itself: this file builds windows, and Displays.ps1 owns the settings.
+        [scriptblock]$OnLanguage = $null
+    )
+
+    # A window cannot be re-labelled in place - the text is substituted into the markup before it
+    # is parsed - so a language change closes this one and builds the next. The screen travels
+    # across the rebuild, because a tour that jumped back to page one every time somebody tried a
+    # language would be a tour nobody finishes.
+    $step = 0
+    $code = [string]$Language
+    while ($true) {
+        $ui = New-WelcomeWindow -Displays $Displays -Shortcuts $Shortcuts `
+                                -InSettings:([bool]$Owner) -Language $code
+        if ($Owner) {
+            $ui.Window.Owner = $Owner
+            $ui.Window.WindowStartupLocation = [System.Windows.WindowStartupLocation]::CenterOwner
+            # Owned, so it is not a second thing in the taskbar to go back to.
+            $ui.Window.ShowInTaskbar = $false
+        }
+        # The first run puts this in front of a desktop somebody is still looking at, and it opened
+        # behind the browser they were reading the release notes in.
+        $ui.Window.add_SourceInitialized({ Move-WindowIntoWorkArea -Window $this })
+        $ui.Window.add_Loaded({
+            $ui = $script:ActiveWelcome
+            if (-not $ui) { return }
+            [void]$ui.Window.Activate()
+            [void]$ui.NextBtn.Focus()
+        })
+        Set-WelcomeStep -Ui $ui -Step $step
+
+        try { [void]$ui.Window.ShowDialog() }
+        finally {
+            $ui.Window.Close()
+            $script:ActiveWelcome = $null
+        }
+
+        if (-not $ui.ReloadLanguage) { return [bool]$ui.Result }
+        $step = [int]$ui.Step
+        $code = [string]$ui.LanguageCode
+        [void](Initialize-Language -Code $code)
+        # After the switch, never before: the caller relabels a tray menu that has to agree with
+        # the window about to be built, and a refusal to write the file is the caller's to log.
+        if ($OnLanguage) { & $OnLanguage $code }
+    }
+}
+
+# The About page's "Show again". The tour it opens is the one the tray opens, built from the
+# window's OWN modes and shortcuts rather than from the file on disk: a mode added a minute ago
+# and not saved yet is on the screen behind this window, and a tour that did not know about it
+# would be the only thing in the program disagreeing with it.
+function Show-SettingsWelcome {
+    $ui = $script:ActiveUi
+    if (-not $ui) { return }
+    try {
+        $shortcuts = @()
+        foreach ($mode in @($ui.Modes)) {
+            if (-not $mode) { continue }
+            $keys = [string]$ui.Hotkeys[[string]$mode.Key]
+            if ($keys) { $shortcuts += [pscustomobject]@{ Keys = $keys; Title = [string]$mode.Title } }
+        }
+        $names = @(@($ui.State) | Where-Object { $_ -and -not $_.Disconnected } |
+                   ForEach-Object { Get-DisplayTitle -Label ([string]$_.Label) })
+        # No -Language and no -OnLanguage: the drop-down is collapsed when there is an owner, and
+        # the Behavior page on the window underneath is where that choice belongs.
+        [void](Show-WelcomeDialog -Displays $names -Shortcuts $shortcuts -Owner $ui.Window)
+    }
+    catch { Write-DisplayLog "welcome: the window failed - $($_.Exception.Message)" }
 }

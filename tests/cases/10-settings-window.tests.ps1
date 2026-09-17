@@ -269,6 +269,25 @@ Test-Case 'desk: an external primary change refreshes only the live view' {
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'desk: a live identity rename does not create apply intent without a direct edit' {
+    $state = @(
+        (New-FakeMonitor 'Original left' 'IDLEFT' 'path-left')
+        (New-FakeMonitor 'Original right' 'IDRIGHT' 'path-right')
+    )
+    $settings = Get-DefaultSettings
+    $settings.layout = @('Original left', 'Original right')
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $freshLeft = New-FakeMonitor 'Renamed left' 'IDLEFT' 'path-left'
+        $freshRight = New-FakeMonitor 'Renamed right' 'IDRIGHT' 'path-right'
+        Assert-True (Update-SettingsLiveDesk -Ui $ui -State @($freshLeft, $freshRight) -Positions @{}) 'the refresh is accepted'
+        Assert-Equal 'Renamed left' ([string]$ui.DeskPanel.Children[0].Tag.Label) 'the live label is refreshed'
+        Assert-Equal $false ([bool]$ui.LayoutEdited) 'a refresh does not count as a layout edit'
+        Assert-Equal $false ([bool]$ui.MainActionApply) 'a label refresh leaves the main action as Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
 Test-Case 'dialog: Save commits repeatedly without closing or replacing the working copy on failure' {
     $settings = Get-DefaultSettings
     $ui = New-DialogUi -Settings $settings
@@ -1234,7 +1253,7 @@ Test-Case 'desk: a new combination opens on the displays that are on, with the t
 
     $ed = New-ModeEditorWindow -Mode $null -Combo $null -State $state -Dark $false -Template $template
     try {
-        Assert-Equal 'New combination' $ed.Window.FindName('HeadTitle').Text 'still a new one'
+        Assert-Equal 'New mode' $ed.Window.FindName('HeadTitle').Text 'still a new one'
         $ticked = @($ed.Checks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
         Assert-Equal @('LG ULTRAGEAR') $ticked 'the display that is on is ticked'
         Assert-Equal 'LG ULTRAGEAR' ([string]$ed.PrimaryBox.SelectedItem.Tag) 'and chosen for the taskbar'
@@ -1256,4 +1275,440 @@ Test-Case 'badges: a badge names the display and says what it shows' {
         Assert-True (-not $win.ShowActivated) 'and it takes no focus from what a person is doing'
     }
     finally { $win.Close() }
+}
+
+Test-Case 'desk: an inactive legacy primary is not presented as a switching override' {
+    foreach ($flag in @($null, $false, $true)) {
+        $settings = Get-DefaultSettings
+        $settings.primary = 'XG27AQDMGR'
+        if ($null -eq $flag) { $settings.Remove('primaryOverride') }
+        else { $settings.primaryOverride = $flag }
+        $lg = New-FakeMonitor -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3'
+        $lg.Primary = $true
+        $asus = New-FakeMonitor -Label 'XG27AQDMGR' -ShortId 'AUSA A1D' -Active $false
+        $ui = New-DialogUi -Settings $settings -State @($lg, $asus)
+        try {
+            $selected = @($ui.DeskPanel.Children | Where-Object { $_.Tag.Radio.IsChecked })
+            Assert-Equal ([int][bool]$flag) $selected.Count 'only an explicit override selects a configured display'
+            if ($flag) { Assert-Equal $asus.Label $selected[0].Tag.Label 'an intentional choice survives an off display' }
+            $saved = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal 'XG27AQDMGR' $saved.primary 'opening and saving preserves the stored value'
+            Assert-Equal ([bool]$flag) ([bool]$saved.primaryOverride) 'opening and saving preserves override intent'
+            Assert-Equal $false ([bool]$ui.PrimaryEdited) 'rendering never counts as a manual edit'
+        }
+        finally { $ui.Window.Close() }
+    }
+}
+
+Test-Case 'desk footer: main action saves ordinarily and applies after a desk edit' {
+    $script:FooterSaveCalls = 0
+    $script:FooterApplyCalls = 0
+    function Invoke-SettingsSave { param($Ui) $script:FooterSaveCalls++; return $true }
+    function Invoke-SettingsApply { param($Ui) $script:FooterApplyCalls++; return $true }
+
+    $ordinary = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ordinary.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 1 $script:FooterSaveCalls 'ordinary Enter action saves'
+        Assert-Equal 0 $script:FooterApplyCalls 'ordinary Save does not touch displays'
+        Assert-Equal (Get-Text -Key 'common.save') ([string]$ordinary.SaveBtn.Content) 'ordinary action is labelled Save'
+    }
+    finally { $ordinary.Window.Close() }
+
+    $desk = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        # Refresh the live table more than once: the footer handler is installed during window build,
+        # so this also catches the old duplicate-handler regression.
+        Update-DisplaysTable -Ui $desk
+        Update-DisplaysTable -Ui $desk
+        $desk.DeskPanel.Children[0].Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        $afterMove = @($desk.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label })
+        $desk.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 1 $script:FooterApplyCalls 'a desk edit changes the main action to Apply once'
+        Assert-Equal 1 $script:FooterSaveCalls 'the desk action does not also invoke Save directly'
+        Assert-Equal (Get-Text -Key 'desk.saveApply') ([string]$desk.SaveBtn.Content) 'the main action explains the physical apply'
+        Assert-Equal $afterMove @($desk.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label }) 'the footer action does not rebuild the configured row'
+    }
+    finally { $desk.Window.Close() }
+}
+
+Test-Case 'desk footer: the arrow opens one themed menu and Save-only clears apply intent' {
+    $script:MenuSaveCalls = 0
+    $script:MenuApplyCalls = 0
+    function Save-DisplaySettings { param($Settings) $script:MenuSaveCalls++; return $true }
+    function Save-UiSleepMinutes { param($Ui) return $true }
+    function Invoke-SettingsApply { param($Ui) $script:MenuApplyCalls++; return $true }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $ui
+        [void]$ui.SaveOptionsBtn.Focus()
+        $ui.SaveOptionsBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-True $ui.SaveMenu.IsOpen 'the keyboard focusable arrow opens its menu'
+        Assert-Equal $ui.SaveOptionsBtn $ui.SaveMenu.PlacementTarget 'keyboard opening is anchored to the arrow'
+        Assert-Equal ([System.Windows.Controls.Primitives.PlacementMode]::Top) $ui.SaveMenu.Placement 'the menu opens above the footer'
+        Assert-Equal (Get-Text -Key 'desk.saveOnly') ([string]$ui.SaveOnlyItem.Header) 'the first choice is save only'
+        Assert-Equal (Get-Text -Key 'desk.saveApplyNow') ([string]$ui.SaveApplyItem.Header) 'the second choice applies now'
+        $ui.SaveOnlyItem.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.MenuItem]::ClickEvent)))
+        Assert-Equal 1 $script:MenuSaveCalls 'Save-only uses the normal durable save path'
+        Assert-Equal 0 $script:MenuApplyCalls 'Save-only never applies hardware'
+        Assert-Equal $false ([bool]$ui.DeskApplyPending) 'Save-only clears a pending apply request'
+        Assert-Equal (Get-Text -Key 'common.save') ([string]$ui.SaveBtn.Content) 'the main action returns to plain Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: moving a desk card away and back keeps a saved layoutOverride disabled' {
+    $settings = Get-DefaultSettings
+    $settings.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE')
+    $settings.layoutOverride = $false
+    $ui = New-DialogUi -Settings $settings
+    try {
+        $first = $ui.DeskPanel.Children[0]
+        $first.Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        $ui.DeskPanel.Children[0].Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+        Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') @($updated.layout) 'undo restores the saved order'
+        Assert-Equal $false ([bool]$updated.layoutOverride) 'undo does not create a synthetic layout override'
+        Assert-Equal $false ([bool]$ui.MainActionApply) 'undo returns the footer to Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk footer: failed apply remains the obvious retry and success returns to Save' {
+    $script:FooterResult = 'refused'
+    function Invoke-SettingsSave { param($Ui) return $true }
+    function Set-CurrentDesktop {
+        param($Settings, $PrimaryId, $PrimaryLabel)
+        if ($script:FooterResult -eq 'done') { return (New-SwitchResult -ModeKey 'current' -Outcome 'done' -Message 'Applied current desk.') }
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message 'Windows refused this arrangement.')
+    }
+    function Update-StateCache { }
+    function Get-CachedDesk { return @() }
+    function Update-OpenSettingsDesk { param($State) }
+    function Show-SettingsWarning { param($Text, $Owner) }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        [void](Invoke-SettingsApply -Ui $ui)
+        Assert-True $ui.MainActionApply 'a failed apply leaves the main retry action selected'
+        Assert-True ([string]$ui.SaveBtn.Content -eq (Get-Text -Key 'desk.saveApply')) 'the retry remains visibly labelled'
+        $script:FooterResult = 'done'
+        [void](Invoke-SettingsApply -Ui $ui)
+        Assert-Equal $false ([bool]$ui.MainActionApply) 'success clears the retry intent'
+        Assert-Equal (Get-Text -Key 'common.save') ([string]$ui.SaveBtn.Content) 'success returns the main action to Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk footer: saved primary override alone does not trigger hardware' {
+    $script:ReopenSaveCalls = 0
+    $script:ReopenApplyCalls = 0
+    function Invoke-SettingsSave { param($Ui) $script:ReopenSaveCalls++; return $true }
+    function Invoke-SettingsApply { param($Ui) $script:ReopenApplyCalls++; return $true }
+    $settings = Get-DefaultSettings
+    $settings.primaryOverride = $true
+    $settings.primary = 'LG ULTRAFINE'
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal $false ([bool]$ui.MainActionApply) 'opening an existing override is not a new request'
+        $ui.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 1 $script:ReopenSaveCalls 'ordinary Save remains available'
+        Assert-Equal 0 $script:ReopenApplyCalls 'reopening never applies hardware'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a Save failure never reaches the physical apply' {
+    $script:ApplyButtonCalls = 0
+    function Invoke-SettingsSave { param($Ui) return $false }
+    function Set-CurrentDesktop { param($Settings, $PrimaryId, $PrimaryLabel) $script:ApplyButtonCalls++; return (New-SwitchResult -ModeKey 'current' -Outcome 'done' -Message 'unexpected') }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Null (Invoke-SettingsApply -Ui $ui) 'a failed Save stops the two-phase action'
+        Assert-Equal 0 $script:ApplyButtonCalls 'physical apply is untouched after Save fails'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: successful apply refreshes live views and shows success' {
+    $script:ApplyRefreshCalls = 0
+    $script:ApplyOpenRefreshCalls = 0
+    function Invoke-SettingsSave { param($Ui) return $true }
+    function Set-CurrentDesktop { param($Settings, $PrimaryId, $PrimaryLabel) return (New-SwitchResult -ModeKey 'current' -Outcome 'done' -Message 'Applied current desk.') }
+    function Update-StateCache { $script:ApplyRefreshCalls++ }
+    function Get-CachedDesk { return @() }
+    function Update-OpenSettingsDesk { param($State) $script:ApplyOpenRefreshCalls++ }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $result = Invoke-SettingsApply -Ui $ui
+        Assert-True $result.Ok 'the successful result remains successful'
+        Assert-Equal 1 $script:ApplyRefreshCalls 'the tray/cache refresh runs once'
+        Assert-Equal 1 $script:ApplyOpenRefreshCalls 'the open Settings live view refreshes once'
+        Assert-Equal 'Applied current desk.' ([string]$ui.ApplyStatus.Text) 'success is visible in the dialog'
+        Assert-Equal 'Visible' ([string]$ui.ApplyStatus.Visibility) 'success status is shown'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: failed apply reports that settings were saved and leaves edits visible' {
+    $script:ApplyWarning = ''
+    function Invoke-SettingsSave { param($Ui) return $true }
+    function Set-CurrentDesktop { param($Settings, $PrimaryId, $PrimaryLabel) return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message 'Windows refused this arrangement.') }
+    function Update-StateCache { }
+    function Get-CachedDesk { return @() }
+    function Update-OpenSettingsDesk { param($State) }
+    function Show-SettingsWarning { param($Text, $Owner) $script:ApplyWarning = [string]$Text }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $before = @($ui.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label })
+        $result = Invoke-SettingsApply -Ui $ui
+        Assert-Equal 'refused' $result.Outcome 'the apply failure remains actionable'
+        Assert-True ($script:ApplyWarning -like 'Settings were saved*') 'the warning distinguishes durable settings from the failed desktop apply'
+        Assert-True ($ui.ApplyStatus.Visibility -eq 'Visible') 'the failure stays visible for retry'
+        Assert-Equal $before @($ui.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label }) 'edits remain visible after a failed apply'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the current combination primary override is visible beside the saved desk' {
+    $settings = New-TestSettings -Combos @{ Work = @{ displays = @('LG ULTRAGEAR', 'LG ULTRAFINE'); primary = 'LG ULTRAFINE' } }
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 'Visible' ([string]$ui.CurrentModeHint.Visibility) 'the active combination override is shown'
+        Assert-True ([string]$ui.CurrentModeHint.Text -like '*Work*') 'the hint names the active mode'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: an ordinary Save refreshes the current mode precedence hint' {
+    $script:HintRefreshCalls = 0
+    function Update-CurrentModeHint { param($Ui) $script:HintRefreshCalls++ }
+    function Save-DisplaySettings { param($Settings) return $true }
+    function Save-UiSleepMinutes { param($Ui) return $true }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ui | Add-Member -MemberType NoteProperty -Name StartupWasEnabled -Value $false -Force
+        $ui.StartupBox.IsChecked = $false
+        $script:HintRefreshCalls = 0
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the ordinary Save succeeds'
+        Assert-Equal 1 $script:HintRefreshCalls 'the saved settings update the precedence explanation'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk footer: the default button is never the one that reconfigures displays' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-True ([bool]$ui.SaveBtn.IsDefault) 'an ordinary Save is what Enter reaches'
+        $ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $ui
+        Assert-True ([bool]$ui.MainActionApply) 'the click action has become a physical apply'
+        Assert-Equal $false ([bool]$ui.SaveBtn.IsDefault) 'and Enter no longer reaches it'
+        $ui.DeskApplyPending = $false
+        Update-UiFooter -Ui $ui
+        Assert-True ([bool]$ui.SaveBtn.IsDefault) 'Enter saves again once the apply intent is gone'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: adopting the Windows layout withdraws a pending apply' {
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'LG ULTRAFINE' 'GSM5CBC' 'path-uf')
+    )
+    $state[1].Primary = $true
+    $positions = @{ 'path-ug' = [pscustomobject]@{ X = 2560; Y = 0 }; 'path-uf' = [pscustomobject]@{ X = 0; Y = 0 } }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    try {
+        $ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $ui
+        Assert-True ([bool]$ui.MainActionApply) 'a failed apply leaves the retry standing'
+        Assert-True (Invoke-DeskRead -Ui $ui -State $state -Positions $positions -SkipSnapshot) 'the adoption is accepted'
+        Assert-Equal $false ([bool]$ui.DeskApplyPending) 'the pending apply is withdrawn with the rest of the desk intent'
+        Assert-Equal $false ([bool]$ui.MainActionApply) 'and the footer returns to a plain Save'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a language change ends the window instead of applying against it' {
+    $script:LangApplyCalls = 0
+    function Invoke-SettingsSave { param($Ui) $Ui.ReloadLanguage = $true; return $true }
+    function Set-CurrentDesktop { param($Settings, $PrimaryId, $PrimaryLabel) $script:LangApplyCalls++
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'done' -Message 'unexpected') }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Null (Invoke-SettingsApply -Ui $ui) 'the apply stands down for the rebuild'
+        Assert-Equal 0 $script:LangApplyCalls 'no display transition runs against a closing window'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: snapshot persistence failure says the desktop changed' {
+    $script:ApplyWarning = ''
+    function Invoke-SettingsSave { param($Ui) return $true }
+    function Set-CurrentDesktop {
+        param($Settings, $PrimaryId, $PrimaryLabel)
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Code 'persistFailed' -Message (Get-Text -Key 'desk.apply.persistFailed'))
+    }
+    function Update-StateCache { }
+    function Get-CachedDesk { return @() }
+    function Update-OpenSettingsDesk { param($State) }
+    function Show-SettingsWarning { param($Text, $Owner) $script:ApplyWarning = [string]$Text }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        [void](Invoke-SettingsApply -Ui $ui)
+        Assert-True ($script:ApplyWarning -like 'Settings were saved and the desktop changed*') 'the warning reflects the partial physical result'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the live Displays table sorts active geometry before configured inactive rows' {
+    $settings = Get-DefaultSettings
+    $settings.layout = @('XG27AQDMGR', 'LG ULTRAFINE', 'LG ULTRAGEAR')
+    $state = @(
+        (New-FakeMonitor -Label 'LG ULTRAFINE' -ShortId 'GSM5CBC' -Id 'path-uf' -Active $true)
+        (New-FakeMonitor -Label 'XG27AQDMGR' -ShortId 'AUS1234' -Id 'path-xg' -Active $false)
+        (New-FakeMonitor -Label 'LG ULTRAGEAR' -ShortId 'GSM5BB3' -Id 'path-ug' -Active $true)
+    )
+    $state[0].X = 900; $state[0].Y = 30
+    $state[2].X = -120; $state[2].Y = 30
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $ui.Positions = @{
+            'path-uf' = [pscustomobject]@{ X = 900; Y = 30 }
+            'path-ug' = [pscustomobject]@{ X = -120; Y = 30 }
+        }
+        Update-DisplaysTable -Ui $ui
+        $cells = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] })
+        Assert-Equal 'LG ULTRAGEAR' $cells[5].Text 'the leftmost active display is first'
+        Assert-Equal 'LG ULTRAFINE' $cells[10].Text 'the rightmost active display is second'
+        Assert-Equal 'XG27AQDMGR' $cells[15].Text 'the inactive remembered display follows active geometry'
+    }
+    finally { $ui.Window.Close() }
+}
+
+# --- the configured desk, folded away until it means something --------------
+# Two drawings of the same desk, one under the other, was the question this page kept being
+# asked: which of these is the real one? For most desks the second one is not anything yet -
+# switching keeps Windows' own layout unless somebody overrides it - so it is folded, and the
+# line under its heading says which of the two states the page is in.
+
+Test-Case 'desk: with no override the configured drawing is folded away and says so' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Equal 'Collapsed' ([string]$ui.DeskCustomPanel.Visibility) 'nothing to see, so nothing is shown'
+        Assert-True ([string]$ui.DeskCustomState.Text -like '*Not customised*') 'and the line says which state this is'
+        Assert-True ([string]$ui.DeskCustomBtn.Content -like '*Configured for switching*') 'the heading is still the heading'
+        Assert-True (-not (Test-UiDeskCustomised -Ui $ui)) 'and nothing is overridden'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: an override already in the settings opens the fold by itself' {
+    # A setting folded out of sight is the one bug this whole arrangement could introduce.
+    $settings = Get-DefaultSettings
+    $settings.primary = 'LG ULTRAFINE'
+    $settings.primaryOverride = $true
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-True (Test-UiDeskCustomised -Ui $ui) 'the window sees the override'
+        Assert-Equal 'Visible' ([string]$ui.DeskCustomPanel.Visibility) 'so the drawing is open'
+        Assert-True ([string]$ui.DeskCustomState.Text -like '*Customised*') 'and the line says so'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a taskbar choice made here opens the fold and changes what the line says' {
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Assert-Equal 'Collapsed' ([string]$ui.DeskCustomPanel.Visibility) 'closed to begin with'
+        $card = @($ui.DeskPanel.Children)[0]
+        $card.Tag.Radio.IsChecked = $true
+        $ui.PrimaryEdited = $true
+        Update-UiFooter -Ui $ui
+        Assert-True ([string]$ui.DeskCustomState.Text -like '*Customised*') 'the line follows the edit'
+        Assert-Equal 'Visible' ([string]$ui.DeskCustomPanel.Visibility) 'and the drawing is open'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: the fold opens by hand on a desk with no override, and stays open' {
+    # The drawing is HOW the row is arranged, so somebody who opened it to arrange one must not
+    # have it shut under them by their own first edit.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ui.DeskCustomBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 'Visible' ([string]$ui.DeskCustomPanel.Visibility) 'a click opens it'
+        Assert-True ([bool]$ui.DeskCustomOpened) 'and the window remembers whose choice that was'
+        Update-UiFooter -Ui $ui
+        Assert-Equal 'Visible' ([string]$ui.DeskCustomPanel.Visibility) 'a later refresh does not shut it'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: a customised desk can still be folded away by hand' {
+    # Three states and not two: without the third, the override would pin the fold open and a
+    # person could never get the page back down to one drawing.
+    $settings = Get-DefaultSettings
+    $settings.primary = 'LG ULTRAFINE'
+    $settings.primaryOverride = $true
+    $ui = New-DialogUi -Settings $settings
+    try {
+        Assert-Equal 'Visible' ([string]$ui.DeskCustomPanel.Visibility) 'open, because it is customised'
+        $ui.DeskCustomBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 'Collapsed' ([string]$ui.DeskCustomPanel.Visibility) 'and a click still shuts it'
+        Assert-True ([string]$ui.DeskCustomState.Text -like '*Customised*') 'while the line keeps telling the truth'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'desk: folding changes nothing about what Save would write' {
+    # The fold is a way of looking at the page, not a setting. A window folded shut and a window
+    # folded open have to hand Save the same desk.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $shut = Get-UiDeskFingerprint -Ui $ui
+        $ui.DeskCustomBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal $shut (Get-UiDeskFingerprint -Ui $ui) 'the desk is untouched by the fold'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a plain Save says what it did and what it did not touch' {
+    # It used to leave the window looking exactly as it had a moment before, and the only answer
+    # was a balloon behind it. The question that left is always the same one: did that change my
+    # screens?
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ui | Add-Member -MemberType NoteProperty -Name StartupWasEnabled -Value $false -Force
+        $ui.StartupBox.IsChecked = $false
+        function Save-DisplaySettings { param($Settings) return $true }
+        function Save-UiSleepMinutes { param($Ui) return $true }
+        function Show-SettingsWarning { param([string]$Text, $Owner) }
+
+        Set-UiPage -Ui $ui -Page 'behavior'
+        $ui.NotifyBox.IsChecked = $false
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'the Save succeeds'
+        Assert-Equal 'Visible' ([string]$ui.ApplyStatus.Visibility) 'and the window answers in the window'
+        Assert-True ([string]$ui.ApplyStatus.Text -like '*were not changed*') 'saying the displays were left alone'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'dialog: a Save that half-failed leaves the warning to speak for itself' {
+    # Save-UiSleepMinutes refusing already puts a box in front of the person. A green line under
+    # it saying everything went fine is the one thing that must not appear there.
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        $ui | Add-Member -MemberType NoteProperty -Name StartupWasEnabled -Value $false -Force
+        $ui.StartupBox.IsChecked = $false
+        function Save-DisplaySettings { param($Settings) return $true }
+        function Save-UiSleepMinutes { param($Ui) return $false }
+        function Show-SettingsWarning { param([string]$Text, $Owner) }
+
+        Set-UiPage -Ui $ui -Page 'behavior'
+        Assert-True (Invoke-SettingsSave -Ui $ui) 'settings.json was still written'
+        Assert-Equal 'Collapsed' ([string]$ui.ApplyStatus.Visibility) 'and nothing claims it all went through'
+    }
+    finally { $ui.Window.Close() }
 }

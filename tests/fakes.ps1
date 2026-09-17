@@ -17,7 +17,8 @@ function New-FakeMonitor {
         Output = '\\.\DISPLAY1'; Label = $Label; Model = $Label; ShortId = $ShortId
         Native = $null; Id = $Id; Active = $Active
         Primary = $false; Disconnected = $Disconnected
-        Width = 2560; Height = 1440; Hz = 144; BestMode = $null
+        Width = 2560; Height = 1440; SourceWidth = 2560; SourceHeight = 1440
+        Hz = 144; BestMode = $null
         X = 0; Y = 0; Rotation = 1; Scaling = 0; RateNum = 143999; RateDen = 1000
     }
 }

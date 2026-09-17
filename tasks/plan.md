@@ -1,40 +1,30 @@
-# Preserve the desktop at startup
+# Make current desktop changes explicit
 
-## Objective and evidence
+## Objective
+Make DeskModes distinguish current Windows state, saved defaults for future switches, and per-mode overrides. Let the user save and immediately apply desk choices without enabling an inactive display. Implementation owner: GPT-5.6 Luna; parent reviews the hardware-affecting boundary independently.
 
-DeskModes should leave the current display set in place at startup by default. The user starts on different monitors and does not want a fixed startup monitor. On September 10 at 10:54:26 the log records startup restoration of `solo:LG ULTRAFINE`, selected the previous evening. The user reports that ASUS was showing the desktop and the LG was switched off at its button; the restoration disabled ASUS. Windows reported a successful configuration, which does not establish that a panel was showing a picture.
+## User flow
+- Keep Save as save-only. Add a distinct localized Save and apply to current desktop action near the configured desk controls or footer, with a short explanation that only currently active displays are affected.
+- Applying first validates and saves. On save failure do not touch Windows. On apply failure state clearly that settings were saved but the desktop was not applied; allow retry without pretending success.
+- A successful apply refreshes the live canvas, Displays table and tray from fresh Windows state. Save-only must not falsify their primary markers.
+- Explain that the configured taskbar is the general default for future mode switches; an explicit taskbar in a mode wins during normal mode switching. Surface a concise localized warning naming the current mode when it overrides the general choice.
+- The explicit apply-now action applies the desk choices to the active desktop (including a manually selected primary), regardless of the current mode's primary; leave the mode's stored preferences unchanged. Explain this in the relevant hint if needed.
+- If the selected primary is inactive or disconnected, refuse apply-now with an actionable message. Never silently select a different display or enable the selected inactive one. Saving for future use remains possible.
+- Sort Displays rows by actual active Windows X then Y, with stable identity tie-break; inactive remembered displays follow in configured order, then stable label/identity order. If geometry is missing, use a deterministic fallback. This is a live-state table, not a preview of unsaved order.
 
-## Decisions
+## Safety and architecture
+- Read AGENTS.md. Preserve all existing uncommitted fixes. One writer in this checkout; parent is read-only during implementation. Do not commit, publish, restart the running tray, change live settings or run real monitor switching tests.
+- Reuse existing CCD, exact snapshots, settings accessors and New-SwitchResult outcome semantics. No dependencies, test-only production seams, or fallback to legacy display enable APIs.
+- Apply-now must capture and recheck the active physical device set under Local\DeskModesSwitch. Preserve that exact set: All and a cached named mode are not valid substitutes. Preserve resolution, exact refresh fraction and rotation. Preserve physical coordinates unless the user explicitly requested the configured layout order. Respect snapshot pending/verification rules and honest failure outcomes.
+- Avoid triggering unrelated mode hooks, HDR/brightness/picture changes, last-mode history or automatic topology restore merely to move the taskbar. If safely sharing the existing switch path requires a narrowly scoped production option, keep it explicit and tested. Do not persist a temporary mode or replace live settings with fake settings.
+- Avoid application startup/discovery/hotplug/rule changes. No real hardware mutations during verification.
+- UTF-8 BOM + CRLF for all ps1; English code/comments/docs; all user-facing text in lang/. Translate changed UI in every existing language. Keep buttons responsive with MinWidth.
 
-- Reuse `restoreLastMode`; do not introduce a new setting or startup heuristic. Its default becomes false. Missing settings and a missing key use that default. Explicit persisted true and false remain respected.
-- Align the Settings checkbox fallback with the engine default. Explain that the option applies at application startup, can replace the currently active screens, and is off by default. Update English, Russian and Ukrainian UI text; inspect other translations for conflicting claims and update as needed.
-- Preserve the existing opt-in startup path and its same-session, manual-choice and unavailable-mode guards. Do not turn those tests into vacuous passes by letting them run with restoration disabled.
-- For this user's existing local settings, explicitly save `restoreLastMode = false` through the supported settings load/save functions, preserving every other value. This is a local preference change authorized by this request, not a migration imposed on all existing users. Do this after automated verification, outside tests. Confirm the persisted diff is limited to that preference (serialization formatting may differ). Do not restart the tray or switch displays to activate it: the preference will be read on the next launch.
-- Sleep, hotplug and process rules remain separate explicitly configured behaviors. Do not promise that disabling startup restoration disables all automatic switching. No changes to CCD, DDC, display power detection, timers or hardware switching are needed.
-- Preserve last-mode history and desktop snapshots. Do not adopt Windows' boot state as a new manual selection or rewrite saved layouts.
-- Keep the existing unrelated working-tree edits intact. There is one implementation writer. No commit, release, installation or real display test is required by this request.
+## Acceptance evidence
+1. Regression tests with mocked hardware: active LG UltraFine + LG UltraGear and inactive ASUS; apply selects UltraFine, only the original two active physical IDs reach CCD, modes/rotation preserved; inactive primary refused; mutex busy/save failure/apply failure distinct; ordinary Save does not call hardware; no unrelated hook/history effects.
+2. UI tests: action wiring, unsaved edits survive a failed apply, success refreshes live primary/table/tray; per-mode precedence hint; active rows left-to-right with deterministic inactive placement.
+3. Render English and Ukrainian/Russian settings previews with fakes; inspect action labels, hint and table layout.
+4. Run powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/check.ps1, inspect all gates. Parent independently reviews current-desktop hardware path and acceptance evidence. If a correction is made, rerun applicable tests and full gates.
 
-## Ordered work
-
-See `tasks/todo.md` for acceptance and completion tracking.
-
-1. Change the default, loading/UI fallback and example configuration with meaningful regression tests.
-2. Clarify user-facing text and documentation, record the incident rationale and keep planning files out of release archives if they are tracked.
-3. Run the project gates in Windows PowerShell 5.1, apply the local preference and report verification. The planning owner reviews the resulting diff independently.
-
-## Required regression coverage
-
-- No settings file, a settings object missing the key, and fresh defaults all disable startup restoration.
-- Explicit true and false survive loading and save/load round trips.
-- With defaults, active ASUS plus an inactive but enumerated LG and a previous-session LG selection causes no startup mode invocation. This is deliberately stronger than checking that the target is disconnected.
-- Repeat the safe-start scenario with LG as the active screen so the behavior is not tied to ASUS. Include a current multi-monitor set.
-- Retain meaningful opt-in tests: a previous-session mode restores; same-session restart and a manual choice prevent restoration; unavailable/deleted modes skip; a matching desk still takes the silent layout-check path.
-- The Settings checkbox is unchecked for defaults and for a missing key, checked for explicit true, and preserves a chosen value through UI reading.
-
-## Verification and limits
-
-Use the existing test runner and `tools/check.ps1` in Windows PowerShell 5.1. The complete five-gate command is required; report analyzer availability honestly. Tests must use temporary settings/log/state and fakes, never real display mutations. Inspect localized layout if changed hints affect sizing. No reboot or hardware switching is part of automated verification; the next ordinary boot provides the final physical confirmation.
-
-## Initial working-tree context
-
-Existing uncommitted edits are present in `Displays.ps1`, `SettingsDialog.ps1`, `CHANGELOG.md`, `docs/notes.md`, and test cases 09 and 10. They concern tray placement and Settings behavior. Preserve them exactly outside the minimal intersections needed here. Local `settings.json` currently has startup restore enabled, one process rule and separate resume/hotplug preferences; preserve those other preferences.
+## Work order
+See tasks/todo.md. Finish implementation and verification in the same delegated task; update the checklist and report limitations honestly.

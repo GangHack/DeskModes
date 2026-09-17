@@ -72,6 +72,9 @@ function Get-VersionLine {
 # the first rename.
 $script:RepoUrl = 'https://github.com/GangHack/DeskModes'
 $script:IssuesUrl = 'https://github.com/GangHack/DeskModes/issues'
+# The reference, and the one address here that points INSIDE the repository. Absolute for the same
+# reason README's links are: the About page is read from an unpacked folder that holds no docs\.
+$script:HelpUrl = 'https://github.com/GangHack/DeskModes/blob/main/docs/reference.md'
 # Empty on purpose until there is an address to put here. The Support card is built either way;
 # with no address the button says so and does nothing, which is honest, while a button that
 # opens a 404 is not.
@@ -985,8 +988,66 @@ function Get-DesktopSetKey {
     finally { $sha.Dispose() }
 }
 
+# EnumDisplaySettings reports the rotated desktop bounds, while SetDisplayConfig needs the CCD source
+# surface paired with target rotation. QueryDisplayConfig supplies that source size directly. Older exact
+# snapshots did not keep it, so portrait records are migrated by reversing the rotated logical dimensions.
+function Get-DesktopSourceSize {
+    param(
+        [Parameter(Mandatory)]$Display,
+        [switch]$AllowMissing
+    )
+
+    $width = [int]$Display.Width; $height = [int]$Display.Height
+    $rotation = [int]$Display.Rotation
+    if ($width -le 0 -or $height -le 0 -or $rotation -lt 1 -or $rotation -gt 4) { return $null }
+    $portrait = ($rotation -eq 2 -or $rotation -eq 4)
+    $expectedWidth = $(if ($portrait) { $height } else { $width })
+    $expectedHeight = $(if ($portrait) { $width } else { $height })
+
+    $hasWidth = ($null -ne $Display.PSObject.Properties['SourceWidth'])
+    $hasHeight = ($null -ne $Display.PSObject.Properties['SourceHeight'])
+    if ($hasWidth -ne $hasHeight) { return $null }
+    if (-not $hasWidth) {
+        if (-not $AllowMissing) { return $null }
+        return [pscustomobject]@{ Width = $expectedWidth; Height = $expectedHeight }
+    }
+
+    # QueryDisplayConfig and EnumDisplaySettings are two separate reads of one desk, and they disagree
+    # precisely while a mode is changing - which is what a fullscreen game does on launch and on exit.
+    # Refusing there is deliberate and load-bearing: a null snapshot makes every caller stand down, so
+    # the watchdog cannot apply half-read geometry. Trusting the odd value instead sends it to
+    # SetDisplayConfig as a source surface, and an invalid source surface blanks every screen.
+    # Say so in the log - the original complaint that this was silent was fair - but still refuse.
+    $sourceWidth = [int]$Display.SourceWidth; $sourceHeight = [int]$Display.SourceHeight
+    if ($sourceWidth -le 0 -or $sourceHeight -le 0 -or
+        $sourceWidth -ne $expectedWidth -or $sourceHeight -ne $expectedHeight) {
+        $note = 'desktop: {0} reports a CCD source of {1}x{2} where its {3}x{4} bounds at rotation {5} imply {6}x{7} - the desk is mid-change, standing down'
+        Write-DisplayLog ($note -f [string]$Display.Label, $sourceWidth, $sourceHeight,
+            $width, $height, $rotation, $expectedWidth, $expectedHeight)
+        return $null
+    }
+    return [pscustomobject]@{ Width = $sourceWidth; Height = $sourceHeight }
+}
+
+# The desktop extent a record occupies. Source surfaces are what CCD tiles and what srcPos spaces, so
+# every layout, adjacency and overlap calculation has to measure with the same pair SetDisplayConfig is
+# handed - otherwise the packer and the native boundary disagree about where a rotated panel ends.
+function Get-DesktopSourceExtent {
+    param([Parameter(Mandatory)]$Display)
+
+    # Through the validating reader, never off the raw fields: a stale or half-read source must not
+    # reach a layout calculation by a side door. When it refuses, the rotated bounds are what every
+    # one of these call sites measured with before, and the callers that must refuse already do.
+    $source = Get-DesktopSourceSize -Display $Display -AllowMissing
+    if ($source) { return $source }
+    return [pscustomobject]@{ Width = [int]$Display.Width; Height = [int]$Display.Height }
+}
+
 function New-DesktopSnapshot {
-    param([Parameter(Mandatory)]$State)
+    param(
+        [Parameter(Mandatory)]$State,
+        [switch]$AllowLegacySourceSize
+    )
 
     $active = @($State | Where-Object { $_.Active -and -not $_.Disconnected })
     if ($active.Count -eq 0) { return $null }
@@ -1008,6 +1069,8 @@ function New-DesktopSnapshot {
         # context; PREFERRED asks Windows to choose. Neither is an exact transform we can restore.
         $scaling = [int]$m.Scaling
         if ($scaling -lt 0 -or $scaling -gt 4) { return $null }
+        $source = Get-DesktopSourceSize -Display $m -AllowMissing:$AllowLegacySourceSize
+        if (-not $source) { return $null }
         $displays += [pscustomobject][ordered]@{
             Id       = [string]$m.Id
             Label    = [string]$m.Label
@@ -1015,6 +1078,8 @@ function New-DesktopSnapshot {
             Y        = [int]$m.Y
             Width    = [int]$m.Width
             Height   = [int]$m.Height
+            SourceWidth  = [int]$source.Width
+            SourceHeight = [int]$source.Height
             Hz       = [int]$m.Hz
             Rotation = [int]$m.Rotation
             Scaling  = $scaling
@@ -1032,7 +1097,7 @@ function New-DesktopSnapshot {
 
 function New-DesktopSnapshotStore {
     return [pscustomobject][ordered]@{
-        Version           = 2
+        Version           = 3
         Snapshots         = @{}
         ProtectedKey      = ''
         ProtectedSnapshot = $null
@@ -1047,6 +1112,7 @@ function Read-DesktopSnapshotStore {
     if (-not (Test-Path $script:DesktopSnapshotsFile)) { return $store }
     try {
         $raw = Get-Content $script:DesktopSnapshotsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $allowLegacySourceSize = ([int]$raw.version -lt 3)
         foreach ($saved in @($raw.snapshots)) {
             if (-not $saved) { continue }
             $state = @()
@@ -1054,7 +1120,7 @@ function Read-DesktopSnapshotStore {
                 foreach ($field in 'id', 'x', 'y', 'width', 'height', 'hz', 'rotation', 'rateNum', 'rateDen') {
                     if (-not $d.PSObject.Properties[$field]) { throw "Desktop snapshot is missing $field." }
                 }
-                $state += [pscustomobject]@{
+                $record = [pscustomobject]@{
                     Id = [string]$d.id; Label = [string]$d.label
                     Active = $true; Disconnected = $false
                     Primary = ([string]$d.id -eq [string]$saved.primaryId)
@@ -1062,8 +1128,15 @@ function Read-DesktopSnapshotStore {
                     Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
                     Rotation = [int]$d.rotation; Scaling = [int]$d.scaling; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
                 }
+                if ($d.PSObject.Properties['sourceWidth']) {
+                    $record | Add-Member -NotePropertyName SourceWidth -NotePropertyValue ([int]$d.sourceWidth)
+                }
+                if ($d.PSObject.Properties['sourceHeight']) {
+                    $record | Add-Member -NotePropertyName SourceHeight -NotePropertyValue ([int]$d.sourceHeight)
+                }
+                $state += $record
             }
-            $snapshot = New-DesktopSnapshot -State $state
+            $snapshot = New-DesktopSnapshot -State $state -AllowLegacySourceSize:$allowLegacySourceSize
             if ($snapshot -and ([string]$saved.key -eq $snapshot.Key)) {
                 $store.Snapshots[$snapshot.Key] = $snapshot
             }
@@ -1076,7 +1149,7 @@ function Read-DesktopSnapshotStore {
                 foreach ($field in 'id', 'x', 'y', 'width', 'height', 'hz', 'rotation', 'rateNum', 'rateDen') {
                     if (-not $d.PSObject.Properties[$field]) { throw "Protected desktop snapshot is missing $field." }
                 }
-                $state += [pscustomobject]@{
+                $record = [pscustomobject]@{
                     Id = [string]$d.id; Label = [string]$d.label
                     Active = $true; Disconnected = $false
                     Primary = ([string]$d.id -eq [string]$saved.primaryId)
@@ -1084,8 +1157,15 @@ function Read-DesktopSnapshotStore {
                     Width = [int]$d.width; Height = [int]$d.height; Hz = [int]$d.hz
                     Rotation = [int]$d.rotation; Scaling = [int]$d.scaling; RateNum = [int]$d.rateNum; RateDen = [int]$d.rateDen
                 }
+                if ($d.PSObject.Properties['sourceWidth']) {
+                    $record | Add-Member -NotePropertyName SourceWidth -NotePropertyValue ([int]$d.sourceWidth)
+                }
+                if ($d.PSObject.Properties['sourceHeight']) {
+                    $record | Add-Member -NotePropertyName SourceHeight -NotePropertyValue ([int]$d.sourceHeight)
+                }
+                $state += $record
             }
-            $protected = New-DesktopSnapshot -State $state
+            $protected = New-DesktopSnapshot -State $state -AllowLegacySourceSize:$allowLegacySourceSize
             if ($protected -and $protected.Key -eq $store.ProtectedKey -and
                 [string]$saved.key -eq $protected.Key) {
                 $store.ProtectedSnapshot = $protected
@@ -1120,6 +1200,7 @@ function Write-DesktopSnapshotStore {
                     id = [string]$_.Id; label = [string]$_.Label
                     x = [int]$_.X; y = [int]$_.Y
                     width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
+                    sourceWidth = [int]$_.SourceWidth; sourceHeight = [int]$_.SourceHeight
                     rotation = [int]$_.Rotation; scaling = [int]$_.Scaling; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
                 }
             })
@@ -1135,13 +1216,14 @@ function Write-DesktopSnapshotStore {
                     id = [string]$_.Id; label = [string]$_.Label
                     x = [int]$_.X; y = [int]$_.Y
                     width = [int]$_.Width; height = [int]$_.Height; hz = [int]$_.Hz
+                    sourceWidth = [int]$_.SourceWidth; sourceHeight = [int]$_.SourceHeight
                     rotation = [int]$_.Rotation; scaling = [int]$_.Scaling; rateNum = [int]$_.RateNum; rateDen = [int]$_.RateDen
                 }
             })
         }
     }
     $flat = [ordered]@{
-        version = 2; protectedKey = [string]$Store.ProtectedKey
+        version = 3; protectedKey = [string]$Store.ProtectedKey
         protectedSnapshot = $protected
         pendingKey = [string]$Store.PendingKey
         pendingSourceKey = [string]$Store.PendingSourceKey
@@ -1185,9 +1267,12 @@ function New-DesktopRestorePlan {
     $configuredPositions = @{}
     if ($UseConfiguredLayout) {
         $configuredPositions = Get-LayoutPositions -Screens @($Snapshot.Displays | ForEach-Object {
+            # Measure with the source surface: srcPos spaces source rects, so packing by the rotated
+            # bounds would leave a portrait panel overlapping the neighbour CCD is handed next to it.
+            $extent = Get-DesktopSourceExtent -Display $_
             [pscustomobject]@{
                 DevicePath = [string]$_.Id; Label = [string]$wantedById[[string]$_.Id].Label
-                Width = [int]$_.Width; Height = [int]$_.Height
+                Width = [int]$extent.Width; Height = [int]$extent.Height
             }
         }) -Order $Order -PrimaryPath $primary
     }
@@ -1198,6 +1283,8 @@ function New-DesktopRestorePlan {
         $width = [int]$d.Width; $height = [int]$d.Height; $hz = [int]$d.Hz
         $rateNum = [int]$d.RateNum; $rateDen = [int]$d.RateDen
         $scaling = [int]$d.Scaling
+        $source = Get-DesktopSourceSize -Display $d
+        if (-not $source) { return $null }
         if ($KeepMode -and $m.Active) {
             # The source size belongs to the rotation under which it was observed. Reusing it under a
             # quarter-turn would ask CCD for a different physical mode while claiming to keep it.
@@ -1208,6 +1295,8 @@ function New-DesktopRestorePlan {
             $width = [int]$m.Width; $height = [int]$m.Height; $hz = [int]$m.Hz
             $rateNum = [int]$m.RateNum; $rateDen = [int]$m.RateDen
             $scaling = [int]$m.Scaling
+            $source = Get-DesktopSourceSize -Display $m
+            if (-not $source) { return $null }
         }
         if ($scaling -lt 0 -or $scaling -gt 4) { return $null }
         $targets += [pscustomobject][ordered]@{
@@ -1215,6 +1304,8 @@ function New-DesktopRestorePlan {
             Label      = [string]$m.Label
             Width      = $width
             Height     = $height
+            SourceWidth  = [int]$source.Width
+            SourceHeight = [int]$source.Height
             Hz         = $hz
             RateNum    = $rateNum
             RateDen    = $rateDen
@@ -1231,10 +1322,12 @@ function New-DesktopRestorePlan {
         for ($i = 0; $i -lt $targets.Count; $i++) {
             for ($j = $i + 1; $j -lt $targets.Count; $j++) {
                 $a = $targets[$i]; $b = $targets[$j]
-                $overlapX = ([int]$a.X -lt [int]$b.X + [int]$b.Width -and
-                             [int]$b.X -lt [int]$a.X + [int]$a.Width)
-                $overlapY = ([int]$a.Y -lt [int]$b.Y + [int]$b.Height -and
-                             [int]$b.Y -lt [int]$a.Y + [int]$a.Height)
+                # SourceWidth/SourceHeight are what Invoke-CcdFullConfigAttempt writes into the source
+                # mode, so they are the rectangle that must not overlap - not the rotated bounds.
+                $overlapX = ([int]$a.X -lt [int]$b.X + [int]$b.SourceWidth -and
+                             [int]$b.X -lt [int]$a.X + [int]$a.SourceWidth)
+                $overlapY = ([int]$a.Y -lt [int]$b.Y + [int]$b.SourceHeight -and
+                             [int]$b.Y -lt [int]$a.Y + [int]$a.SourceHeight)
                 if ($overlapX -and $overlapY) { return $null }
             }
         }
@@ -1245,6 +1338,7 @@ function New-DesktopRestorePlan {
             Active = $true; Disconnected = $false; Primary = ([string]$_.DevicePath -eq $primary)
             X = [int]$_.X; Y = [int]$_.Y
             Width = [int]$_.Width; Height = [int]$_.Height; Hz = [int]$_.Hz
+            SourceWidth = [int]$_.SourceWidth; SourceHeight = [int]$_.SourceHeight
             Rotation = [int]$_.Rotation; Scaling = [int]$_.Scaling; RateNum = [int]$_.RateNum; RateDen = [int]$_.RateDen
         }
     })
@@ -1298,6 +1392,7 @@ function New-DesktopSubsetSnapshot {
             Active = $true; Disconnected = $false; Primary = $false
             X = [int]$record.X; Y = [int]$record.Y
             Width = [int]$record.Width; Height = [int]$record.Height; Hz = [int]$record.Hz
+            SourceWidth = [int]$record.SourceWidth; SourceHeight = [int]$record.SourceHeight
             Rotation = [int]$record.Rotation; Scaling = [int]$record.Scaling; RateNum = [int]$record.RateNum; RateDen = [int]$record.RateDen
         }
     }
@@ -1318,10 +1413,12 @@ function New-DesktopSubsetSnapshot {
             for ($i = 0; $i -lt $component.Count; $i++) {
                 $a = $component[$i]
                 foreach ($b in @($remaining)) {
-                    $edgeX = ($a.X + $a.Width -eq $b.X -or $b.X + $b.Width -eq $a.X)
-                    $edgeY = ($a.Y + $a.Height -eq $b.Y -or $b.Y + $b.Height -eq $a.Y)
-                    $overlapX = ($a.X -lt $b.X + $b.Width -and $b.X -lt $a.X + $a.Width)
-                    $overlapY = ($a.Y -lt $b.Y + $b.Height -and $b.Y -lt $a.Y + $a.Height)
+                    # Adjacency is measured in the same source space the positions came from.
+                    $ae = Get-DesktopSourceExtent -Display $a; $be = Get-DesktopSourceExtent -Display $b
+                    $edgeX = ($a.X + $ae.Width -eq $b.X -or $b.X + $be.Width -eq $a.X)
+                    $edgeY = ($a.Y + $ae.Height -eq $b.Y -or $b.Y + $be.Height -eq $a.Y)
+                    $overlapX = ($a.X -lt $b.X + $be.Width -and $b.X -lt $a.X + $ae.Width)
+                    $overlapY = ($a.Y -lt $b.Y + $be.Height -and $b.Y -lt $a.Y + $ae.Height)
                     if (($edgeX -and $overlapY) -or ($edgeY -and $overlapX)) {
                         $component += $b
                         $remaining = @($remaining | Where-Object { $_.Id -ne $b.Id })
@@ -1390,7 +1487,7 @@ function Test-DesktopSnapshotMatch {
     foreach ($wanted in @($Snapshot.Displays)) {
         $actual = $byId[[string]$wanted.Id]
         if (-not $actual) { return $false }
-        foreach ($field in 'X', 'Y', 'Width', 'Height', 'Rotation') {
+        foreach ($field in 'X', 'Y', 'Width', 'Height', 'SourceWidth', 'SourceHeight', 'Rotation') {
             if ([int]$actual.$field -ne [int]$wanted.$field) { return $false }
         }
         if ([int]$wanted.Scaling -gt 0 -and [int]$actual.Scaling -ne [int]$wanted.Scaling) { return $false }
@@ -1428,6 +1525,224 @@ function Save-CurrentDesktopSnapshot {
     catch {
         Write-DisplayLog "warn: could not remember the current physical desktop - $($_.Exception.Message)"
         return $false
+    }
+    finally {
+        $mutex.ReleaseMutex()
+        $mutex.Dispose()
+    }
+}
+
+function Resolve-CurrentApplyFailure {
+    param(
+        [Parameter(Mandatory)]$Store,
+        [Parameter(Mandatory)]$Source,
+        [Parameter(Mandatory)][string]$PendingKey,
+        # The caller already had a stored baseline for this set. Re-learning the live desk over it would
+        # make a refused apply quietly rewrite the exact modes an ordinary restore depends on.
+        [switch]$BaselineExists
+    )
+
+    $unchanged = $false
+    try {
+        $observedState = @(Get-DisplayState)
+        $matched = (Test-DesktopSnapshotMatch -Snapshot $Source -State $observedState)
+        if ($matched) {
+            # CCD refused before changing anything. Remove only this operation's marker so a retry can
+            # proceed; the existing protected snapshot remains untouched.
+            $Store.PendingKey = ''
+            $Store.PendingSourceKey = ''
+            [void]$Store.UnsafeKeys.Remove($PendingKey)
+            if (-not $BaselineExists) { $Store.Snapshots[$Source.Key] = $Source }
+        }
+        else {
+            # The driver may have moved part of the desk despite returning an error. Keep that observation
+            # unsafe so the watchdog cannot repair it from BestMode or learn it as a baseline.
+            $observed = New-DesktopSnapshot -State $observedState
+            if ($observed) { $Store.UnsafeKeys[[string]$observed.Key] = $true }
+        }
+        Write-DesktopSnapshotStore -Store $Store
+        # Those markers live on disk. Until the write lands, "nothing changed" is a claim about memory
+        # that is about to be discarded, and a caller believing it offers a retry the next run refuses.
+        $unchanged = $matched
+    }
+    catch { Write-DisplayLog "warn: could not resolve the failed apply now operation - $($_.Exception.Message)" }
+    return $unchanged
+}
+
+# How long to let Windows finish moving the desk before calling an apply unverified. SetDisplayConfig
+# returns before the geometry has settled; the switch path absorbs that with Wait-ForTopology.
+$script:DesktopApplySettleMs = 3000
+
+# Apply the configured desk arrangement to the displays Windows has active right now. This is deliberately
+# separate from Switch-DisplayMode: applying a layout must not run a mode's hooks, change brightness/HDR,
+# remember a mode choice or enable a monitor that is currently off. The fresh snapshot is both the source of
+# exact resolution/rate/rotation and the rollback boundary for the one CCD transition.
+function Set-CurrentDesktop {
+    param(
+        [Parameter(Mandatory)]$Settings,
+        [string]$PrimaryId = '',
+        [string]$PrimaryLabel = ''
+    )
+
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\DeskModesSwitch')
+    $held = $false
+    try { $held = $mutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] { $held = $true }
+    if (-not $held) {
+        $mutex.Dispose()
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'busy' -Message (Get-Text -Key 'desk.apply.busy'))
+    }
+
+    $store = $null
+    $pendingKey = ''
+    $pendingWritten = $false
+    try {
+        $state = @(Get-DisplayState)
+        $active = @($state | Where-Object { $_ -and $_.Active -and -not $_.Disconnected })
+        $snapshot = New-DesktopSnapshot -State $state
+        if (-not $snapshot -or $active.Count -eq 0) {
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.unavailable'))
+        }
+
+        $store = Read-DesktopSnapshotStore
+        # A same-set apply records one key as both source and destination, so a boundary left behind by a
+        # killed process cannot be told from a genuinely half-applied desk by key alone. Geometry can: a
+        # desk still identical to the recorded source was never touched, and the marker is stale. Without
+        # this the watchdog stays parked and every later apply refuses, with only a log line to say why.
+        if ($store.PendingKey -and [string]$store.PendingKey -eq [string]$store.PendingSourceKey -and
+            [string]$store.PendingSourceKey -eq [string]$snapshot.Key) {
+            $recordedSource = $store.Snapshots[[string]$store.PendingSourceKey]
+            if ($recordedSource -and (Test-DesktopSnapshotMatch -Snapshot $recordedSource -State $state)) {
+                $store.PendingKey = ''
+                $store.PendingSourceKey = ''
+                [void]$store.UnsafeKeys.Remove([string]$snapshot.Key)
+                try {
+                    Write-DesktopSnapshotStore -Store $store
+                    Write-DisplayLog 'desktop: a stale same-set apply boundary matched the live desk - cleared'
+                }
+                catch {
+                    Write-DisplayLog "warn: could not clear a stale apply boundary - $($_.Exception.Message)"
+                    $store = Read-DesktopSnapshotStore
+                }
+            }
+        }
+        if ($store.PendingKey -or $store.UnsafeKeys.ContainsKey([string]$snapshot.Key)) {
+            Write-DisplayLog 'desktop: current physical desktop is unverified - apply now refused'
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.unverified'))
+        }
+        # Whether an exact baseline for this set already exists, captured before anything writes one.
+        # KeepMode carries whatever the panels happen to be running now, so learning it over a stored
+        # baseline would quietly downgrade the modes every later restore of this desk asks for.
+        $hadBaseline = $store.Snapshots.ContainsKey([string]$snapshot.Key)
+
+        if ($PrimaryId) {
+            $selected = @($state | Where-Object { [string]$_.Id -eq $PrimaryId } | Select-Object -First 1)
+            if ($selected.Count -eq 0 -or -not $selected[0].Active -or $selected[0].Disconnected) {
+                $name = $(if ($PrimaryLabel) { $PrimaryLabel } elseif ($selected.Count -gt 0) { $selected[0].Label } else { $PrimaryId })
+                return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' `
+                    -Message (Get-Text -Key 'desk.apply.primaryInactive' -Values @($name)))
+            }
+        }
+
+        $plan = New-DesktopRestorePlan -Snapshot $snapshot -Wanted $active -PrimaryPath $PrimaryId `
+            -Order @($Settings.layout) -UseConfiguredLayout:([bool]$Settings.layoutOverride) -KeepMode
+        if (-not $plan) {
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.invalid'))
+        }
+
+        # A monitor can disappear while the first CCD walk is being assembled. Re-read the physical set
+        # while holding the same mutex as switching, and refuse before SetDisplayConfig if it changed.
+        $again = @(Get-DisplayState)
+        $againActive = @($again | Where-Object { $_ -and $_.Active -and -not $_.Disconnected })
+        $againIds = @($againActive | ForEach-Object { [string]$_.Id } | Sort-Object)
+        $firstIds = @($active | ForEach-Object { [string]$_.Id } | Sort-Object)
+        if ($againIds.Count -ne $firstIds.Count -or (Compare-Object $againIds $firstIds)) {
+            Write-DisplayLog 'desktop: active physical set changed while preparing apply now'
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Message (Get-Text -Key 'desk.apply.changed'))
+        }
+
+        $againSnapshot = New-DesktopSnapshot -State $again
+        if (-not $againSnapshot -or -not (Test-DesktopSnapshotMatch -Snapshot $snapshot -State $again)) {
+            Write-DisplayLog 'desktop: current physical geometry changed while preparing apply now'
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Message (Get-Text -Key 'desk.apply.changed'))
+        }
+
+        $pendingKey = [string]$plan.Expected.Key
+        $verified = $null
+        # Deciding this first matters: arming the unverified-desktop boundary for a transition that never
+        # happens leaves an untouched desk flagged pending on disk, which parks the watchdog and refuses
+        # every retry. Ticking the taskbar radio on the display that is already primary reaches here.
+        if (-not (Test-DesktopSnapshotMatch -Snapshot $plan.Expected -State $again)) {
+            # Record the trusted source and the unverified destination before CCD. If the process ends
+            # during the transition, the watchdog will retain the last protected source and will not
+            # learn a partial destination as a new baseline.
+            if (-not $hadBaseline) { $store.Snapshots[$snapshot.Key] = $snapshot }
+            $store.PendingKey = $pendingKey
+            $store.PendingSourceKey = [string]$snapshot.Key
+            $store.UnsafeKeys[$pendingKey] = $true
+            try { Write-DesktopSnapshotStore -Store $store; $pendingWritten = $true }
+            catch {
+                Write-DisplayLog "desktop: could not record apply now boundary - $($_.Exception.Message)"
+                return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key 'desk.apply.failed'))
+            }
+
+            if (-not (Set-CcdFullConfig -Targets $plan.Targets -PrimaryPath $plan.PrimaryPath -Exact)) {
+                Write-DisplayLog 'desktop: apply now CCD request was refused'
+                $unchanged = Resolve-CurrentApplyFailure -Store $store -Source $snapshot -PendingKey $pendingKey -BaselineExists:$hadBaseline
+                $failureKey = $(if ($unchanged) { 'desk.apply.failed' } else { 'desk.apply.recovery' })
+                return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key $failureKey))
+            }
+
+            # SetDisplayConfig returns before Windows has finished moving the desk, and reading the old
+            # geometry straight back would report a working apply as refused. The active set never changes
+            # on this path, so there is no topology to wait on - poll the expected arrangement itself.
+            $settle = [System.Diagnostics.Stopwatch]::StartNew()
+            while ($true) {
+                $verified = @(Get-DisplayState)
+                if (Test-DesktopSnapshotMatch -Snapshot $plan.Expected -State $verified) { break }
+                if ($settle.ElapsedMilliseconds -ge $script:DesktopApplySettleMs) { break }
+                Start-Sleep -Milliseconds 150
+            }
+        }
+        if (-not $verified) { $verified = @(Get-DisplayState) }
+        $verifiedIds = @($verified | Where-Object { $_ -and $_.Active -and -not $_.Disconnected } |
+                         ForEach-Object { [string]$_.Id } | Sort-Object)
+        if ($verifiedIds.Count -ne $firstIds.Count -or (Compare-Object $verifiedIds $firstIds) -or
+            -not (Test-DesktopSnapshotMatch -Snapshot $plan.Expected -State $verified)) {
+            Write-DisplayLog 'desktop: apply now did not verify the requested physical arrangement'
+            $unchanged = Resolve-CurrentApplyFailure -Store $store -Source $snapshot -PendingKey $pendingKey -BaselineExists:$hadBaseline
+            $failureKey = $(if ($unchanged) { 'desk.apply.failed' } else { 'desk.apply.recovery' })
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Message (Get-Text -Key $failureKey))
+        }
+
+        $verifiedSnapshot = New-DesktopSnapshot -State $verified
+        if (-not $verifiedSnapshot) {
+            $unchanged = Resolve-CurrentApplyFailure -Store $store -Source $snapshot -PendingKey $pendingKey -BaselineExists:$hadBaseline
+            $failureKey = $(if ($unchanged) { 'desk.apply.failed' } else { 'desk.apply.recovery' })
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Message (Get-Text -Key $failureKey))
+        }
+        if (-not $hadBaseline) { $store.Snapshots[$pendingKey] = $verifiedSnapshot }
+        $store.PendingKey = ''
+        $store.PendingSourceKey = ''
+        [void]$store.UnsafeKeys.Remove($pendingKey)
+        $store.ProtectedKey = $pendingKey
+        $store.ProtectedSnapshot = $verifiedSnapshot
+        try { Write-DesktopSnapshotStore -Store $store }
+        catch {
+            Write-DisplayLog "warn: apply now succeeded but its desktop snapshot could not be saved - $($_.Exception.Message)"
+            return (New-SwitchResult -ModeKey 'current' -Outcome 'partial' -Code 'persistFailed' -Message (Get-Text -Key 'desk.apply.persistFailed'))
+        }
+        Write-DisplayLog 'desktop: applied configured arrangement to the current physical desktop'
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'done' -Message (Get-Text -Key 'desk.apply.done'))
+    }
+    catch {
+        Write-DisplayLog "desktop: apply now failed - $($_.Exception.Message)"
+        $unchanged = $true
+        if ($pendingWritten -and $store) {
+            $unchanged = Resolve-CurrentApplyFailure -Store $store -Source $snapshot -PendingKey $pendingKey -BaselineExists:$hadBaseline
+        }
+        $failureKey = $(if ($unchanged) { 'desk.apply.failed' } else { 'desk.apply.recovery' })
+        return (New-SwitchResult -ModeKey 'current' -Outcome 'refused' -Message (Get-Text -Key $failureKey))
     }
     finally {
         $mutex.ReleaseMutex()
@@ -1530,6 +1845,10 @@ function Get-SwitchTargets {
         if ($preserveMode) {
             $target | Add-Member -NotePropertyName Rotation -NotePropertyValue ([int]$m.Rotation)
             $target | Add-Member -NotePropertyName Scaling -NotePropertyValue ([int]$m.Scaling)
+            $source = Get-DesktopSourceSize -Display $m
+            if (-not $source) { return @() }
+            $target | Add-Member -NotePropertyName SourceWidth -NotePropertyValue ([int]$source.Width)
+            $target | Add-Member -NotePropertyName SourceHeight -NotePropertyValue ([int]$source.Height)
         }
         $out += $target
     }
@@ -3328,7 +3647,8 @@ function Get-CcdTargets {
 
         $shortId = (ConvertTo-VendorCode ([int]$t.edidManufactureId)) + ('{0:X4}' -f $t.edidProductCodeId)
 
-        $x = 0; $y = 0; $rotation = 0; $rateNum = 0; $rateDen = 0
+        $x = 0; $y = 0; $sourceWidth = 0; $sourceHeight = 0
+        $rotation = 0; $rateNum = 0; $rateDen = 0
         if ($active) {
             $mi = [uint32]$p.sourceInfo.modeInfoIdx
             if ($mi -ne [NativeCcd]::MODE_IDX_INVALID -and $mi -lt $nm -and
@@ -3337,6 +3657,8 @@ function Get-CcdTargets {
                 $modes[[int]$mi].adapterId.Low -eq $p.sourceInfo.adapterId.Low -and
                 $modes[[int]$mi].adapterId.High -eq $p.sourceInfo.adapterId.High) {
                 $x = [int]$modes[[int]$mi].srcPosX; $y = [int]$modes[[int]$mi].srcPosY
+                $sourceWidth = [int]$modes[[int]$mi].srcWidth
+                $sourceHeight = [int]$modes[[int]$mi].srcHeight
                 $rotation = [int]$p.targetInfo.rotation
                 $rateNum = [int]$p.targetInfo.refreshRate.Numerator
                 $rateDen = [int]$p.targetInfo.refreshRate.Denominator
@@ -3357,6 +3679,8 @@ function Get-CcdTargets {
             PathIndex  = $i
             X           = $x
             Y           = $y
+            SourceWidth = $sourceWidth
+            SourceHeight = $sourceHeight
             Rotation    = $rotation
             Scaling     = $(if ($active) { [int]$p.targetInfo.scaling } else { 0 })
             RateNum     = $rateNum
@@ -3640,11 +3964,12 @@ function Invoke-CcdFullConfigAttempt {
     foreach ($i in $chosen) {
         $t = $byPath[$choice.DeviceByIndex[$i]]
         if (-not $t) { continue }
+        $extent = Get-DesktopSourceExtent -Display $t
         $screens += [pscustomobject]@{
             DevicePath = [string]$t.DevicePath
             Label      = [string]$t.Label
-            Width      = [int]$t.Width
-            Height     = [int]$t.Height
+            Width      = [int]$extent.Width
+            Height     = [int]$extent.Height
         }
     }
     if ($screens.Count -ne $chosen.Count) { return $false }
@@ -3675,8 +4000,15 @@ function Invoke-CcdFullConfigAttempt {
         $m.infoType = [NativeCcd]::MODE_INFO_TYPE_SOURCE
         $m.id = $p.sourceInfo.id
         $m.adapterId = $p.sourceInfo.adapterId
-        $m.srcWidth = [uint32][int]$t.Width
-        $m.srcHeight = [uint32][int]$t.Height
+        # Exact and KeepMode targets pair logical desktop bounds with an explicit target rotation. CCD
+        # needs the unrotated source surface here: 1080x1920 at rotation 4 is a 1920x1080 source. The
+        # live-test failure used the rotated bounds for both fields and validation returned code 31.
+        $source = $(if ($Exact -or $t.PreserveMode) { Get-DesktopSourceSize -Display $t } else {
+            [pscustomobject]@{ Width = [int]$t.Width; Height = [int]$t.Height }
+        })
+        if (-not $source) { return $false }
+        $m.srcWidth = [uint32][int]$source.Width
+        $m.srcHeight = [uint32][int]$source.Height
         $m.srcPixelFormat = [NativeCcd]::PIXELFORMAT_32BPP
         $m.srcPosX = [int]$where.X
         $m.srcPosY = [int]$where.Y
@@ -4522,6 +4854,8 @@ function Get-DisplayState {
             Disconnected = (-not $t.Available)
             Width        = $(if ($cur) { $cur.Width } else { 0 })
             Height       = $(if ($cur) { $cur.Height } else { 0 })
+            SourceWidth  = $(if ($t.Active) { [int]$t.SourceWidth } else { 0 })
+            SourceHeight = $(if ($t.Active) { [int]$t.SourceHeight } else { 0 })
             Hz           = $(if ($cur) { $cur.Hz } else { 0 })
             X            = $(if ($t.Active) { [int]$t.X } else { 0 })
             Y            = $(if ($t.Active) { [int]$t.Y } else { 0 })
@@ -4715,6 +5049,8 @@ function Get-DeskDisplays {
             Disconnected = $true
             Width        = 0
             Height       = 0
+            SourceWidth  = 0
+            SourceHeight = 0
             Hz           = 0
             X            = 0
             Y            = 0
@@ -5159,6 +5495,9 @@ function New-SwitchResult {
         # AllowEmptyString for the tray's starting value: "no switch in this run yet" names no mode.
         [Parameter(Mandatory)][AllowEmptyString()][string]$ModeKey,
         [Parameter(Mandatory)][ValidateSet('done', 'partial', 'busy', 'dryrun', 'refused')][string]$Outcome,
+        # A stable identifier for the exact situation, for callers that must tell two outcomes of the
+        # same kind apart. The Message is written for a person and translated; it is not a discriminator.
+        [string]$Code = '',
         [string]$Message = '',
         [string[]]$Refused = @(),
         [string[]]$Failed = @(),
@@ -5168,6 +5507,7 @@ function New-SwitchResult {
     return [pscustomobject]@{
         Mode    = $ModeKey
         Outcome = $Outcome
+        Code    = $Code
         # Kept as a field of its own because the command line prints it differently and exits 2 by it.
         Skipped = ($Outcome -eq 'busy')
         Ok      = ($Outcome -eq 'done' -or $Outcome -eq 'dryrun')
@@ -5592,13 +5932,18 @@ function Switch-DisplayMode {
                 $desktopStore.ProtectedSnapshot.Key -eq $desktopStore.PendingSourceKey) {
                 $pendingSource = $desktopStore.ProtectedSnapshot
             }
-            $unchangedSource = ($currentSnapshot.Key -ne $desktopStore.PendingKey -and
+            # An apply that never changes the physical set records one key as both ends, so the key
+            # comparison below cannot separate "untouched" from "half applied", and the unsafe marker the
+            # loader re-adds for a pending key is only its own echo. Geometry is the discriminator there.
+            $sameSetPending = ([string]$desktopStore.PendingKey -eq [string]$desktopStore.PendingSourceKey)
+            $unchangedSource = (($currentSnapshot.Key -ne $desktopStore.PendingKey -or $sameSetPending) -and
                 $currentSnapshot.Key -eq $desktopStore.PendingSourceKey -and $pendingSource -and
-                -not $desktopStore.UnsafeKeys.ContainsKey($currentSnapshot.Key) -and
+                ($sameSetPending -or -not $desktopStore.UnsafeKeys.ContainsKey($currentSnapshot.Key)) -and
                 (Test-DesktopSnapshotMatch -Snapshot $pendingSource -State $monitors))
             if ($unchangedSource) {
                 $desktopStore.PendingKey = ''
                 $desktopStore.PendingSourceKey = ''
+                if ($sameSetPending) { [void]$desktopStore.UnsafeKeys.Remove([string]$currentSnapshot.Key) }
             }
             else { $desktopStore.UnsafeKeys[$currentSnapshot.Key] = $true }
             $storeDirty = $true

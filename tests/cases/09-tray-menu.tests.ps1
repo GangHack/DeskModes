@@ -265,3 +265,154 @@ Test-Case 'menu: clicks in the menu and its timer submenu do not dismiss it' {
     }
     finally { $menu.Dispose() }
 }
+Test-Case 'menu: first tray open paints the complete final surface' {
+    $opened = (Get-TrayAst).FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+        $n.Expression.Extent.Text -eq '$menu' -and $n.Member.Value -eq 'add_Opened'
+    }, $true)
+    $openedBody = [scriptblock]::Create($opened[0].Arguments[0].ScriptBlock.EndBlock.Extent.Text)
+    function Write-MenuForegroundNote { }
+    . (Get-TrayFunctionSource 'Get-UiFont')
+    . (Get-TrayFunctionSource 'Get-StatusDot')
+    . (Get-TrayFunctionSource 'Add-MenuHeader')
+    function Get-CachedDesk { return @(New-FakeMonitor -Label 'Test panel' -ShortId 'TST1234') }
+    function Get-ActiveSettings { return Get-DefaultSettings }
+    function Get-PreviousModeKey { return '' }
+    function Test-DarkTheme { return $true }
+    function Get-AccentColor { param([switch]$ForDarkTheme) return '#D0B090' }
+    $script:UiFonts = @{}
+    $script:StatusDots = @{}
+    $script:PowerDeadline = $null
+    $script:AppName = 'DeskModes'
+    $script:MenuDismissTimer = New-Object System.Windows.Forms.Timer
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.AutoClose = $false
+    $script:FirstMenuPaints = New-Object System.Collections.ArrayList
+    try {
+        $opening = (Get-TrayAst).FindAll({ param($n)
+            $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+            $n.Expression.Extent.Text -eq '$menu' -and $n.Member.Value -eq 'add_Opening'
+        }, $true)
+        $openingBody = [scriptblock]::Create($opening[0].Arguments[0].ScriptBlock.Extent.Text.TrimStart('{').TrimEnd('}'))
+        $menu.add_Opening($openingBody)
+        $menu.add_Paint({ param($sender, $e)
+            [void]$script:FirstMenuPaints.Add($e.ClipRectangle)
+        })
+        $menu.add_Opened($openedBody)
+        $screen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position)
+        $show = $menu.GetType().GetMethod('ShowInTaskbar', [System.Reflection.BindingFlags]'Instance,NonPublic')
+        [void]$show.Invoke($menu, @([int]($screen.Bounds.Right - 100), [int]($screen.Bounds.Bottom - 15)))
+        [System.Windows.Forms.Application]::DoEvents()
+        Assert-True ($screen.WorkingArea.Contains($menu.Bounds)) 'the first open has its final placement'
+        Assert-True (@($script:FirstMenuPaints | Where-Object { $_.Contains($menu.ClientRectangle) }).Count -gt 0) 'the entire final client area received a paint'
+        Assert-True $menu.Visible 'the first open is not cancelled after populating the rows'
+        $menu.Close()
+        $script:FirstMenuPaints.Clear()
+        [void]$show.Invoke($menu, @([int]($screen.Bounds.Right - 100), [int]($screen.Bounds.Bottom - 15)))
+        [System.Windows.Forms.Application]::DoEvents()
+        Assert-True $menu.Visible 'reopening still works with existing rows'
+        Assert-True (@($script:FirstMenuPaints | Where-Object { $_.Contains($menu.ClientRectangle) }).Count -gt 0) 'reopening also paints the complete surface'
+    }
+    finally { $menu.Dispose(); $script:MenuDismissTimer.Dispose() }
+}
+
+# --- the icon's tooltip -----------------------------------------------------
+# The one place Windows itself offers to say something under the cursor, and it used to say the
+# program's name and nothing else - to a person who at that moment wanted to know which of their
+# modes was on, and had to open the menu to find out.
+#
+# Cut out of Displays.ps1 rather than copied: a copy would go on passing after the tray stopped
+# doing what it says.
+
+. (Get-TrayFunctionSource 'Update-TrayText')
+
+$script:AppName = 'DeskModes'
+$script:tray = New-Object psobject -Property @{ Text = '' }
+$script:PowerDeadline = $null
+$script:PowerAction = 'sleep'
+$script:ActiveModeKey = ''
+
+Test-Case 'tray tooltip: with no mode to name it is the program and nothing more' {
+    $script:ActiveModeKey = ''
+    Update-TrayText
+    Assert-Equal 'DeskModes' $script:tray.Text 'just the name'
+}
+
+Test-Case 'tray tooltip: the mode the desk is in is named under the cursor' {
+    $script:ActiveModeKey = 'combo:Work'
+    Update-TrayText
+    Assert-Equal 'DeskModes - Work' $script:tray.Text 'the combination by its own name'
+
+    # Resolved from the KEY every time rather than cached as a title: the title is translated, and
+    # the cache outlives a language change.
+    $script:ActiveModeKey = 'all'
+    Update-TrayText
+    Assert-Equal 'DeskModes - All displays' $script:tray.Text 'and a built-in mode by its translated title'
+}
+
+Test-Case 'tray tooltip: a name past the shell limit is cut rather than refused' {
+    # NotifyIcon.Text is capped at 63 characters on the older shell, and assigning past it throws -
+    # which would leave the icon with no tooltip at all rather than a long one.
+    $script:ActiveModeKey = 'combo:' + ('W' * 120)
+    Update-TrayText
+    Assert-True ($script:tray.Text.Length -le 63) 'it fits what the shell accepts'
+    Assert-True ($script:tray.Text.EndsWith([string][char]0x2026)) 'and says that it was cut'
+}
+
+Test-Case 'tray tooltip: a running timer outranks the mode' {
+    # A countdown is the one thing more urgent than which screens are on. The remaining time comes
+    # from the timer's own function, which lives past the part of the tray under test here.
+    function Get-PowerRemaining { return 1800 }   # seconds, which is what Format-Duration takes
+    $script:ActiveModeKey = 'combo:Work'
+    $script:PowerDeadline = (Get-Date).AddMinutes(30)
+    $script:PowerAction = 'sleep'
+    try {
+        Update-TrayText
+        Assert-True ($script:tray.Text -like '*sleep*') 'the countdown is what it says'
+        Assert-True ($script:tray.Text -notlike '*Work*') 'and the mode gives way to it'
+    }
+    finally { $script:PowerDeadline = $null }
+}
+
+Test-Case 'tray: the cache is what works the active mode out, and the tooltip follows every change' {
+    # Update-TrayText is called once a second while a timer is armed, and working the mode out
+    # costs a walk of every mode there is - so the key is worked out where the desk is read, and
+    # the tooltip only resolves its title.
+    $tray = Get-TrayAst
+    $cache = @($tray.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $n.Name -eq 'Update-StateCache' }, $true))
+    Assert-Equal 1 $cache.Count 'one cache refresh'
+    Assert-True ($cache[0].Extent.Text -match '\$script:ActiveModeKey\s*=') 'which is where the active mode is named'
+
+    $tip = @($tray.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $n.Name -eq 'Update-TrayText' }, $true))
+    Assert-True ($tip[0].Extent.Text -notmatch 'Get-DisplayModes') 'and the tooltip works nothing out for itself'
+
+    # The display-changed handler is what fires after every switch, ours and Windows' own.
+    $changed = @($tray.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $n.Left.Extent.Text -eq '$script:DisplayChanged' }, $true))
+    Assert-Equal 1 $changed.Count 'one display-changed handler'
+    Assert-True ($changed[0].Extent.Text -match 'Update-TrayText') 'and it brings the tooltip up to date'
+}
+
+# --- the diary, when it is off ----------------------------------------------
+
+Test-Case 'menu: Statistics with the diary off opens the switch that turns it on' {
+    # It used to be a balloon and nothing else, which is a dead end: the answer to "why is this
+    # empty" was one switch away, the balloon named the switch, and the person still had to go and
+    # find it.
+    $opening = @((Get-TrayAst).FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+        $n.Expression.Extent.Text -eq '$menu' -and $n.Member.Value -eq 'add_Opening' }, $true))
+    Assert-Equal 1 $opening.Count 'one Opening handler builds the menu'
+    $text = $opening[0].Extent.Text
+    $off = $text.IndexOf("Get-Text -Key 'menu.statisticsOff'")
+    Assert-True ($off -gt 0) 'the item says the diary is off'
+    # The window is opened from inside that branch: the next Open-SettingsWindow after the item
+    # was relabelled, and it names the page the switch lives on.
+    $opens = $text.IndexOf("Open-SettingsWindow -Page 'behavior'", $off)
+    Assert-True ($opens -gt $off) 'and clicking it opens Behavior'
+}
