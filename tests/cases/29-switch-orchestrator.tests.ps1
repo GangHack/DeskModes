@@ -1483,10 +1483,13 @@ Test-Case 'apply now: a busy switch mutex is distinct from a refusal' {
     $script:SwSettings = New-SwitchSettings
     $eventName = 'Local\DeskModesApplyReady-' + [guid]::NewGuid().ToString('N')
     $ready = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $eventName)
-    $job = Start-Job -ArgumentList $eventName -ScriptBlock {
-        param($readyName)
+    # $using: rather than -ArgumentList and a param() block. Both hand the job the same string,
+    # but PSScriptAnalyzer reads a bare $readyName inside a job as a variable that will be empty
+    # in the new runspace (PSUseUsingScopeModifierInNewRunspaces) and cannot see that the param
+    # block is bound from here — and gate 3 is required in CI, where it fails the build.
+    $job = Start-Job -ScriptBlock {
         $lock = New-Object System.Threading.Mutex($true, 'Local\DeskModesSwitch')
-        $signal = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $readyName)
+        $signal = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, $using:eventName)
         $signal.Set()
         $signal.Dispose()
         Start-Sleep -Seconds 3
