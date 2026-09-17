@@ -24,7 +24,9 @@ A release is dated only when its tag is ready to publish.
 - Name the mode the desk is in in the tray icon's tooltip, which used to carry the program's
   name and nothing else.
 - Stop a mode's row cutting a word in half: three settings are named in full and the rest are
-  counted, with the whole list in the row's tooltip.
+  counted, with the whole list in the row's tooltip. The displays in that row are shortened the
+  way their titles already were, so two identical panels no longer fill it with a connection
+  fingerprint.
 - Answer a plain Save inside the window — settings written, displays untouched — rather than
   only in a notification behind it.
 - Open Behavior from **Statistics (diary is off)**, where the switch that fills it lives, instead

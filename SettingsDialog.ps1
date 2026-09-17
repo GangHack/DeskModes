@@ -2111,11 +2111,17 @@ function Get-ModeSubtitle {
             # nothing the row did not already show. It cost 87 points of a caption that has
             # about 300 — which is exactly the room the settings behind Edit were being
             # trimmed out of.
-            $text = @($Mode.Patterns) -join ' + '
+            # Through Get-DisplayTitle, like the titles above them. A pattern is what settings.json
+            # holds, and for two identical panels that is the label with a sixteen-character
+            # connection fingerprint glued to it - two of those joined by a plus filled the whole
+            # caption with hex and pushed everything the mode actually does off the end of the row.
+            # A pattern somebody typed by hand ("UltraGear") is not of that shape and comes back
+            # exactly as it went in.
+            $text = @(@($Mode.Patterns) | ForEach-Object { Get-DisplayTitle -Label ([string]$_) }) -join ' + '
             # The star and the name, not "(taskbar on ...)". The card above draws that star for
             # the same fact, and the words cost eleven characters of a caption that is the first
             # thing on this row to be trimmed.
-            if ($Mode.Primary) { $text += '   ' + $script:UiStar + ' ' + $Mode.Primary }
+            if ($Mode.Primary) { $text += '   ' + $script:UiStar + ' ' + (Get-DisplayTitle -Label ([string]$Mode.Primary)) }
             return $text
         }
         'all'    { return (Get-Text -Key 'modes.allSub') }

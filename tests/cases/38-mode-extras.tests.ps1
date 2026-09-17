@@ -747,3 +747,28 @@ Test-Case 'picture: a mode row says a preset is set on it' {
     }
     finally { $ui.Window.Close() }
 }
+
+Test-Case "dialog: a mode's row shortens a connection fingerprint the way its title does" {
+    # settings.json holds the whole label, and for two identical panels that ends in sixteen hex
+    # characters. Two of those joined by a plus filled the caption and pushed everything the mode
+    # actually does off the end of the row.
+    $settings = New-TestSettings @{ 'Work' = @{
+        displays = @('Acer XV272U {1111111111111111}', 'Acer XV272U {2222222222222222}')
+        primary  = 'Acer XV272U {2222222222222222}' } }
+    $state = @(
+        (New-FakeMonitor 'Acer XV272U {1111111111111111}' 'ACR0001' 'path-a')
+        (New-FakeMonitor 'Acer XV272U {2222222222222222}' 'ACR0002' 'path-b')
+    )
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        $mode = @($ui.Modes | Where-Object { $_.Key -eq 'combo:Work' })[0]
+        $sub = Get-ModeRowSubtitle -Ui $ui -Mode $mode
+        Assert-True ($sub -notlike '*{*') 'no braces in a caption a person reads'
+        Assert-True ($sub -like '*111111*') 'enough of the first fingerprint to tell the panels apart'
+        Assert-True ($sub -like '*222222*') 'and of the second'
+        # A pattern typed by hand is not of that shape and has to come back untouched.
+        $plain = [pscustomobject]@{ Kind = 'combo'; Patterns = @('UltraGear'); Primary = '' }
+        Assert-Equal 'UltraGear' (Get-ModeSubtitle -Mode $plain) 'a name somebody typed is left alone'
+    }
+    finally { $ui.Window.Close() }
+}
