@@ -6,6 +6,32 @@ The application reports 1.0.1. Its CHANGELOG heading intentionally has no releas
 The first-release feature notes are consolidated under 1.0.1, including the current
 separate Save and apply-to-displays behavior.
 
+## Continue from another computer
+
+The candidate source is on GitHub at `5a891f327ad3e42b79e761cf94f1dc9884608c65`.
+Its [Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/35369845280)
+completed successfully, including the required analyzer and full regression suite.
+The repository is private; sign in with an account that has access.
+
+The [candidate draft](https://github.com/GangHack/DeskModes/releases/tag/untagged-a77f5d749e045ddaa30f)
+contains the exact tested ZIP, its SHA256 file, release notes and validation evidence.
+It is a draft, not a published release. The server-reported ZIP digest matches the local one:
+
+```text
+24e196bf66e1d1f244f9fa24e13536a9a6f0979d086fbe76a5c120a506dc05f0
+```
+
+On macOS, clone the repository or use the GitHub web editor to continue documentation and
+release preparation. Windows CI can run the automated checks; the application itself requires
+Windows PowerShell 5.1 and cannot run natively on macOS. No source or candidate archive is
+available only on the author's Windows computer. Personal settings and machine caches are
+excluded from the uploaded assets.
+
+Before publishing, finish the applicable interactive checks below on Windows, then date the
+1.0.1 CHANGELOG heading, commit it, wait for green Windows CI, and push `v1.0.1` at that commit.
+The existing release workflow builds the final assets. Do not publish the preservation draft
+as the final release: its notes and source deliberately remain an undated candidate.
+
 ## Remaining acceptance for the current candidate
 
 The integrated candidate includes imported physical-selector compatibility, opt-in startup
@@ -15,7 +41,8 @@ Earlier hardware evidence applies only to its recorded source, not automatically
 
 Before tagging:
 
-- Repeat All -> solo/subset -> All on the author's desk and the external three-monitor setup.
+- The automated round trip on the author's three-monitor desk passed as recorded below.
+  Finish visual acceptance there and repeat All -> solo/subset -> All on the external setup.
   Compare physical primary, X/Y, rotation, resolution, refresh and restored window reachability.
   Include an unavailable panel and confirm recovery leaves a usable desktop.
 - Start with a different visible panel than the last chosen mode. Defaults must preserve the
@@ -28,12 +55,11 @@ Before tagging:
   active until the last program closes; verify the configured return and manual override too.
 - Test the exact ZIP on a clean Windows installation and overlay it on a backed-up installation.
   Record Windows warnings, first launch, imported bindings, settings preservation and rollback.
-- Record the latest GitHub Actions result for the exact candidate commit. The old remote run
-  from September 6 is not acceptance for these changes.
-- Verify repository access and the distribution audience. The GitHub connector returned 404
-  during preparation on September 18, so current visibility and remote CI could not be confirmed.
-  Verify README, screenshot, download and issue links as an unauthenticated visitor before
-  announcing a public release.
+- Recheck GitHub Actions for the final dated release commit. The current candidate's run is
+  green, as linked above.
+- Decide the distribution audience: the repository is confirmed private. Verify README,
+  screenshot, download and issue links as an unauthenticated visitor before announcing
+  a public release. Changing repository visibility requires the owner's explicit decision.
 
 The first release date and tag remain unset until applicable hardware acceptance is recorded.
 Untested laptop, dock and multi-GPU configurations must remain explicitly experimental.
@@ -82,6 +108,7 @@ public reports.
 | --- | --- | --- |
 | Fresh Windows 10 | Download ZIP in a browser; extract to a writable folder; start Displays.cmd. Record actual warnings, first compilation time and first Settings window. | Pending |
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
+| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Automated round trip passed on September 18; visual acceptance pending |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
 | Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Earlier test archive reproduced destructive layout and rotation changes; fixed candidate needs hardware retest |
@@ -106,6 +133,31 @@ Use the existing hardware checklist in a source checkout:
 A source checkout contains this script; the user ZIP intentionally does not contain tests.
 The read-only path still loads the engine and may create its cache/log beside the program.
 Run it in an isolated candidate folder when protecting an existing installation.
+
+### September 18 hardware evidence
+
+The exact draft ZIP was extracted into a separate writable folder. `tests/live.ps1 -ReadOnly`
+passed all eight CLI checks. Three repetitions of the active single-display mode also preserved
+the exact desktop. The subsequent real switching run passed Solo -> All -> solo -> All ->
+original solo. Exact comparisons covered active physical identities, primary, X/Y, rotation,
+source and target dimensions, scaling and rational refresh rates. The final window restoration
+reported 11 of 11 windows restored.
+
+The active three-display configuration reported LG UltraGear at 2560x1440 / 144 Hz,
+ASUS XG27AQDMGR at 2560x1440 / 240 Hz and LG UltraFine at 3840x2160 / 60 Hz.
+The host reported Windows build 26200 and Windows PowerShell 5.1.26100.9444.
+Reported GPU inventory: NVIDIA GeForce RTX 4080 SUPER (driver 32.0.16.1692) and
+AMD Radeon(TM) Graphics (driver 32.0.21043.5001). Cable/port routing and per-monitor DPI
+were not recorded; this does not establish coverage of multiple-GPU configurations.
+The test used default settings plus the existing layout order and copied desktop/mode caches.
+It did not execute personal hooks or optional DDC/HDR/audio changes. Existing user settings
+were not replaced. The original single LG UltraGear desktop was restored at the end.
+
+An initial run in the restricted execution environment received CCD validation error 5
+(access denied) without applying a topology change. That run is not a hardware pass.
+The successful round trip ran in the ordinary user session with a fresh isolated copy of
+the original caches. No person observed the screens; visual output, first-run warnings,
+interactive Save/apply behavior, sleep/wake and external hardware remain unverified.
 
 ## Evidence to attach to each run
 
