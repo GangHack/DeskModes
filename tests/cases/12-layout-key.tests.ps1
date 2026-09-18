@@ -285,14 +285,40 @@ Test-Case 'windows: saving retires the pre-upgrade record and caps the variants 
     $store['v2:aaaaaaaaaaaaaaaa:path-b'] = [pscustomobject]@{ layout = 'path-b'; saved = '2026-09-01T10:00:00'; windows = @('other') }
     Set-Content -Path $script:WindowStateFile -Value ($store | ConvertTo-Json -Depth 6) -Encoding UTF8
 
-    function Get-WindowWorkAreas { return $areas }
-    function Get-LiveWindows { return @([pscustomobject]@{ Hwnd = [IntPtr]7; Pid = 11; ShowCmd = 1
-        NL = 0; NT = 0; NR = 400; NB = 300; MinX = -1; MinY = -1; MaxX = -1; MaxY = -1 }) }
-    Save-WindowLayout -Key 'path-a'
+    # Save calls the native type directly. A fresh host gives that type a deterministic fake
+    # without changing the production function or depending on windows on the test machine.
+    $fixture = Join-Path $script:TestDir 'save-window-fixture.ps1'
+    @'
+#Requires -Version 5.1
+param([string]$LayoutScript, [string]$StateFile)
+$ErrorActionPreference = 'Stop'
+class NativeWindows {
+    static [object[]] Enumerate() {
+        return @([pscustomobject]@{ Hwnd = [IntPtr]7; Pid = 11; ShowCmd = 1
+            NL = 0; NT = 0; NR = 400; NB = 300; MinX = -1; MinY = -1; MaxX = -1; MaxY = -1 })
+    }
+}
+. $LayoutScript
+$script:WindowStateFile = $StateFile
+function Get-WindowWorkAreas {
+    return @([pscustomobject]@{ Device = 'MAIN'; Primary = $true; Left = 0; Top = 0; Right = 800; Bottom = 600
+        WorkLeft = 0; WorkTop = 0; WorkRight = 800; WorkBottom = 560 })
+}
+function Write-DisplayLog { param([string]$Message) }
+function Format-LayoutKey { param([string]$Key) return $Key }
+Save-WindowLayout -Key 'path-a'
+'@ | Set-Content -LiteralPath $fixture -Encoding UTF8
+    & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $fixture `
+        -LayoutScript (Join-Path $root 'WindowLayout.ps1') -StateFile $script:WindowStateFile
+    Assert-Equal 0 $LASTEXITCODE 'the isolated save completed'
 
     $back = Get-WindowStateStore
     Assert-Equal $false ($back.ContainsKey('path-a')) 'the superseded pre-upgrade record is retired'
     Assert-Equal 3 @($back.Keys | Where-Object { [string]$back[$_].layout -eq 'path-a' }).Count 'only the newest variants survive'
     Assert-True ($back.ContainsKey('v2:aaaaaaaaaaaaaaaa:path-b')) 'another topology is left alone'
+    $snapshot = $back[(Get-WindowSnapshotKey -LayoutKey 'path-a' -Areas $areas)]
+    Assert-Equal 7 ([int64]$snapshot.windows[0].hwnd) 'the new snapshot contains the supplied window'
+    Assert-Equal @(0, 0, 400, 300) @($snapshot.windows[0].n) 'the window placement survives saving'
     Remove-Item -LiteralPath $script:WindowStateFile -Force
 }
