@@ -375,7 +375,7 @@ list by hand:
 
 ```json
 "rules": [
-    { "when": "process", "process": "cs2", "mode": "solo:LG ULTRAGEAR" },
+    { "when": "process", "processes": ["cs2", "dota2"], "mode": "solo:LG ULTRAGEAR" },
     { "when": "idle", "minutes": 30, "mode": "combo:Movie night", "back": "combo:Work" },
     { "when": "displays", "displays": ["U2720Q", "ULTRAGEAR"], "mode": "combo:Home", "back": "solo:LAPTOP" }
 ]
@@ -383,13 +383,21 @@ list by hand:
 
 | Field | What it is |
 | --- | --- |
-| `when` | `process` — that process is running; `idle` — nobody has touched the computer for `minutes`; `displays` — the connected displays are exactly the ones in `displays` |
-| `process` | process name, with or without `.exe`, as Task Manager shows it |
+| `when` | `process` — any selected process is running; `idle` — nobody has touched the computer for `minutes`; `displays` — the connected displays are exactly the ones in `displays` |
+| `process` | one process name, with or without `.exe`, as Task Manager shows it. Existing single-program rules continue to work |
+| `processes` | a list of process names for a group. A nonempty list takes precedence over `process`; case and `.exe` do not affect matching |
 | `minutes` | for `idle` only. Zero means the rule never fires |
 | `displays` | for `displays` only: names or Monitor IDs, matched the way `layout` matches them. Exactly this set — a rule for the one monitor at the office does not fire at home, where that monitor is there too. Connected is enough; a display that is off at its own button counts |
 | `mode` | mode key to go to |
 | `back` | where to return when the condition ends. Empty — back to wherever the desk was |
 | `enabled` | `false` switches a rule off without deleting it |
+
+For several games that use the same desk, choose the first program and click **Add program**
+for each additional game. Each field offers running programs and names already in the optional
+diary; you can also type a process name. Blank fields and duplicate names are ignored.
+The rule stays active while any selected program is running and returns only after the last
+one closes. Closing one game while another is still running does not switch the screens.
+The rules list shows the return destination, including the default previous mode.
 
 Checked every fifteen seconds. Rules are tried in order and **the first match wins**; while
 a rule holds the desk, the others stay quiet. Three things it will not do:

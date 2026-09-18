@@ -80,6 +80,50 @@ Test-Case 'rule match: a running process' {
     Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('chrome'))) 'not running'
 }
 
+Test-Case 'rule group: any selected game holds the mode until the last one closes' {
+    $rule = New-TestRule -Mode 'solo:B'
+    $rule.processes = @('CS2.exe', 'dota2')
+    $start = Get-RuleDecision -Rules @($rule) -Facts (New-TestFacts @('cs2')) -CurrentMode 'all'
+    Assert-Equal 'switch' $start.Action 'the first game starts the rule'
+    Assert-Equal 'all' $start.Back 'the original mode is remembered'
+    foreach ($running in @(@('cs2', 'dota2'), @('dota2'))) {
+        $held = Get-RuleDecision -Rules @($rule) -Facts (New-TestFacts -Processes $running) `
+                                 -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'all'
+        Assert-Equal 'none' $held.Action 'another selected game keeps the same mode'
+    }
+    $end = Get-RuleDecision -Rules @($rule) -Facts (New-TestFacts @('chrome')) `
+                            -CurrentMode 'solo:B' -OwnedIndex 0 -OwnedBack 'all'
+    Assert-Equal 'return' $end.Action 'the last selected game has closed'
+    Assert-Equal 'all' $end.Mode 'return to the original desk'
+    $manual = Get-RuleDecision -Rules @($rule) -Facts (New-TestFacts @('dota2')) `
+                               -CurrentMode 'all' -OwnedIndex 0 -OwnedBack 'all'
+    Assert-Equal 'release' $manual.Action 'a manual switch still wins'
+    $rule.enabled = $false
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('dota2'))) 'disabled groups stay off'
+}
+
+Test-Case 'rule group: saved games survive JSON and harmless edits keep ownership' {
+    $raw = '{ "when": "process", "processes": [" CS2.exe ", "cs2", "", "dota2"], "mode": "all" }' | ConvertFrom-Json
+    $rule = @(ConvertTo-RuleSettings @($raw))[0]
+    Assert-Equal @('CS2.exe', 'dota2') @($rule.processes) 'trim blanks and repeated games'
+    $loaded = @(ConvertTo-RuleSettings @(($rule | ConvertTo-Json | ConvertFrom-Json)))[0]
+    Assert-True (Test-RuleMatch -Rule $loaded -Facts (New-TestFacts @('dota2'))) 'the second game survives saving'
+    $reordered = New-TestRule -Mode 'all'
+    $reordered.processes = @('DOTA2.exe', 'cs2')
+    Assert-Equal (Get-RuleSignature -Rule $rule) (Get-RuleSignature -Rule $reordered) 'order, suffix and case do not change ownership'
+    $reordered.processes = @('cs2', 'other-game')
+    Assert-True ((Get-RuleSignature -Rule $rule) -ne (Get-RuleSignature -Rule $reordered)) 'changing a game changes the rule'
+    Assert-Equal 'one of CS2.exe, dota2 is running' (Format-RuleReason -Rule $rule) 'the log describes any game, not all games'
+}
+
+Test-Case 'rule group: blank groups cannot trigger and old single-program rules retain their identity' {
+    $rule = New-TestRule -Process 'cs2'
+    $loaded = @(ConvertTo-RuleSettings @($rule))[0]
+    Assert-Equal (Get-RuleSignature -Rule $rule) (Get-RuleSignature -Rule $loaded) 'normalizing a single game keeps the same holder'
+    $rule.processes = @(' ', '', '.exe')
+    Assert-Equal $false (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('cs2'))) 'an explicitly blank group never falls back to a stale single game'
+}
+
 Test-Case 'rule match: the .exe people write out of habit is forgiven' {
     $rule = New-TestRule -Process 'CS2.exe'
     Assert-True (Test-RuleMatch -Rule $rule -Facts (New-TestFacts @('cs2'))) 'suffix and case both'

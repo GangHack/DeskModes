@@ -208,7 +208,7 @@ if ($Fake) {
     # And two rules, so the Rules card is a list rather than its empty line: one of each kind,
     # and one of them switched off — a rule that is off has to look off.
     $settings.rules = @(
-        [ordered]@{ when = 'process'; process = 'cs2'; minutes = 0
+        [ordered]@{ when = 'process'; processes = @('cs2', 'dota2'); minutes = 0
                     mode = ('solo:' + $samsung); back = ''; enabled = $true }
         [ordered]@{ when = 'idle'; process = ''; minutes = 30
                     mode = 'combo:Movie night'; back = 'combo:Work'; enabled = $false }
@@ -358,7 +358,7 @@ try {
     # show a condition, a target and a way back all filled in, and a desk with no rules on it
     # would render three empty dropdowns.
     $ruleOut = Get-OutPath '-rule'
-    $rule = [ordered]@{ when = 'process'; process = 'cs2'; minutes = 20
+    $rule = [ordered]@{ when = 'process'; processes = @('cs2', 'dota2'); minutes = 20
                         mode = [string]@($modes)[0].Key; back = ''; enabled = $true }
     $ruleEd = New-RuleEditorWindow -Rule $rule -Modes (Get-RuleTargetModes -Ui $ui) -Dark (Test-DarkTheme)
     try { Save-WindowSnapshot -Window $ruleEd.Window -Path $ruleOut }

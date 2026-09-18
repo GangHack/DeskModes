@@ -1734,6 +1734,9 @@ $script:RuleEditorXaml = @'
                     <!-- Editable: the list is what is running now and what the diary has seen, and a
                          rule is often written for a game that is doing neither at that moment. -->
                     <ComboBox x:Name="ProcessBox" Style="{StaticResource SelectEdit}" Height="30"/>
+                    <StackPanel x:Name="ProcessRows"/>
+                    <Button x:Name="AddProcessBtn" Content="%%T:rule.addProcess%%" Style="{StaticResource BtnSmall}"
+                            HorizontalAlignment="Left" Margin="0,8,0,0"/>
                 </StackPanel>
                 <StackPanel x:Name="IdlePanel" Margin="0,14,0,0" Visibility="Collapsed">
                     <TextBlock Style="{StaticResource H2}" Text="%%T:rule.idle%%"/>
@@ -6042,13 +6045,12 @@ function Get-RuleRowTitle {
     return (Get-RuleReasonText -Rule $Rule) + $script:UiArrow + $where
 }
 
-# And the second line: where it puts the desk back. Empty means "wherever it was", which is the
-# common case and needs no line of its own.
+# Always show the way back: the default is otherwise invisible until the editor is opened.
 function Get-RuleRowSubtitle {
     param($Rule)
 
     $back = [string]$Rule['back']
-    if (-not $back) { return '' }
+    if (-not $back) { return Get-Text -Key 'rule.backPrevious' }
     return Get-Text -Key 'rule.backTo' -Values @((Get-ModeTitleFromKey $back))
 }
 
@@ -6097,8 +6099,7 @@ function Update-RulesPanel {
         $subText = Get-RuleRowSubtitle -Rule $rule
         if ($subText) {
             $sub = New-UiTextBlock -Text $subText -Style 'RowSub' -Window $win
-            $sub.TextWrapping = 'NoWrap'
-            $sub.TextTrimming = 'CharacterEllipsis'
+            $sub.TextWrapping = 'Wrap'
             [void]$textStack.Children.Add($sub)
         }
         [void]$row.Children.Add($textStack)
@@ -6243,8 +6244,40 @@ function Add-ProcessItems {
     foreach ($name in @($names.Keys | Sort-Object)) { [void]$Editor.ProcessBox.Items.Add($name) }
 }
 
-# The rule editor, built separately from being shown — for the same reason as every other window
-# here: a window built without being shown can be tested.
+# A separate editable field avoids making people learn separators for a group of games.
+function Add-RuleProcessRow {
+    param($Editor, [string]$Name = '')
+
+    $row = New-Object System.Windows.Controls.DockPanel
+    $row.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+    $box = New-Object System.Windows.Controls.ComboBox
+    $box.Style = $Editor.Window.FindResource('SelectEdit')
+    $box.Height = 30
+    $box.Text = $Name
+    # Each dropdown gathers suggestions lazily, just like the original program field.
+    $box.Tag = [pscustomobject]@{ ProcessBox = $box; ProcessListed = $false }
+    $box.add_DropDownOpened({ Add-ProcessItems -Editor $this.Tag })
+    $remove = New-Object System.Windows.Controls.Button
+    $remove.Content = Get-Text -Key 'common.remove'
+    $remove.Style = $Editor.Window.FindResource('BtnSmall')
+    $remove.Margin = New-Object System.Windows.Thickness 8, 0, 0, 0
+    $remove.Tag = $row
+    [System.Windows.Controls.DockPanel]::SetDock($remove, 'Right')
+    $remove.add_Click({
+        $ed = $script:ActiveRuleUi
+        if (-not $ed) { return }
+        $row = $this.Tag
+        [void]$ed.ProcessBoxes.Remove($row.Tag)
+        $ed.ProcessRows.Children.Remove($row)
+    })
+    $row.Tag = $box
+    [void]$row.Children.Add($remove)
+    [void]$row.Children.Add($box)
+    [void]$Editor.ProcessBoxes.Add($box)
+    [void]$Editor.ProcessRows.Children.Add($row)
+}
+
+# The rule editor is built separately from being shown so tests can use the real controls.
 function New-RuleEditorWindow {
     # $Displays is the desk with the remembered monitors in it (Get-DeskDisplays): the ticks for the
     # "these displays are connected" condition. Empty, and that condition offers no ticks - the tests
@@ -6271,6 +6304,8 @@ function New-RuleEditorWindow {
         WhenBox      = $win.FindName('WhenBox')
         ProcessPanel = $win.FindName('ProcessPanel')
         ProcessBox   = $win.FindName('ProcessBox')
+        ProcessRows  = $win.FindName('ProcessRows')
+        ProcessBoxes = New-Object System.Collections.ArrayList
         IdlePanel    = $win.FindName('IdlePanel')
         MinutesBox   = $win.FindName('MinutesBox')
         DisplaysPanel = $win.FindName('DisplaysPanel')
@@ -6301,7 +6336,12 @@ function New-RuleEditorWindow {
         }
         if (-not $ed.WhenBox.SelectedItem) { $ed.WhenBox.SelectedIndex = 0 }
 
-        $ed.ProcessBox.Text = [string]$Rule['process']
+        [void]$ed.ProcessBoxes.Add($ed.ProcessBox)
+        $programs = @(Get-RuleProcesses -Rule $Rule)
+        if ($programs.Count -gt 0) { $ed.ProcessBox.Text = $programs[0] }
+        foreach ($program in @($programs | Select-Object -Skip 1)) {
+            Add-RuleProcessRow -Editor $ed -Name $program
+        }
         $minutes = [int]$Rule['minutes']
         $ed.MinutesBox.Text = [string]$(if ($minutes -gt 0) { $minutes } else { 20 })
         $ed.DisplayChecks = @(Add-RuleDisplayChecks -Window $win -Patterns @($Rule['displays']) -Displays @($Displays))
@@ -6323,6 +6363,13 @@ function New-RuleEditorWindow {
     $ed.ProcessBox.add_DropDownOpened({
         $ed = $script:ActiveRuleUi
         if ($ed) { Add-ProcessItems -Editor $ed }
+    })
+
+    $win.FindName('AddProcessBtn').add_Click({
+        $ed = $script:ActiveRuleUi
+        if (-not $ed) { return }
+        Add-RuleProcessRow -Editor $ed
+        [void]$ed.ProcessBoxes[$ed.ProcessBoxes.Count - 1].Focus()
     })
 
     $win.FindName('OkBtn').add_Click({
@@ -6418,7 +6465,7 @@ function Read-RuleFromUi {
     $backItem = $Editor.BackBox.SelectedItem
     $back = [string]$(if ($backItem) { $backItem.Tag } else { '' })
 
-    $process = ([string]$Editor.ProcessBox.Text).Trim()
+    $programs = @(Get-RuleProcesses -Rule @{ processes = @($Editor.ProcessBoxes | ForEach-Object { $_.Text }) })
     $minutes = 0
     $parsed = 0
     if ([int]::TryParse(([string]$Editor.MinutesBox.Text).Trim(), [ref]$parsed)) { $minutes = $parsed }
@@ -6429,7 +6476,7 @@ function Read-RuleFromUi {
 
     $problem = ''
     if (-not $mode) { $problem = Get-Text -Key 'rule.needMode' }
-    elseif ($when -eq 'process' -and -not $process) {
+    elseif ($when -eq 'process' -and $programs.Count -eq 0) {
         $problem = Get-Text -Key 'rule.needProcess'
     }
     elseif ($when -eq 'idle' -and $minutes -lt 1) {
@@ -6450,7 +6497,10 @@ function Read-RuleFromUi {
     return [pscustomobject]@{
         Ok = $true
         Rule = [ordered]@{
-            when = $when; process = $process; minutes = $(if ($minutes -gt 0) { $minutes } else { 0 })
+            when = $when
+            process = $(if ($programs.Count -eq 1) { $programs[0] } else { '' })
+            processes = @($programs | Where-Object { $programs.Count -gt 1 })
+            minutes = $(if ($minutes -gt 0) { $minutes } else { 0 })
             displays = $displays
             mode = $mode; back = $back; enabled = [bool]$Editor.Rule['enabled']
         }

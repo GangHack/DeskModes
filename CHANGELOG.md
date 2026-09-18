@@ -5,6 +5,9 @@ A release is dated only when its tag is ready to publish.
 
 ## 1.0.1 — not released yet
 
+- Let one rule watch several games or programs. It keeps the chosen mode while any of them
+  is running and returns after the last one closes. Add programs in the rule editor; existing
+  single-program rules keep working. The rules list now shows the default return mode too.
 - Stop the tray menu drawing a mode's shortcut on top of its name. A mode whose display is
   unplugged is disabled on purpose and still bound to a key, and both halves of its row were
   being painted into the same place.

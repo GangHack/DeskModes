@@ -49,7 +49,46 @@ Test-Case 'rules: a row is named in words, and modes by their titles' {
     $idle = [ordered]@{ when = 'idle'; process = ''; minutes = 20; mode = 'all'; back = ''; enabled = $true }
     # The window's phrasing, not the log's: Get-RuleRowTitle goes through Get-RuleReasonText.
     Assert-Equal "nobody at the computer for 20 min$($script:UiArrow)All displays" (Get-RuleRowTitle -Rule $idle) 'the other condition'
-    Assert-Equal '' (Get-RuleRowSubtitle -Rule $idle) 'and "wherever it was" needs no line'
+    Assert-Equal 'back to the previous mode' (Get-RuleRowSubtitle -Rule $idle) 'the default return is visible too'
+}
+
+Test-Case 'rule group: add, edit and remove games through the editor' {
+    $ui, $settings = New-RuleUi
+    try {
+        $ed = New-RuleEditorWindow -Rule $null -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false
+        try {
+            $ed.ProcessBox.Text = 'cs2.exe'
+            $ed.ModeBox.SelectedIndex = 0
+            $ed.Window.FindName('AddProcessBtn').RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+            Assert-Equal 2 $ed.ProcessBoxes.Count 'one more program field'
+            $ed.ProcessBoxes[1].Text = 'dota2'
+            $got = Read-RuleFromUi -Editor $ed
+            Assert-True $got.Ok 'a group is accepted'
+            Assert-Equal @('cs2.exe', 'dota2') @($got.Rule.processes) 'both programs are saved'
+            $ed.WhenBox.SelectedItem = @($ed.WhenBox.Items | Where-Object { [string]$_.Tag -eq 'idle' })[0]
+            $ed.WhenBox.SelectedItem = @($ed.WhenBox.Items | Where-Object { [string]$_.Tag -eq 'process' })[0]
+            Assert-Equal @('cs2.exe', 'dota2') @((Read-RuleFromUi -Editor $ed).Rule.processes) 'trying another condition preserves the games'
+            Assert-True ((Get-RuleRowTitle -Rule $got.Rule) -like 'one of cs2.exe, dota2 is running*') 'the row explains any game'
+            [void]$ui.Rules.Add($got.Rule)
+            $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
+            Assert-Equal @('cs2.exe', 'dota2') @($updated.rules[0].processes) 'the Settings footer keeps the group'
+        }
+        finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
+        $ed = New-RuleEditorWindow -Rule $updated.rules[0] -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false
+        try {
+            Assert-Equal 'cs2.exe' $ed.ProcessBox.Text 'the first game reopens'
+            Assert-Equal 'dota2' $ed.ProcessBoxes[1].Text 'the second game reopens'
+            $remove = @($ed.ProcessRows.Children[0].Children | Where-Object { $_ -is [System.Windows.Controls.Button] })[0]
+            $remove.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+            $got = Read-RuleFromUi -Editor $ed
+            Assert-Equal 'cs2.exe' $got.Rule.process 'removing the extra game leaves a single-program rule'
+            Assert-Equal 0 @($got.Rule.processes).Count 'no stale game remains'
+            $ed.ProcessBox.Text = ' '
+            Assert-Equal $false (Read-RuleFromUi -Editor $ed).Ok 'removing every game cannot save an empty rule'
+        }
+        finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
+    }
+    finally { $ui.Window.Close() }
 }
 
 Test-Case 'rules: the enable toggle goes both ways and reaches the file' {

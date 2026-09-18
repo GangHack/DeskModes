@@ -309,8 +309,25 @@ function ConvertTo-LevelSetting {
     return $perDisplay
 }
 
-# The rules brought to one shape. Here specifically, at read time: further on the tray timer reads them
-# every 15 seconds, and sorting out a field that may not be in the file is no longer possible there.
+# Keep the one-program setting readable while letting one rule watch a group. Names stay as
+# typed for the editor; comparison ignores case and .exe, including when removing duplicates.
+function Get-RuleProcesses {
+    param($Rule)
+
+    if (-not $Rule) { return }
+    $values = $(if ($null -ne $Rule.processes -and @($Rule.processes).Count -gt 0) { $Rule.processes } else { $Rule.process })
+    $seen = @{}
+    foreach ($value in @($values)) {
+        $name = ([string]$value).Trim()
+        $key = $name -replace '\.exe$', ''
+        if ($key -and -not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $name
+        }
+    }
+}
+
+# The rules brought to one shape at read time, including settings edited outside the window.
 function ConvertTo-RuleSettings {
     param($Value)
 
@@ -318,9 +335,11 @@ function ConvertTo-RuleSettings {
         if (-not $r) { continue }
         $when = [string]$r.when
         if (-not $when) { $when = 'process' }
+        $programs = @(Get-RuleProcesses -Rule $r)
         [ordered]@{
             when     = $when.ToLowerInvariant()
-            process  = [string]$r.process
+            process  = $(if ($programs.Count -eq 1) { $programs[0] } else { '' })
+            processes = @($programs | Where-Object { $programs.Count -gt 1 })
             minutes  = $(if ($null -ne $r.minutes) { [int]$r.minutes } else { 0 })
             # Always an array, even for the two conditions that do not use it: the tray joins it into
             # the rule's signature, and a missing key there would read as a different rule.
@@ -7191,10 +7210,9 @@ function Test-RuleMatch {
 
     switch ([string]$Rule.when) {
         'process' {
-            if (-not $Rule.process) { return $false }
-            $want = ([string]$Rule.process) -replace '\.exe$', ''
-            foreach ($p in @($Facts.Processes)) {
-                if ([string]$p -and ([string]$p).ToLowerInvariant() -eq $want.ToLowerInvariant()) { return $true }
+            foreach ($program in @(Get-RuleProcesses -Rule $Rule)) {
+                $want = $program -replace '\.exe$', ''
+                if (@($Facts.Processes) -contains $want) { return $true }
             }
             return $false
         }
@@ -7294,7 +7312,11 @@ function Get-RuleSignature {
     # collide by the separator landing inside a field.
     # The displays are one field here, joined by a bar: a display name cannot hold a tab either, and
     # the bar keeps two rules about different desks from reading as one.
-    return (@([string]$Rule.when, [string]$Rule.process, [int]$Rule.minutes,
+    # Reordering the same games must not release a rule that is holding the desk.
+    $programs = @((Get-RuleProcesses -Rule $Rule) | ForEach-Object {
+        ($_ -replace '\.exe$', '').ToLowerInvariant()
+    } | Sort-Object)
+    return (@([string]$Rule.when, ($programs -join '|'), [int]$Rule.minutes,
               (@(@($Rule.displays) | ForEach-Object { [string]$_ }) -join '|'),
               [string]$Rule.mode, [string]$Rule.back) -join "`t")
 }
@@ -7392,7 +7414,11 @@ function Get-RuleReasonText {
     param($Rule)
 
     switch ([string]$Rule.when) {
-        'process'  { return (Get-Text -Key 'reason.process' -Values @([string]$Rule.process)) }
+        'process'  {
+            $programs = @(Get-RuleProcesses -Rule $Rule)
+            if ($programs.Count -gt 1) { return (Get-Text -Key 'reason.processes' -Values @(($programs -join ', '))) }
+            return (Get-Text -Key 'reason.process' -Values @([string]($programs | Select-Object -First 1)))
+        }
         'idle'     { return (Get-Text -Key 'reason.idle' -Values @((Format-DurationShort ([int]$Rule.minutes)))) }
         'displays' {
             $names = @(@($Rule.displays) | ForEach-Object { [string]$_ } | Where-Object { $_ })
@@ -7409,7 +7435,11 @@ function Format-RuleReason {
     param($Rule)
 
     switch ([string]$Rule.when) {
-        'process'  { return ('{0} is running' -f [string]$Rule.process) }
+        'process'  {
+            $programs = @(Get-RuleProcesses -Rule $Rule)
+            if ($programs.Count -gt 1) { return ('one of {0} is running' -f ($programs -join ', ')) }
+            return ('{0} is running' -f [string]($programs | Select-Object -First 1))
+        }
         'idle'     { return ('idle for {0} min' -f [int]$Rule.minutes) }
         'displays' {
             $names = @(@($Rule.displays) | ForEach-Object { [string]$_ } | Where-Object { $_ })
