@@ -5,6 +5,13 @@ A release is dated only when its tag is ready to publish.
 
 ## 1.0.1 — not released yet
 
+First public release candidate. Requires Windows 10/11 and Windows PowerShell 5.1.
+Extract the complete ZIP into a writable folder and start Displays.cmd.
+The scripts and locally compiled API cache are unsigned. The ZIP's SHA256 verifies
+the downloaded bytes against the published archive.
+
+### Latest improvements
+
 - Let one rule watch several games or programs. It keeps the chosen mode while any of them
   is running and returns after the last one closes. Add programs in the rule editor; existing
   single-program rules keep working. The rules list now shows the default return mode too.
@@ -58,8 +65,6 @@ A release is dated only when its tag is ready to publish.
 
 - Dismiss the tray menu on an outside click or Escape even when Windows did not activate it.
 - Label the configured taskbar as a choice for future switches, including when its display is off.
-- Make the Settings footer's primary action follow direct desk edits, with a compact menu for saving
-  only or applying the saved configuration to the active displays now.
 
 - Leave the display set Windows activated at startup in place by default. Restoring the last
   chosen mode remains available as an explicit Behavior setting.
@@ -72,13 +77,6 @@ A release is dated only when its tag is ready to publish.
 - Migrate imported solo captions containing model, ShortId and connection token to the matching
   physical mode, retaining shortcuts and other mode references. Ambiguities and existing bindings
   are preserved for explicit resolution rather than silently overwritten.
-- Identify this compatibility fix as 1.0.1 in the application, diagnostics and portable archive.
-
-## 1.0.0 — not released yet
-
-First public release candidate. Requires Windows 10/11 and Windows PowerShell 5.1.
-Download the complete folder; the scripts and locally compiled API cache are unsigned.
-The release ZIP's SHA256 verifies the downloaded bytes against the published archive.
 
 ### Display modes
 
@@ -107,12 +105,13 @@ The release ZIP's SHA256 verifies the downloaded bytes against the published arc
 ### Interface and support
 
 - Double-left-click the tray icon to open Settings; right-click retains the switching menu.
-- Save applies settings while keeping the window open for further edits. Language changes
+- Save writes settings while keeping the window open for further edits. Applying the configured
+  arrangement to active displays uses the separate button on Your desk. Language changes
   automatically reopen the window on the same page with the selected translation.
 - Your desk shows live Windows geometry and primary separately from explicit row editing.
   Identical displays have concise distinct titles without changing their saved identities.
 
-- Resizable WPF Settings and system-themed tray menu. First-run Settings, Use Windows layout,
+- Resizable WPF Settings and system-themed tray menu. First steps tour, Use Windows layout,
   display-identification badges, keyboard shortcuts and per-mode editors.
 - English, Russian, Ukrainian, Spanish, French and German. Logs and command-line output stay English.
 - Settings saved through complete file replacement with a previous-good backup and recovery.

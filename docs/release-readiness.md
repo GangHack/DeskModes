@@ -1,13 +1,16 @@
-# Release readiness
+﻿# Release readiness
 
-Status on 11 September 2026: **local candidate preparation, not a published release**.
+Status on 18 September 2026: **local candidate preparation, not a published release**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
+The first-release feature notes are consolidated under 1.0.1, including the current
+separate Save and apply-to-displays behavior.
 
 ## Remaining acceptance for the current candidate
 
 The integrated candidate includes imported physical-selector compatibility, opt-in startup
-restoration, per-monitor WPF DPI handling, tray placement/dismissal and saved taskbar labels.
+restoration, per-monitor WPF DPI handling, tray placement/dismissal, first-run language selection,
+separate Save and apply-to-displays actions, and rules that watch several programs.
 Earlier hardware evidence applies only to its recorded source, not automatically to this candidate.
 
 Before tagging:
@@ -19,15 +22,18 @@ Before tagging:
   current desktop. Existing explicit restoreLastMode=true remains an intentional opt-in.
 - Move Settings between the 4K/2K screens, switch the active desk, and test narrow RU/UK windows.
   Check tray scrolling, Exit, outside-click/Escape dismissal and the timer submenu on the real tray.
+- Edit the configured desk and press Save or Enter: settings must be saved without switching
+  displays. Use the separate apply button and verify only the currently active displays change.
+- Start two programs named by one rule, then close them one at a time. The mode must remain
+  active until the last program closes; verify the configured return and manual override too.
 - Test the exact ZIP on a clean Windows installation and overlay it on a backed-up installation.
   Record Windows warnings, first launch, imported bindings, settings preservation and rollback.
 - Record the latest GitHub Actions result for the exact candidate commit. The old remote run
   from September 6 is not acceptance for these changes.
-- Before the first public release, consolidate the still-unreleased 1.0.0 feature notes into the
-  chosen first-release section. The packer exports only the current version's section; publishing
-  1.0.1 as written would describe only the follow-up fixes rather than the complete first release.
-- The GitHub repository is currently private. Decide public distribution and verify README,
-  screenshot, download and issue links as an unauthenticated visitor before announcing it.
+- Verify repository access and the distribution audience. The GitHub connector returned 404
+  during preparation on September 18, so current visibility and remote CI could not be confirmed.
+  Verify README, screenshot, download and issue links as an unauthenticated visitor before
+  announcing a public release.
 
 The first release date and tag remain unset until applicable hardware acceptance is recorded.
 Untested laptop, dock and multi-GPU configurations must remain explicitly experimental.
@@ -36,9 +42,12 @@ Untested laptop, dock and multi-GPU configurations must remain explicitly experi
 
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\check.ps1 -RequireAnalyzer`
 
-The local Windows PowerShell 5.1 run passes syntax, BOM/CRLF, PSScriptAnalyzer 1.25.0,
-translation keys and the regression suite. Every supported interface language covers
-the complete English key set. Tests redirect machine files and shadow hardware calls; no physical
+On September 18, the application source at `e7272e109c24e5184b419b9c0ee52e733461e6b8`
+passed the full local command above: 78 scripts parsed, 107 text files passed encoding checks,
+PSScriptAnalyzer 1.25.0 was clean, and 2,840 assertions passed. The analyzer ran from a temporary
+development folder without a system installation. All five translations cover all 368 English
+strings; all 360 statically requested keys exist. Release preparation changes only documentation.
+Tests redirect machine files and shadow hardware calls; no physical
 display switching is part of this result. The analyzer is a development tool, not a
 runtime dependency.
 
@@ -54,10 +63,13 @@ The current Windows arrangement is shown separately from explicit switching cust
 English and Russian offscreen previews verify the portrait geometry, primary marker and full
 duplicate-panel captions. These tests do not establish a successful real driver round-trip.
 
-English screenshots are refreshed in `docs/images/`. Nine offscreen WPF windows were
+Earlier English screenshots are in `docs/images/`. Nine offscreen WPF windows were
 rendered for English, Russian, German and French. Desk and About pages were inspected for
 readability at the renderer's dimensions. This does not validate keyboard navigation,
 actual tray interactions, small-screen scrolling, every DPI or dark/high-contrast themes.
+On September 18, the current renderer also produced 14 English preview images successfully;
+the desk page and first welcome screen were inspected. This is offscreen rendering evidence,
+not a clean-Windows launch or an interactive hardware result.
 
 ## Hardware and first-run matrix
 
