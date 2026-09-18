@@ -283,7 +283,7 @@ Test-Case 'desk: a live identity rename does not create apply intent without a d
         Assert-True (Update-SettingsLiveDesk -Ui $ui -State @($freshLeft, $freshRight) -Positions @{}) 'the refresh is accepted'
         Assert-Equal 'Renamed left' ([string]$ui.DeskPanel.Children[0].Tag.Label) 'the live label is refreshed'
         Assert-Equal $false ([bool]$ui.LayoutEdited) 'a refresh does not count as a layout edit'
-        Assert-Equal $false ([bool]$ui.MainActionApply) 'a label refresh leaves the main action as Save'
+        Assert-Equal $false ([bool]$ui.DeskApplyReady) 'a label refresh leaves no desk apply pending'
     }
     finally { $ui.Window.Close() }
 }
@@ -1300,7 +1300,7 @@ Test-Case 'desk: an inactive legacy primary is not presented as a switching over
     }
 }
 
-Test-Case 'desk footer: main action saves ordinarily and applies after a desk edit' {
+Test-Case 'desk footer: Save saves whether or not the desk was edited' {
     $script:FooterSaveCalls = 0
     $script:FooterApplyCalls = 0
     function Invoke-SettingsSave { param($Ui) $script:FooterSaveCalls++; return $true }
@@ -1324,15 +1324,20 @@ Test-Case 'desk footer: main action saves ordinarily and applies after a desk ed
         $desk.DeskPanel.Children[0].Tag.RightButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
         $afterMove = @($desk.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label })
         $desk.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
-        Assert-Equal 1 $script:FooterApplyCalls 'a desk edit changes the main action to Apply once'
-        Assert-Equal 1 $script:FooterSaveCalls 'the desk action does not also invoke Save directly'
-        Assert-Equal (Get-Text -Key 'desk.saveApply') ([string]$desk.SaveBtn.Content) 'the main action explains the physical apply'
+        Assert-Equal 0 $script:FooterApplyCalls 'a desk edit does not turn Save into a physical apply'
+        Assert-Equal 2 $script:FooterSaveCalls 'Save saves, here as everywhere else'
+        Assert-Equal (Get-Text -Key 'common.save') ([string]$desk.SaveBtn.Content) 'and keeps its one label'
+        Assert-True $desk.ApplyDeskBtn.IsEnabled 'what the desk edit woke is the desk page''s own button'
         Assert-Equal $afterMove @($desk.DeskPanel.Children | ForEach-Object { [string]$_.Tag.Label }) 'the footer action does not rebuild the configured row'
     }
     finally { $desk.Window.Close() }
 }
 
-Test-Case 'desk footer: the arrow opens one themed menu and Save-only clears apply intent' {
+Test-Case 'desk footer: Save is the same action on every page and never touches the screens' {
+    # It used to be a split button: its face turned into "Save and apply" the moment the desk row
+    # was touched, and an arrow beside it opened "Only save" / "Save and apply now". So the one blue
+    # button in the corner sometimes wrote a file and sometimes reconfigured the physical desktop,
+    # and which of the two it was that second was a thing a person had to read off its label.
     $script:MenuSaveCalls = 0
     $script:MenuApplyCalls = 0
     function Save-DisplaySettings { param($Settings) $script:MenuSaveCalls++; return $true }
@@ -1340,24 +1345,40 @@ Test-Case 'desk footer: the arrow opens one themed menu and Save-only clears app
     function Invoke-SettingsApply { param($Ui) $script:MenuApplyCalls++; return $true }
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
+        $ui | Add-Member -MemberType NoteProperty -Name StartupWasEnabled -Value $false -Force
+        $ui.StartupBox.IsChecked = $false
         $ui.DeskApplyPending = $true
         Update-UiFooter -Ui $ui
-        [void]$ui.SaveOptionsBtn.Focus()
-        $ui.SaveOptionsBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
-        Assert-True $ui.SaveMenu.IsOpen 'the keyboard focusable arrow opens its menu'
-        Assert-Equal $ui.SaveOptionsBtn $ui.SaveMenu.PlacementTarget 'keyboard opening is anchored to the arrow'
-        Assert-Equal ([System.Windows.Controls.Primitives.PlacementMode]::Top) $ui.SaveMenu.Placement 'the menu opens above the footer'
-        Assert-Equal (Get-Text -Key 'desk.saveOnly') ([string]$ui.SaveOnlyItem.Header) 'the first choice is save only'
-        Assert-Equal (Get-Text -Key 'desk.saveApplyNow') ([string]$ui.SaveApplyItem.Header) 'the second choice applies now'
-        $ui.SaveOnlyItem.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.MenuItem]::ClickEvent)))
-        Assert-Equal 1 $script:MenuSaveCalls 'Save-only uses the normal durable save path'
-        Assert-Equal 0 $script:MenuApplyCalls 'Save-only never applies hardware'
-        Assert-Equal $false ([bool]$ui.DeskApplyPending) 'Save-only clears a pending apply request'
-        Assert-Equal (Get-Text -Key 'common.save') ([string]$ui.SaveBtn.Content) 'the main action returns to plain Save'
+        Assert-Equal (Get-Text -Key 'common.save') ([string]$ui.SaveBtn.Content) 'the label does not change with the desk'
+        Assert-True $ui.SaveBtn.IsDefault 'so Enter can keep reaching it'
+        $ui.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 1 $script:MenuSaveCalls 'it takes the durable save path'
+        Assert-Equal 0 $script:MenuApplyCalls 'and never the hardware one'
+        Assert-Equal $false ([bool]$ui.DeskApplyPending) 'a save clears a pending apply request'
     }
     finally { $ui.Window.Close() }
 }
 
+Test-Case 'desk: the apply button is the only way to the screens, and is dead until there is one' {
+    $script:MenuApplyCalls = 0
+    function Invoke-SettingsApply { param($Ui) $script:MenuApplyCalls++; return $true }
+    $ui = New-DialogUi -Settings (Get-DefaultSettings)
+    try {
+        Update-UiFooter -Ui $ui
+        Assert-True (-not $ui.ApplyDeskBtn.IsEnabled) 'nothing to apply, nothing to press'
+        Assert-True (-not [bool]$ui.DeskApplyReady) 'and the window agrees'
+
+        $ui.DeskApplyPending = $true
+        Update-UiFooter -Ui $ui
+        Assert-True $ui.ApplyDeskBtn.IsEnabled 'a pending desk wakes it'
+        Assert-True ([bool]$ui.DeskApplyReady) 'and the window says so'
+        Assert-True (-not $ui.ApplyDeskBtn.IsDefault) 'Enter must never reach the screens'
+
+        $ui.ApplyDeskBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 1 $script:MenuApplyCalls 'pressing it applies'
+    }
+    finally { $ui.Window.Close() }
+}
 Test-Case 'dialog: moving a desk card away and back keeps a saved layoutOverride disabled' {
     $settings = Get-DefaultSettings
     $settings.layout = @('LG ULTRAGEAR', 'LG ULTRAFINE')
@@ -1370,12 +1391,12 @@ Test-Case 'dialog: moving a desk card away and back keeps a saved layoutOverride
         $updated = (Read-SettingsFromUi -Ui $ui -Settings $settings).Settings
         Assert-Equal @('LG ULTRAGEAR', 'LG ULTRAFINE') @($updated.layout) 'undo restores the saved order'
         Assert-Equal $false ([bool]$updated.layoutOverride) 'undo does not create a synthetic layout override'
-        Assert-Equal $false ([bool]$ui.MainActionApply) 'undo returns the footer to Save'
+        Assert-Equal $false ([bool]$ui.DeskApplyReady) 'undo takes the apply request away again'
     }
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'desk footer: failed apply remains the obvious retry and success returns to Save' {
+Test-Case 'desk footer: a failed apply keeps its retry button live, a successful one does not' {
     $script:FooterResult = 'refused'
     function Invoke-SettingsSave { param($Ui) return $true }
     function Set-CurrentDesktop {
@@ -1390,12 +1411,12 @@ Test-Case 'desk footer: failed apply remains the obvious retry and success retur
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
         [void](Invoke-SettingsApply -Ui $ui)
-        Assert-True $ui.MainActionApply 'a failed apply leaves the main retry action selected'
-        Assert-True ([string]$ui.SaveBtn.Content -eq (Get-Text -Key 'desk.saveApply')) 'the retry remains visibly labelled'
+        Assert-True $ui.DeskApplyReady 'a failed apply leaves the retry standing'
+        Assert-True $ui.ApplyDeskBtn.IsEnabled 'and the button that retries it stays live'
         $script:FooterResult = 'done'
         [void](Invoke-SettingsApply -Ui $ui)
-        Assert-Equal $false ([bool]$ui.MainActionApply) 'success clears the retry intent'
-        Assert-Equal (Get-Text -Key 'common.save') ([string]$ui.SaveBtn.Content) 'success returns the main action to Save'
+        Assert-Equal $false ([bool]$ui.DeskApplyReady) 'success clears the retry intent'
+        Assert-True (-not $ui.ApplyDeskBtn.IsEnabled) 'and a success puts the retry button back to sleep'
     }
     finally { $ui.Window.Close() }
 }
@@ -1410,7 +1431,7 @@ Test-Case 'desk footer: saved primary override alone does not trigger hardware' 
     $settings.primary = 'LG ULTRAFINE'
     $ui = New-DialogUi -Settings $settings
     try {
-        Assert-Equal $false ([bool]$ui.MainActionApply) 'opening an existing override is not a new request'
+        Assert-Equal $false ([bool]$ui.DeskApplyReady) 'opening an existing override is not a new request'
         $ui.SaveBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
         Assert-Equal 1 $script:ReopenSaveCalls 'ordinary Save remains available'
         Assert-Equal 0 $script:ReopenApplyCalls 'reopening never applies hardware'
@@ -1496,17 +1517,15 @@ Test-Case 'desk: an ordinary Save refreshes the current mode precedence hint' {
     finally { $ui.Window.Close() }
 }
 
-Test-Case 'desk footer: the default button is never the one that reconfigures displays' {
+Test-Case 'desk footer: Enter reaches Save and nothing else, on every page' {
     $ui = New-DialogUi -Settings (Get-DefaultSettings)
     try {
         Assert-True ([bool]$ui.SaveBtn.IsDefault) 'an ordinary Save is what Enter reaches'
         $ui.DeskApplyPending = $true
         Update-UiFooter -Ui $ui
-        Assert-True ([bool]$ui.MainActionApply) 'the click action has become a physical apply'
-        Assert-Equal $false ([bool]$ui.SaveBtn.IsDefault) 'and Enter no longer reaches it'
-        $ui.DeskApplyPending = $false
-        Update-UiFooter -Ui $ui
-        Assert-True ([bool]$ui.SaveBtn.IsDefault) 'Enter saves again once the apply intent is gone'
+        Assert-True ([bool]$ui.DeskApplyReady) 'the desk apply button has woken up'
+        Assert-True ([bool]$ui.SaveBtn.IsDefault) 'and Enter still reaches Save, which is harmless on every page'
+        Assert-True (-not [bool]$ui.ApplyDeskBtn.IsDefault) 'while nothing makes the screens the default action'
     }
     finally { $ui.Window.Close() }
 }
@@ -1522,10 +1541,10 @@ Test-Case 'desk: adopting the Windows layout withdraws a pending apply' {
     try {
         $ui.DeskApplyPending = $true
         Update-UiFooter -Ui $ui
-        Assert-True ([bool]$ui.MainActionApply) 'a failed apply leaves the retry standing'
+        Assert-True ([bool]$ui.DeskApplyReady) 'a failed apply leaves the retry standing'
         Assert-True (Invoke-DeskRead -Ui $ui -State $state -Positions $positions -SkipSnapshot) 'the adoption is accepted'
         Assert-Equal $false ([bool]$ui.DeskApplyPending) 'the pending apply is withdrawn with the rest of the desk intent'
-        Assert-Equal $false ([bool]$ui.MainActionApply) 'and the footer returns to a plain Save'
+        Assert-Equal $false ([bool]$ui.DeskApplyReady) 'and a success takes it away again'
     }
     finally { $ui.Window.Close() }
 }
@@ -1580,9 +1599,11 @@ Test-Case 'desk: the live Displays table sorts active geometry before configured
         }
         Update-DisplaysTable -Ui $ui
         $cells = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] })
-        Assert-Equal 'LG ULTRAGEAR' $cells[5].Text 'the leftmost active display is first'
-        Assert-Equal 'LG ULTRAFINE' $cells[10].Text 'the rightmost active display is second'
-        Assert-Equal 'XG27AQDMGR' $cells[15].Text 'the inactive remembered display follows active geometry'
+        # Six headings and then five cells a row: the sixth column holds the Forget button, which
+        # is not a TextBlock and so never lands in $cells.
+        Assert-Equal 'LG ULTRAGEAR' $cells[6].Text 'the leftmost active display is first'
+        Assert-Equal 'LG ULTRAFINE' $cells[11].Text 'the rightmost active display is second'
+        Assert-Equal 'XG27AQDMGR' $cells[16].Text 'the inactive remembered display follows active geometry'
     }
     finally { $ui.Window.Close() }
 }

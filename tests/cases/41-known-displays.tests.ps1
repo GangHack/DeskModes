@@ -244,3 +244,84 @@ Test-Case 'rules: a rule can be pointed at a display that is switched off' {
     }
     finally { $ui.Window.Close() }
 }
+
+# --- forgetting a monitor ---------------------------------------------------
+# A display tried once and then given away sits in every list for ninety days, because "not
+# connected" is also what a monitor that is merely switched off looks like and the program cannot
+# tell the two apart. The button is the person saying which it was.
+
+Test-Case 'displays table: only a monitor Windows cannot see can be forgotten' {
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUS1234' 'path-xg' $false $true)
+    )
+    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    try {
+        Update-DisplaysTable -Ui $ui
+        $buttons = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.Button] })
+        Assert-Equal 1 $buttons.Count 'one button, for the one display that is gone'
+        Assert-Equal 'XG27AQDMGR' ([string]$buttons[0].Tag) 'and it names that display'
+        Assert-Equal (Get-Text -Key 'table.forget') ([string]$buttons[0].Content) 'it says what it does'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'displays table: forgetting takes the row out of every list in the window' {
+    $script:Forgotten = @()
+    function Remove-KnownDisplay { param([string]$Label) $script:Forgotten += $Label; return $true }
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUS1234' 'path-xg' $false $true)
+    )
+    $ui = New-DialogUi -Settings (Get-DefaultSettings) -State $state
+    try {
+        Update-DisplaysTable -Ui $ui
+        Assert-Equal 2 @($ui.State).Count 'both are on the desk to begin with'
+        $button = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.Button] })[0]
+        $button.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+
+        Assert-Equal @('XG27AQDMGR') $script:Forgotten 'the roster was told, by name'
+        Assert-Equal 1 @($ui.State).Count 'and the window forgot it too'
+        Assert-Equal 'LG ULTRAGEAR' ([string]@($ui.State)[0].Label) 'the monitor that is here stays'
+        $cells = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] })
+        Assert-True (-not (@($cells | ForEach-Object { [string]$_.Text }) -contains 'XG27AQDMGR')) 'the table lost its row'
+        Assert-Equal 0 @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.Button] }).Count `
+            'and there is nothing left to forget'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'displays table: what was set for a forgotten display is kept as an orphan, not silently dropped' {
+    # Nothing in settings.json is touched. The Modes page has had a Remove button for a mode whose
+    # display is gone since long before this existed, and that is where the rest of it goes.
+    function Remove-KnownDisplay { param([string]$Label) return $true }
+    $settings = Get-DefaultSettings
+    $settings.hotkeys['solo:XG27AQDMGR'] = 'Ctrl+Alt+F9'
+    $state = @(
+        (New-FakeMonitor 'LG ULTRAGEAR' 'GSM5BB3' 'path-ug')
+        (New-FakeMonitor 'XG27AQDMGR' 'AUS1234' 'path-xg' $false $true)
+    )
+    $ui = New-DialogUi -Settings $settings -State $state
+    try {
+        Update-DisplaysTable -Ui $ui
+        $button = @($ui.DisplaysTable.Children | Where-Object { $_ -is [System.Windows.Controls.Button] })[0]
+        $button.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Button]::ClickEvent)))
+        Assert-Equal 'Ctrl+Alt+F9' ([string]$ui.Hotkeys['solo:XG27AQDMGR']) 'the shortcut is still there to be removed on purpose'
+    }
+    finally { $ui.Window.Close() }
+}
+
+Test-Case 'forget: a name the roster has never heard of is not an error' {
+    # The window and the tray hold their own copies of the desk, and either can be a moment out of
+    # date - the roster may have aged the record out between the table being drawn and the click.
+    $script:KnownDisplaysFile = Join-Path $script:TestDir ('forget-' + [guid]::NewGuid().ToString('N') + '.json')
+    try {
+        Assert-Equal $false (Remove-KnownDisplay -Label 'never seen') 'nothing to remove, nothing written'
+        Set-Content -Path $script:KnownDisplaysFile -Encoding UTF8 -Value (
+            '{"XG27AQDMGR":{"model":"XG27AQDMGR","short":"AUS1234","id":"path-xg","w":2560,"h":1440,"seen":"2026-09-01"}}')
+        Assert-True (Remove-KnownDisplay -Label 'XG27AQDMGR') 'a name it knows is removed'
+        Assert-Equal 0 (Get-KnownDisplays).Count 'and the roster comes back empty'
+        Assert-Equal $false (Remove-KnownDisplay -Label 'XG27AQDMGR') 'asking twice changes nothing'
+    }
+    finally { Remove-Item -LiteralPath $script:KnownDisplaysFile -ErrorAction SilentlyContinue }
+}

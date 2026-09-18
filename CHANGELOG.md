@@ -5,6 +5,17 @@ A release is dated only when its tag is ready to publish.
 
 ## 1.0.1 — not released yet
 
+- Stop the tray menu drawing a mode's shortcut on top of its name. A mode whose display is
+  unplugged is disabled on purpose and still bound to a key, and both halves of its row were
+  being painted into the same place.
+- Replace the footer's split Save button with one **Save** that only ever writes settings.json,
+  on every page. Applying a desk arrangement to the screens is a real change to somebody's
+  displays, so it has an explicit button of its own under the cards it applies, dead until there
+  is something to apply — and Enter can never reach it.
+- Add **Forget** beside a display Windows cannot see, for a monitor that was tried once and then
+  sold or lent. It used to sit in every list for ninety days, because "not connected" is also
+  what a monitor that is merely switched off looks like. Plugging it back in returns it.
+
 - Keep background rules from turning off every active display while all displays in their destination
   are still inactive. The rule waits until one destination display is visibly active instead.
 - Open a short four-screen introduction on the first run, ahead of the Settings window: what a

@@ -988,6 +988,13 @@ $script:SettingsWindowXaml = @'
                                     <StackPanel x:Name="DeskCustomPanel" Visibility="Collapsed">
                                         <TextBlock Style="{StaticResource Hint}" Text="%%T:desk.saved.hint%%"/>
                                         <UniformGrid x:Name="DeskPanel" Rows="1" Margin="-4,6,-4,0"/>
+                                        <!-- The physical action, under the cards it applies and
+                                             nowhere else. It is dead until there is something to
+                                             apply, so it can be read as "this does nothing right
+                                             now" rather than as a dare. -->
+                                        <Button x:Name="ApplyDeskBtn" Style="{StaticResource Btn}"
+                                                Content="%%T:desk.saveApplyNow%%" ToolTip="%%T:desk.saveApplyNow.tip%%"
+                                                HorizontalAlignment="Left" Margin="0,12,0,0"/>
                                         <TextBlock x:Name="DeskApplyHint" Style="{StaticResource Hint}"
                                                    Text="%%T:desk.apply.hint%%" Margin="0,8,0,0"/>
                                         <TextBlock x:Name="CurrentModeHint" Style="{StaticResource Hint}"
@@ -1530,10 +1537,15 @@ $script:SettingsWindowXaml = @'
                                TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"
                                Visibility="Collapsed"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- One button, and it only ever writes settings.json. It used to be a
+                             split button whose arrow opened "Only save" / "Save and apply now",
+                             and whose face changed to "Save and apply" the moment the desk row was
+                             touched - so the same button sometimes reconfigured the physical
+                             desktop and sometimes did not, and which of the two it was that second
+                             was a thing a person had to work out from its label. Applying a desk
+                             arrangement is a real change to somebody's screens; it has an explicit
+                             button of its own now, under the cards it applies. -->
                         <Button x:Name="SaveBtn" Style="{StaticResource BtnAccent}" Content="%%T:common.save%%" MinWidth="84" IsDefault="True"/>
-                        <Button x:Name="SaveOptionsBtn" Style="{StaticResource BtnAccent}" Content="▼"
-                                MinWidth="32" Margin="2,0,0,0" ToolTip="%%T:desk.saveOptions.tip%%"
-                                AutomationProperties.Name="%%T:desk.saveOptions.name%%"/>
                         <Button x:Name="CancelBtn" Style="{StaticResource Btn}" Content="%%T:common.cancel%%" MinWidth="84" Margin="8,0,0,0" IsCancel="True"/>
                     </StackPanel>
                 </Grid>
@@ -2372,72 +2384,26 @@ function Update-UiFooter {
     param($Ui)
 
     if (-not $Ui -or -not $Ui.SaveBtn -or -not $Ui.CancelBtn) { return }
+    # Whether the desk row is waiting to be pushed to the screens. It no longer changes what the
+    # footer's button does - Save writes settings.json and nothing else, on every page, always - and
+    # only decides whether the desk page's own Apply button can be pressed.
+    #
+    # That is the whole point of the rearrangement: Enter and the one blue button in the corner used
+    # to mean "write a file" most of the time and "reconfigure the physical desktop" the rest of it,
+    # with nothing between the keypress and SetDisplayConfig but a label somebody had to notice.
     $deskApply = Test-UiDeskApplyNeeded -Ui $Ui
-    $Ui.MainActionApply = [bool]$deskApply
-    $Ui.SaveBtn.Content = $(if ($deskApply) { Get-Text -Key 'desk.saveApply' } else { Get-Text -Key 'common.save' })
-    $Ui.SaveBtn.ToolTip = $(if ($deskApply) { Get-Text -Key 'desk.saveApply.tip' } else { Get-Text -Key 'common.save.tip' })
-    # Enter reaches the default button from anywhere in the window, including a page that shows none of
-    # this. Writing settings.json that way is what a person expects; reconfiguring the physical desktop
-    # is not, and there is no confirmation between the keypress and SetDisplayConfig. So while the main
-    # action is a physical apply the button stops being the default, and the window-level Enter handler
-    # installed in New-SettingsWindow performs the plain Save instead. Clicking still applies.
-    $Ui.SaveBtn.IsDefault = (-not $deskApply)
+    $Ui.DeskApplyReady = [bool]$deskApply
+    $Ui.SaveBtn.Content = Get-Text -Key 'common.save'
+    $Ui.SaveBtn.ToolTip = Get-Text -Key 'common.save.tip'
+    $Ui.SaveBtn.IsDefault = $true
+    if ($Ui.ApplyDeskBtn) { $Ui.ApplyDeskBtn.IsEnabled = [bool]$deskApply }
     $quiet = (($Ui.Page -eq 'diary' -or $Ui.Page -eq 'about') -and -not (Test-UiEdited -Ui $Ui) -and -not $deskApply)
     $Ui.SaveBtn.Visibility = $(if ($quiet) { 'Collapsed' } else { 'Visible' })
-    if ($Ui.SaveOptionsBtn) { $Ui.SaveOptionsBtn.Visibility = $(if ($quiet) { 'Collapsed' } else { 'Visible' }) }
     if ($quiet -and $Ui.ApplyStatus) { $Ui.ApplyStatus.Visibility = 'Collapsed' }
     $Ui.CancelBtn.Content = $(if ($quiet) { Get-Text -Key 'common.close' } else { Get-Text -Key 'common.cancel' })
     # Here rather than on each desk card's own handler: this runs after every edit already, and a
     # second place that had to remember to call it is a place that will forget.
     Update-DeskCustomState -Ui $Ui
-}
-
-# The arrow is a real keyboard-focusable button, and its menu is built once with the same palette as the
-# window. Keeping both choices here means the main button can follow desk intent without hiding Save-only.
-function Initialize-SaveOptionsMenu {
-    param($Ui)
-
-    if (-not $Ui -or -not $Ui.SaveOptionsBtn) { return }
-    $menu = New-Object System.Windows.Controls.ContextMenu
-    $menu.Background = $Ui.Window.FindResource('CardBrush')
-    $menu.Foreground = $Ui.Window.FindResource('TextBrush')
-    $menu.BorderBrush = $Ui.Window.FindResource('CardBorderBrush')
-    $menu.Padding = New-Object System.Windows.Thickness 4, 4, 4, 4
-
-    $saveOnly = New-Object System.Windows.Controls.MenuItem
-    $saveOnly.Header = Get-Text -Key 'desk.saveOnly'
-    $saveOnly.ToolTip = Get-Text -Key 'desk.saveOnly.tip'
-    $saveOnly.Tag = $Ui
-    $saveOnly.Padding = New-Object System.Windows.Thickness 12, 7, 12, 7
-    $saveOnly.Background = $menu.Background
-    $saveOnly.Foreground = $menu.Foreground
-    $saveOnly.add_Click({ [void](Invoke-SettingsSave -Ui $this.Tag) })
-
-    $saveApply = New-Object System.Windows.Controls.MenuItem
-    $saveApply.Header = Get-Text -Key 'desk.saveApplyNow'
-    $saveApply.ToolTip = Get-Text -Key 'desk.saveApplyNow.tip'
-    $saveApply.Tag = $Ui
-    $saveApply.Padding = New-Object System.Windows.Thickness 12, 7, 12, 7
-    $saveApply.Background = $menu.Background
-    $saveApply.Foreground = $menu.Foreground
-    $saveApply.add_Click({ [void](Invoke-SettingsApply -Ui $this.Tag) })
-
-    [void]$menu.Items.Add($saveOnly)
-    [void]$menu.Items.Add($saveApply)
-    $Ui.SaveOnlyItem = $saveOnly
-    $Ui.SaveApplyItem = $saveApply
-    $Ui.SaveMenu = $menu
-    $Ui.SaveOptionsBtn.ContextMenu = $menu
-    $menu.PlacementTarget = $Ui.SaveOptionsBtn
-    $menu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Top
-}
-
-function Invoke-SettingsMainAction {
-    param($Ui)
-
-    if (-not $Ui) { return $null }
-    if ($Ui.MainActionApply) { return (Invoke-SettingsApply -Ui $Ui) }
-    return (Invoke-SettingsSave -Ui $Ui)
 }
 
 function Set-UiPage {
@@ -2633,9 +2599,7 @@ function New-SettingsWindow {
         # The rules as the tray reads them, edited in place. Filled by Import-RuleSettings.
         Rules             = (New-Object System.Collections.ArrayList)
         SaveBtn           = $win.FindName('SaveBtn')
-        SaveOptionsBtn    = $win.FindName('SaveOptionsBtn')
-        SaveOnlyItem      = $null
-        SaveApplyItem     = $null
+        ApplyDeskBtn      = $win.FindName('ApplyDeskBtn')
         CancelBtn         = $win.FindName('CancelBtn')
         StartupBox        = $win.FindName('StartupBox')
         RefreshBox        = $win.FindName('RefreshBox')
@@ -2661,12 +2625,14 @@ function New-SettingsWindow {
         OnSaved           = $null
         SaveBusy          = $false
         ApplyBusy         = $false
-        MainActionApply   = $false
+        # Is there a desk arrangement waiting to be pushed to the screens? It decides whether the
+        # desk page's Apply button can be pressed, and nothing else - the footer's Save is the same
+        # action on every page whatever this says.
+        DeskApplyReady    = $false
         DeskBaselineFingerprint = ''
         DeskSavedLayout   = $null
         DeskSavedPrimary  = ''
         DeskApplyPending  = $false
-        SaveMenu          = $null
         LanguageCode      = [string]$script:LangCode
         RestartOnLanguageChange = $false
         ReloadLanguage    = $false
@@ -2732,8 +2698,6 @@ function New-SettingsWindow {
         AdoptLiveDesk     = $false
         Result            = $null
     }
-
-    Initialize-SaveOptionsMenu -Ui $ui
 
     # The combos go into a working list: the window edits that, and settings.json is rewritten
     # from it whole on Save. The name the combo had in the file is deliberately NOT kept beside
@@ -2916,20 +2880,6 @@ function New-SettingsWindow {
         Invoke-RuleEditor -Ui $ui -Rule $null
     })
 
-    # While the footer's main action is a physical apply, Update-UiFooter clears IsDefault on it, so
-    # Enter no longer reaches a button at all. Catch it here and do the harmless half - Save - so the
-    # key keeps the meaning it has everywhere else in the window. Bubbling, not preview, on purpose:
-    # the hotkey capture field marks Enter handled on its own way up and must keep winning.
-    $win.add_KeyDown({
-        param($sender, $e)
-        if ($e.Key -ne [System.Windows.Input.Key]::Enter) { return }
-        $ui = $script:ActiveUi
-        if (-not $ui -or -not $ui.MainActionApply) { return }
-        if ($ui.SaveBtn -and $ui.SaveBtn.Visibility -ne 'Visible') { return }
-        $e.Handled = $true
-        [void](Invoke-SettingsSave -Ui $ui)
-    })
-
     # The About page's four doors. Each one is a line, and each one goes through Open-UiTarget:
     # a browser or Explorer refusing to start must not take the window down with it.
     $win.FindName('RepoBtn').add_Click({ Open-UiTarget -Target $script:RepoUrl })
@@ -2969,13 +2919,16 @@ function New-SettingsWindow {
     $ui.SaveBtn.add_Click({
         $ui = $script:ActiveUi
         if (-not $ui) { return }
-        [void](Invoke-SettingsMainAction -Ui $ui)
+        [void](Invoke-SettingsSave -Ui $ui)
     })
 
-    $ui.SaveOptionsBtn.add_Click({
+    # The one control in this window that changes the screens rather than a file. It lives under
+    # the cards it applies, it is dead until there is something to apply, and Enter never reaches
+    # it — which is the whole reason it is no longer the footer's button in disguise.
+    $ui.ApplyDeskBtn.add_Click({
         $ui = $script:ActiveUi
-        if (-not $ui -or -not $ui.SaveMenu) { return }
-        $ui.SaveMenu.IsOpen = $true
+        if (-not $ui) { return }
+        [void](Invoke-SettingsApply -Ui $ui)
     })
 
     # The fold over the configured desk. It only ever OPENS from here: shutting it is what an
@@ -3519,19 +3472,22 @@ function Update-DisplaysTable {
         $inches = Get-DisplayInches -Display $m
         $native = '-'
         if ($m.Native) { $native = '{0} x {1}' -f $m.Native.Width, $m.Native.Height }
-        $rows += ,@(
-            (Get-DisplayTitle -Label ([string]$m.Label))
-            [string]$m.ShortId
-            $(if ($inches -gt 0) { '{0}"' -f [int][math]::Round($inches) } else { '-' })
-            $native
-            $now
-        )
+        $rows += ,[pscustomobject]@{
+            Display = $m
+            Cells   = @(
+                (Get-DisplayTitle -Label ([string]$m.Label))
+                [string]$m.ShortId
+                $(if ($inches -gt 0) { '{0}"' -f [int][math]::Round($inches) } else { '-' })
+                $native
+                $now
+            )
+        }
     }
     if ($rows.Count -eq 0) { return }   # no desk to describe (this is what the tests see)
 
     # The name takes what is left; the four facts take what they need. A monitor called
     # "LG ULTRAFINE (DisplayPort)" must not push the resolution off the card.
-    foreach ($i in 0..4) {
+    foreach ($i in 0..5) {
         $col = New-Object System.Windows.Controls.ColumnDefinition
         $col.Width = $(if ($i -eq 0) { [System.Windows.GridLength]::new(1, 'Star') }
                        else { [System.Windows.GridLength]::Auto })
@@ -3541,9 +3497,9 @@ function Update-DisplaysTable {
     # Monitor ID is not translated on purpose: it is the name settings.json and the log call a
     # display by, and a person who reads it here has to be able to find it there.
     $titles = @((Get-Text -Key 'table.display'), 'Monitor ID',
-                (Get-Text -Key 'table.size'), (Get-Text -Key 'table.native'), (Get-Text -Key 'table.now'))
+                (Get-Text -Key 'table.size'), (Get-Text -Key 'table.native'), (Get-Text -Key 'table.now'), '')
     $line = 0
-    foreach ($cell in 0..4) {
+    foreach ($cell in 0..5) {
         $head = New-Object System.Windows.Controls.TextBlock
         $head.Text = $titles[$cell]
         $head.FontSize = 12
@@ -3565,12 +3521,12 @@ function Update-DisplaysTable {
         $rule.BorderThickness = New-Object System.Windows.Thickness 0, 1, 0, 0
         $rule.VerticalAlignment = 'Top'
         [System.Windows.Controls.Grid]::SetRow($rule, $line)
-        [System.Windows.Controls.Grid]::SetColumnSpan($rule, 5)
+        [System.Windows.Controls.Grid]::SetColumnSpan($rule, 6)
         [void]$grid.Children.Add($rule)
 
         foreach ($cell in 0..4) {
             $text = New-Object System.Windows.Controls.TextBlock
-            $text.Text = [string]$row[$cell]
+            $text.Text = [string]$row.Cells[$cell]
             $text.FontSize = 13
             $text.TextTrimming = 'CharacterEllipsis'
             $text.Margin = New-Object System.Windows.Thickness $(if ($cell -eq 0) { 0 } else { 16 }), 6, 0, 6
@@ -3590,7 +3546,52 @@ function Update-DisplaysTable {
             [System.Windows.Controls.Grid]::SetColumn($text, $cell)
             [void]$grid.Children.Add($text)
         }
+
+        # Only for a monitor Windows cannot see. One that is on the desk right now cannot be
+        # forgotten, and a button that was there but refused would be a worse answer than no
+        # button: "not connected" is also the ordinary state of a monitor that is merely switched
+        # off, and the roster exists precisely so that one keeps its place in every list.
+        if (-not $row.Display.Disconnected) { continue }
+        $forget = New-Object System.Windows.Controls.Button
+        $forget.Content = Get-Text -Key 'table.forget'
+        $forget.ToolTip = Get-Text -Key 'table.forget.tip'
+        $forget.Style = $win.FindResource('BtnSmall')
+        $forget.VerticalAlignment = 'Center'
+        $forget.Margin = New-Object System.Windows.Thickness 16, 4, 0, 4
+        # The label, on the button: this window's handlers close over nothing (see the comment
+        # about handlers above), and the label is the roster's own key.
+        $forget.Tag = [string]$row.Display.Label
+        [System.Windows.Controls.Grid]::SetRow($forget, $line)
+        [System.Windows.Controls.Grid]::SetColumn($forget, 5)
+        [void]$grid.Children.Add($forget)
+        $forget.add_Click({ Remove-UiKnownDisplay -Label ([string]$this.Tag) })
     }
+}
+
+# Forget one remembered monitor, from the button on its row. The roster is the machine's state and
+# not settings.json, so this is written the moment it is pressed rather than waiting for Save -
+# which also means Cancel does not put the monitor back. That is the same bargain the roster has
+# always had: plugging the display in is what puts it back, and nothing else has to.
+#
+# Nothing in settings.json is touched. A mode, a rule or a brightness written for that display
+# turns into an orphan row on the Modes page, which has had a Remove button of its own since long
+# before this existed.
+function Remove-UiKnownDisplay {
+    param([string]$Label)
+
+    $ui = $script:ActiveUi
+    if (-not $ui -or -not $Label) { return }
+    [void](Remove-KnownDisplay -Label $Label)
+    # Out of the window's own copy of the desk as well, whatever the file said: the roster may
+    # already have aged the record out, and the row still has to go.
+    $ui.State = @(@($ui.State) | Where-Object { $_ -and [string]$_.Label -ne $Label })
+    # The three places a display appears. The cards are rebuilt from the state, so the desk row
+    # loses its card; the modes list loses the solo mode and grows an orphan row for whatever was
+    # set on it; the footer follows, because the row it was measuring has changed shape.
+    Update-DeskPanel -Ui $ui
+    Update-DisplaysTable -Ui $ui
+    Update-ModesPanel -Ui $ui
+    Update-UiFooter -Ui $ui
 }
 
 # The general taskbar choice is used by ordinary mode switching, but a combo's own primary is more

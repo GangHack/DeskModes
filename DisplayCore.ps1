@@ -3240,14 +3240,34 @@ public class ModernMenuRenderer : ToolStripRenderer {
         bool header = "header".Equals(e.Item.Tag as string);
         bool info   = "info".Equals(e.Item.Tag as string);
 
+        // A menu item with a shortcut is painted by TWO calls to this method: one for the item's
+        // own text and one for ShortcutKeyDisplayString, each with its own rectangle. The test has
+        // to come FIRST, before anything branches on Enabled - it used to sit inside the enabled
+        // branch, so a mode whose display is unplugged (disabled on purpose, and still bound to a
+        // key) took the custom path below for BOTH calls. That path strips Right alignment, which
+        // is what places a shortcut in its own column, and "Ctrl+Alt+F2" was drawn on top of
+        // "Only LG ULTRAFINE".
+        //
+        // The combination is quieter than the mode's name either way: it is a hint, not the item.
+        var mi = e.Item as ToolStripMenuItem;
+        if (mi != null && !string.IsNullOrEmpty(mi.ShortcutKeyDisplayString)
+            && e.Text == mi.ShortcutKeyDisplayString) {
+            if (e.Item.Enabled) {
+                e.TextColor = _dim;
+                base.OnRenderItemText(e);
+                return;
+            }
+            // Not through base for a disabled row: it throws our colour away and takes the
+            // system's grey (see the comment above). Right-aligned, which is where the base
+            // renderer puts a shortcut and where the enabled rows above and below it have theirs.
+            TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, e.TextRectangle, _dim,
+                                  (e.TextFormat | TextFormatFlags.Right)
+                                  & ~TextFormatFlags.HorizontalCenter);
+            return;
+        }
+
         if (e.Item.Enabled) {
-            // The key combination is quieter than the mode's name: it is a hint, not the item itself.
-            // ToolStripMenuItem draws it in a separate call with the same colour as the text, and the menu
-            // came out equally loud across its whole width.
-            var mi = e.Item as ToolStripMenuItem;
-            bool isShortcut = mi != null && !string.IsNullOrEmpty(mi.ShortcutKeyDisplayString)
-                              && e.Text == mi.ShortcutKeyDisplayString;
-            e.TextColor = isShortcut ? _dim : _text;
+            e.TextColor = _text;
             base.OnRenderItemText(e);
             return;
         }
@@ -5016,6 +5036,36 @@ function Update-KnownDisplays {
         # Nothing was written down, and nothing else is affected: the interface simply offers the
         # monitors Windows can see right now, which is what it did before this file existed.
         Write-DisplayLog "warn: could not remember the displays - $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# Take one monitor out of the roster. A display that was tried once and then sold, lent or thrown
+# away otherwise sits in every list in the window for ninety days (KnownDisplayDays) - and that is
+# by design, because "not connected" is the normal state of a monitor that is merely switched off.
+# There is no way for the program to tell the two apart, so this is the person saying which it was.
+#
+# It is not undoable and does not need to be: plugging the monitor in puts it straight back, which
+# is the same sentence as "the roster remembers what it has seen". Nothing in settings.json is
+# touched - a mode or a rule written for it becomes an orphan row with a Remove button of its own,
+# which is the mechanism that already exists for a mode whose display is gone.
+#
+# Answers whether the file changed. A name that is not in the roster is not an error: the window
+# and the tray hold their own copies of the desk, and either could be a moment out of date.
+function Remove-KnownDisplay {
+    param([Parameter(Mandatory)][string]$Label)
+
+    $known = Get-KnownDisplays
+    if (-not $known.Contains($Label)) { return $false }
+    $known.Remove($Label)
+    try {
+        Set-Content -Path $script:KnownDisplaysFile -Value (Format-KnownDisplays $known) `
+                    -Encoding UTF8 -ErrorAction Stop
+        Write-DisplayLog ("displays: forgot '{0}'" -f $Label)
+        return $true
+    }
+    catch {
+        Write-DisplayLog "warn: could not forget a display - $($_.Exception.Message)"
         return $false
     }
 }

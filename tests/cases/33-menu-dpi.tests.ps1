@@ -121,3 +121,86 @@ Test-Case 'menu DPI: a double-scale check has a visibly heavier stroke' {
     }
     finally { $normal.Dispose(); $double.Dispose() }
 }
+
+# --- a shortcut on a row that cannot be clicked -----------------------------
+# A menu item with a shortcut is painted by TWO calls to OnRenderItemText, one per rectangle. The
+# test that tells those two apart used to sit inside the "enabled" branch, so a mode whose display
+# is unplugged - disabled on purpose, and still bound to a key - took the two-tone path for BOTH
+# calls. That path strips the Right alignment, which is exactly what puts a shortcut in its own
+# column, and "Ctrl+Alt+F2" was drawn on top of "Only LG ULTRAFINE".
+#
+# A real ContextMenuStrip, laid out by WinForms and drawn into a bitmap without ever being shown:
+# the whole bug lives in the rectangles WinForms hands the renderer, and a hand-built event makes
+# those up - two earlier attempts at this test did exactly that and passed against the bug.
+#
+# The two rows carry the SAME text and the SAME shortcut and differ only in Enabled. So what is
+# compared is how much ink lands in the shortcut's column, and the enabled row - which goes through
+# the base renderer and has always been placed correctly - is the figure the disabled one has to
+# match. Nothing here depends on the font, the theme or the DPI; with the bug in place the disabled
+# row scored 119 against the enabled row's 424.
+
+function New-ShortcutRowMenu {
+    param([string]$Text = 'Only LG ULTRAFINE', [string]$Keys = 'Ctrl+Alt+F2')
+
+    $accent = [System.Drawing.Color]::FromArgb(0x4C, 0xC2, 0xFF)
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.Renderer = New-Object ModernMenuRenderer $false, $accent, ([single]1.0)
+    $menu.ShowImageMargin = $true
+    foreach ($enabled in @($true, $false)) {
+        $item = New-Object System.Windows.Forms.ToolStripMenuItem $Text
+        $item.ShortcutKeyDisplayString = $Keys
+        $item.Enabled = $enabled
+        [void]$menu.Items.Add($item)
+    }
+    # Its own preferred size: forcing one makes WinForms lay the text out differently, and the
+    # rectangles are the thing under test.
+    $menu.PerformLayout()
+    $menu.Size = $menu.PreferredSize
+    return $menu
+}
+
+# Pixels that are not the menu's own background, inside a band. The background is the bitmap's
+# commonest colour rather than a number written down here: the renderer owns that colour, and a
+# copy of it would go red the day the palette moves.
+function Measure-MenuBandInk {
+    param($Bitmap, [int]$FromX, [int]$FromY, [int]$ToY)
+
+    $counts = @{}
+    for ($x = 0; $x -lt $Bitmap.Width; $x++) {
+        for ($y = 0; $y -lt $Bitmap.Height; $y++) {
+            $v = $Bitmap.GetPixel($x, $y).ToArgb()
+            $counts[$v] = 1 + $counts[$v]
+        }
+    }
+    $back = ($counts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
+
+    $ink = 0
+    for ($x = $FromX; $x -lt $Bitmap.Width; $x++) {
+        for ($y = $FromY; $y -lt $ToY; $y++) {
+            if ($Bitmap.GetPixel($x, $y).ToArgb() -ne $back) { $ink++ }
+        }
+    }
+    return $ink
+}
+
+Test-Case 'menu: an unavailable mode draws its shortcut in the shortcut column' {
+    $menu = New-ShortcutRowMenu
+    $bmp = New-Object System.Drawing.Bitmap $menu.Width, $menu.Height
+    try {
+        $menu.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle 0, 0, $menu.Width, $menu.Height))
+        $half = [int]($bmp.Height / 2)
+        # The right quarter and a bit: past every name this menu holds, and over the column the
+        # base renderer right-aligns a shortcut into.
+        $column = [int]($bmp.Width * 0.72)
+        $enabled  = Measure-MenuBandInk -Bitmap $bmp -FromX $column -FromY 0 -ToY $half
+        $disabled = Measure-MenuBandInk -Bitmap $bmp -FromX $column -FromY $half -ToY $bmp.Height
+
+        Assert-True ($enabled -gt 0) 'the enabled row has its shortcut there to begin with'
+        # Same string, same font, same column: the two differ in colour and in nothing else, and
+        # the anti-aliasing of one tone against another is the whole of the tolerance.
+        $off = [Math]::Abs($enabled - $disabled)
+        Assert-True ($off -le ($enabled * 0.1)) `
+            "the unavailable row draws it in the same place (enabled $enabled, disabled $disabled)"
+    }
+    finally { $bmp.Dispose(); $menu.Dispose() }
+}
