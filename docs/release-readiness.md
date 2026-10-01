@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 1 October 2026: **verified local candidate awaiting interactive acceptance, not a published release**.
+Status on 1 October 2026: **automated candidate checks passed; reported dark UltraFine after All blocks hardware acceptance and publication**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -60,6 +60,20 @@ the remaining two minutes of capture. The reported intermittent music was not re
 The owner subsequently disabled Wallpaper Engine audio. This is an external workaround,
 not a DeskModes fix or acceptance of sleep/wake on the ASUS desktop; that scenario remains
 open. The observer stopped, and no DeskModes behavior or user settings were changed.
+
+The owner reported that All woke the ASUS and UltraGear, while UltraFine remained dark
+although the application showed it as on. The captured All attempts at 15:55:10 and
+15:56:27 completed without a logged refusal; Windows reported all three desktop paths
+active, including UltraFine at 3840x2160 / 59997/1000 Hz. A subsequent read-only query
+confirmed that desktop state, and a single-register DDC read of UltraFine's power-mode
+register 0xD6 returned 1. These later readings do not establish that the panel displayed
+an image during the reported failure. The application currently derives its on/off
+status from Windows desktop-path activity, not physical panel illumination.
+
+Three-monitor visual All acceptance is therefore unresolved. Record the panel's OSD
+message and recovery action, reproduce from display sleep, and confirm visible output
+on every requested panel before accepting the candidate. No display configuration,
+monitor setting or switch behavior was changed during this investigation.
 
 Repository visibility and the preserved draft were rechecked on October 1: the repository
 remains private and the candidate remains a draft. Distribution audience is still an owner
@@ -141,7 +155,7 @@ public reports.
 | --- | --- | --- |
 | Fresh Windows 10 | Download ZIP in a browser; extract to a writable folder; start Displays.cmd. Record actual warnings, first compilation time and first Settings window. | Pending |
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
-| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Automated round trip passed on September 18; visual acceptance pending |
+| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Automated round trip passed on September 18; owner reported dark UltraFine after All on October 1; visual acceptance unresolved |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
 | Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Earlier test archive reproduced destructive layout and rotation changes; fixed candidate needs hardware retest |
