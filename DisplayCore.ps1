@@ -2393,6 +2393,47 @@ public class NativeDdc {
         return result;
     }
 
+    public class PowerWake {
+        public string Device;
+        public bool Found, Read, Asked, Confirmed;
+        public int Before = -1, Actual = -1;
+    }
+
+    // Desktop activation does not power on every panel. Read only the standard power register;
+    // unsupported/unknown values and panels already on must never receive a speculative write.
+    public static List<PowerWake> Wake(string[] devices) {
+        var result = new List<PowerWake>();
+        foreach (string device in devices) { result.Add(new PowerWake { Device = device }); }
+        var open = Open();
+        try {
+            foreach (var pair in open) {
+                PowerWake row = result.Find(delegate(PowerWake item) { return item.Device == pair.Key && !item.Found; });
+                if (row == null) { continue; }
+                row.Found = true;
+                uint value;
+                if (!ReadVcp(pair.Value.handle, 0xD6, out value)) { continue; }
+                row.Read = true;
+                row.Before = row.Actual = (int)value;
+                if (value == 1) { row.Confirmed = true; continue; }
+                // UltraFine reports 5 after its physical power button, despite MCCS defining it
+                // as a write-only off value. It was physically validated on the development desk.
+                if (value < 2 || value > 5) { continue; }
+                row.Asked = WithRetry(delegate { return SetVCPFeature(pair.Value.handle, 0xD6, 1); });
+                if (!row.Asked) { continue; }
+                // A successful write means only that the command left the host. The panel can
+                // temporarily stop answering while waking, so require a bounded read-back.
+                for (int pass = 0; pass < 12; pass++) {
+                    System.Threading.Thread.Sleep(ConfirmPauseMs);
+                    if (ReadVcp(pair.Value.handle, 0xD6, out value)) {
+                        row.Actual = (int)value;
+                        if (value == 1) { row.Confirmed = true; break; }
+                    }
+                }
+            }
+        }
+        finally { foreach (var pair in open) { DestroyPhysicalMonitor(pair.Value.handle); } }
+        return result;
+    }
     public static List<MonitorLevels> Read() {
         var result = new List<MonitorLevels>();
         foreach (var pair in Open()) {
@@ -5808,6 +5849,7 @@ function Invoke-SwitchTail {
         # Enabled snapshots restore after a topology change or recovery of an unverified desktop.
         # A repeat press on an already verified desk still leaves the windows alone.
         [bool]$RestoreWindows,
+        [bool]$WakeDisplays = $false,
         [string[]]$WantedIds = @(),
         # The monitors that brightness can be set on: the output name is already known, and a second
         # CCD walk within one switch is not needed.
@@ -5821,6 +5863,13 @@ function Invoke-SwitchTail {
         $tail[$Name] = [double]$tail[$Name] + $watch.Elapsed.TotalSeconds
         $watch.Restart()
     }
+
+    # Only an explicit mode choice may override panel power; rules must leave idle sleep alone.
+    if ($WakeDisplays -and @($LevelTargets).Count -gt 0) {
+        try { Invoke-MonitorWake -Targets $LevelTargets }
+        catch { Write-DisplayLog "warn: wake - failed: $($_.Exception.Message)" }
+    }
+    & $note 'wake'
 
     if ($RestoreWindows) {
         try { Restore-WindowLayout -Key (Get-DisplayLayoutKey -DevicePaths $WantedIds) }
@@ -6391,7 +6440,7 @@ function Switch-DisplayMode {
         Save-AppliedModes -Applied $step.Applied
 
         Invoke-SwitchTail -Settings $settings -ModeKey $ModeKey -RestoreWindows:($doWindows -and $verdict.Ok) `
-                          -WantedIds $wantedIds -LevelTargets $step.LevelTargets
+                          -WantedIds $wantedIds -LevelTargets $step.LevelTargets -WakeDisplays:((-not $Automatic) -and $verdict.Ok)
 
         return (New-SwitchResult -ModeKey $ModeKey -Message $text `
                     -Outcome $(if ($verdict.Ok) { 'done' } else { 'partial' }) `
@@ -6746,6 +6795,31 @@ function Set-DefaultAudioDevice {
 # There is nothing to set on a sleeping monitor: it answers no requests. So the levels are set
 # only on the ones that are on, at the very end of a switch.
 
+# Resolve physical identities again: hotplug can reassign DISPLAY numbers during a switch.
+# A stale output name must never power on a different panel that was not selected.
+function Invoke-MonitorWake {
+    param($Targets)
+
+    $live = @{}
+    foreach ($path in @(Get-CcdTargets)) {
+        if ($path.Active -and $path.Output) { $live[[string]$path.DevicePath] = [string]$path.Output }
+    }
+    $labels = @{}
+    foreach ($target in @($Targets)) {
+        if ($target.Id -and $live.ContainsKey([string]$target.Id)) {
+            $labels[$live[[string]$target.Id]] = [string]$target.Label
+        }
+    }
+    if ($labels.Count -eq 0) { return }
+    foreach ($wake in @([NativeDdc]::Wake([string[]]@($labels.Keys)))) {
+        if (-not $wake.Read -or $wake.Before -eq 1) { continue }
+        $label = $labels[$wake.Device]
+        if ($wake.Confirmed) { Write-DisplayLog ("wake: {0} confirmed power on (0xD6=1)" -f $label) }
+        elseif ($wake.Before -ge 2 -and $wake.Before -le 5) {
+            Write-DisplayLog ("warn: wake - {0} did not confirm power on; check its power and input" -f $label)
+        }
+    }
+}
 function Get-MonitorLevels {
     try { return @([NativeDdc]::Read()) }
     catch {

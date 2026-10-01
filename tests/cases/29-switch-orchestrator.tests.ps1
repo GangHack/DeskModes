@@ -53,6 +53,7 @@ function New-SwitchSettings {
 # exactly one case and do not leak into the next.
 $script:SwFakes = {
     $script:SwCalls = @()
+    $script:SwWakeTargets = @()
     $script:SwFullOk = $true
     $script:SwTopologyOk = $true
     $script:SwSettled = [pscustomobject]@{ Ok = $true; MissingLabels = @(); ExtraLabels = @() }
@@ -181,6 +182,8 @@ $script:SwFakes = {
 
     function Save-LastMode { param([string]$Key) $script:SwCalls += 'lastMode'; $script:SwSavedMode = $Key }
     function Save-AppliedModes { param($Applied) $script:SwCalls += 'applied'; $script:SwAppliedModes = $Applied }
+
+    function Invoke-MonitorWake { param($Targets) $script:SwWakeTargets += @($Targets) }
 
     function Set-DefaultAudioDevice { param([string]$Match) $script:SwCalls += "audio:$Match"; return $true }
     function Set-MonitorLevels {
@@ -987,14 +990,14 @@ Test-Case 'switch: a mode carrying a picture preset takes it to the bus with the
     Assert-Equal '0x15:45' ([string]$script:SwLevelArgs.Picture['ULTRAFINE']) 'the preset came through as written'
 }
 
-Test-Case 'switch: a mode with nothing to set on the bus does not go near it' {
-    # The dictionaries are empty by default, and then not one request leaves over the slow bus.
+Test-Case 'switch: a mode without levels leaves brightness, contrast and picture alone' {
+    # Empty level dictionaries do not change brightness, contrast or picture presets.
     . $script:SwFakes
     $script:SwDesk = New-SwitchDesk
     $script:SwSettings = New-SwitchSettings
 
     [void](Switch-DisplayMode -ModeKey 'all' -Quiet)
-    Assert-True (-not (($script:SwCalls -join ',') -match 'levels:')) 'nothing was asked of the monitors'
+    Assert-True (-not (($script:SwCalls -join ',') -match 'levels:')) 'no levels were asked of the monitors'
 }
 
 Test-Case 'switch: when none of the wanted displays comes up, the previous set is put back' {
@@ -1506,4 +1509,44 @@ Test-Case 'apply now: a busy switch mutex is distinct from a refusal' {
         Stop-Job $job -ErrorAction SilentlyContinue
         Remove-Job $job -Force -ErrorAction SilentlyContinue
     }
+}
+
+Test-Case 'wake: a manual solo choice wakes only its selected physical panel' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $result = Switch-DisplayMode -ModeKey 'solo:LG ULTRAFINE' -Quiet
+    Assert-True $result.Ok 'Windows switching succeeds'
+    Assert-Equal 1 @($script:SwWakeTargets).Count 'only one panel is asked to wake'
+    Assert-Equal 'path-uf' $script:SwWakeTargets[0].Id 'the selected physical identity is preserved'
+}
+
+Test-Case 'wake: repeating All still checks panel power without reapplying the desktop' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    Assert-True (Switch-DisplayMode -ModeKey 'all' -Quiet).Ok 'first All succeeds'
+    $script:SwWakeTargets = @()
+    Assert-True (Switch-DisplayMode -ModeKey 'all' -Quiet).Ok 'repeat All succeeds'
+    Assert-Equal 3 @($script:SwWakeTargets).Count 'active Windows paths do not imply awake panels'
+}
+
+Test-Case 'wake: automatic rules and dry runs leave physical panel power alone' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet -Automatic)
+    Assert-Equal 0 @($script:SwWakeTargets).Count 'automatic application does not override display sleep'
+    [void](Switch-DisplayMode -ModeKey 'all' -Quiet -DryRun)
+    Assert-Equal 0 @($script:SwWakeTargets).Count 'dry run does not read or write panel power'
+}
+
+Test-Case 'wake: an unsuccessful desktop switch does not change panel power' {
+    . $script:SwFakes
+    $script:SwDesk = New-SwitchDesk
+    $script:SwSettings = New-SwitchSettings
+    $script:SwVerifyMismatch = $true
+    $result = Switch-DisplayMode -ModeKey 'solo:LG ULTRAFINE' -Quiet
+    Assert-True (-not $result.Ok) 'the desktop verification failure is reported'
+    Assert-Equal 0 @($script:SwWakeTargets).Count 'only a successfully assembled desktop may wake panels'
 }

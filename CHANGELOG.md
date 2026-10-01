@@ -12,6 +12,9 @@ the downloaded bytes against the published archive.
 
 ### Latest improvements
 
+- Wake selected panels that report standby/off over DDC/CI when a mode is chosen manually,
+  including repeated All. Read back power-on; leave automatic rules and unsupported panels alone.
+
 - Describe display availability without claiming physical power state: unused displays say
   **not in use**, and displays Windows cannot see say **not detected**. Settings explains that
   a Windows desktop status does not confirm whether the panel is awake.

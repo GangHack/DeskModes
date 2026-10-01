@@ -109,8 +109,8 @@ Once its desktop path was active, UltraFine answered a single-register DDC read 
 read did not answer while the panel was transitioning; a later fresh read returned 1.
 The owner confirmed that the image appeared without pressing its power button, and Windows
 kept the three display modes. No capabilities string was requested. This proves that this
-UltraFine can be powered on through DDC after desktop activation. Current DeskModes switching
-does not send that power command, and this result does not establish behavior on other panels
+UltraFine can be powered on through DDC after desktop activation. DeskModes switching at the time of that test
+did not send that power command, and this result does not establish behavior on other panels
 or the cause of the earlier automatic-sleep incident.
 
 A separate Windows display-power off/on request ran for ten seconds without changing the
@@ -143,6 +143,29 @@ including UltraFine, and the final Solo ASUS. This accepts ordinary switching on
 three-panel desk with the panels powered on. It does not establish automatic panel power-on,
 the idle sleep/wake scenario, identical panels, portrait rotation or another computer. The current
 tray process has not been restarted with the new wording; real ZIP/tray startup remains open.
+
+## Manual DDC wake candidate
+
+Explicit mode selection now checks the selected active physical panels' power register after
+Windows desktop verification, including repeated All. It writes 0xD6=1 only after a successful
+read reports 2 through 5, and reads back within twelve confirmation passes. Already-on panels,
+unknown values and unsupported/non-answering registers receive no power write. A fresh CCD
+identity-to-output mapping avoids using a stale DISPLAY number after hotplug. The same switch
+mutex covers this work. Automatic rules, startup/resume reapplication, dry runs and failed desktop
+verification do not invoke wake. The operation precedes optional brightness/picture settings.
+A known-off panel that fails confirmation is logged as a warning; desktop success still reports
+Windows configuration, and does not claim optical output or universal monitor power support.
+
+The regression cases failed on the previous code, then passed after implementation. All 2,850
+local assertions and parse, encoding and language gates passed; required analyzer acceptance is
+performed by Windows CI. Controlled physical-button wake with the integrated code remains pending.
+The running tray still holds the previous source until it is restarted; CLI runs use the new code.
+
+The [Microsoft DDC/CI API documentation](https://learn.microsoft.com/en-us/windows/win32/api/lowlevelmonitorconfigurationapi/nf-lowlevelmonitorconfigurationapi-setvcpfeature)
+requires hardware validation because firmware support varies. The
+[power-register reference](https://www.ddcutil.com/vcpinfo_output/) identifies the standard power
+values; this desk's UltraFine additionally reports value 5 after button-off, as measured above.
+No capabilities request or monitor-off command is added.
 
 ## Remaining acceptance for the current candidate
 

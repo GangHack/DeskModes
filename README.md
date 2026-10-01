@@ -54,6 +54,14 @@ is active, **not in use** means Windows sees it but does not use it in the curre
 and **not detected** means Windows does not currently report it as available. A sleeping or
 powered-off panel can remain active in Windows; check its power and input if it stays dark.
 
+Manually selecting a mode, including repeating All, also checks the selected active panels'
+power register (DDC/CI 0xD6). A panel that reports standby/off receives a power-on request,
+which is read back with a bounded wait before optional brightness or picture settings.
+Panels already on, unsupported registers and unknown values receive no power write.
+Automatic rules, startup/resume reapplication and dry runs do not send this wake command.
+A panel that has left the connection, has DDC/CI disabled or no longer answers still needs
+its physical power button or connection restored. Windows desktop status is not proof of an image.
+
 ## What comes with a mode
 
 - The selected displays and their saved Windows positions, orientation, resolution, refresh rate

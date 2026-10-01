@@ -110,6 +110,14 @@ in the current desktop. **Not detected** means Windows does not report it as ava
 sleeping or powered-off panel can remain active in Windows. If it stays dark, check its power
 button, selected input and connection.
 
+Manually selecting a mode, including repeating All, also checks the selected active panels'
+power register (DDC/CI 0xD6). A panel that reports standby/off receives a power-on request,
+which is read back with a bounded wait before optional brightness or picture settings.
+Panels already on, unsupported registers and unknown values receive no power write.
+Automatic rules, startup/resume reapplication and dry runs do not send this wake command.
+A panel that has left the connection, has DDC/CI disabled or no longer answers still needs
+its physical power button or connection restored. Windows desktop status is not proof of an image.
+
 A display Windows no longer detects keeps its place, marked **not detected**. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them
 altogether — which used to mean the one display you wanted to set a rule or a combination up
