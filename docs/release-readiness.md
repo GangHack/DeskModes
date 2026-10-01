@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 1 October 2026: **automated candidate checks passed; UltraFine power-button wake limitation confirmed; remaining interactive acceptance pending**.
+Status on 1 October 2026: **automated candidate checks and all configured native mode round trips passed; sleep and interactive acceptance remain open**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -116,8 +116,33 @@ or the cause of the earlier automatic-sleep incident.
 A separate Windows display-power off/on request ran for ten seconds without changing the
 configured power plan or display timeout. After it, active membership, primary, coordinates,
 rotation, resolutions and exact refresh fractions matched the preceding desktop; settings.json
-retained its hash. Visual confirmation of all three screens sleeping and waking is pending.
+retained its hash. The owner subsequently reported that the screens did not visibly go dark.
+The commands returning successfully therefore do not constitute a sleep/wake pass.
 This short explicit power cycle does not replace acceptance of the fifteen-minute idle timeout.
+
+## October 1 final candidate round trips
+
+The documented candidate source `f8fcc050a8eeb2491186cc3cc5001f13edd55483` passed its
+[Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/36882100726), including
+the required analyzer. Its code is unchanged from the status-wording source above, whose
+full local suite passed 2,840 assertions. The rebuilt ZIP contains 25 program files and has SHA256
+`2e346e2bf0075d2e6975e9e78f203ea38eab794bd1486f56cba1d4db15c7f107`.
+A fresh isolated extraction with copies of the existing machine-state files passed all eight
+read-only CLI checks. The preserved GitHub draft remains the older candidate.
+
+A normal-user-session hardware run started in Solo ASUS and exercised repeated All,
+all three solo modes, both configured combinations (Work and work+game), and an All
+return after each. Every requested active physical identity, single primary at the origin,
+source/target dimensions, rotation and rational refresh rate matched expectations.
+Every All return matched the captured three-display snapshot, including UltraFine's
+asymmetric Y position. The final Solo ASUS matched its original exact snapshot, and
+settings.json retained its hash. No optional hardware controls or personal hooks were enabled.
+
+The owner confirmed visible images on every requested panel throughout this switching run,
+including UltraFine, and the final Solo ASUS. This accepts ordinary switching on the current
+three-panel desk with the panels powered on. It does not establish automatic panel power-on,
+the idle sleep/wake scenario, identical panels, portrait rotation or another computer. The current
+tray process has not been restarted with the new wording; real ZIP/tray startup remains open.
 
 ## Remaining acceptance for the current candidate
 
@@ -128,8 +153,8 @@ Earlier hardware evidence applies only to its recorded source, not automatically
 
 Before tagging:
 
-- The automated round trip on the author's three-monitor desk passed as recorded below.
-  Finish visual acceptance there and repeat All -> solo/subset -> All on the external setup.
+- The current three-monitor desk passed exact and visually confirmed mode round trips above.
+  Finish idle sleep/wake acceptance and repeat All -> solo/subset -> All on the external setup.
   Compare physical primary, X/Y, rotation, resolution, refresh and restored window reachability.
   Include an unavailable panel and confirm recovery leaves a usable desktop.
 - Start with a different visible panel than the last chosen mode. Defaults must preserve the
@@ -195,10 +220,10 @@ public reports.
 | --- | --- | --- |
 | Fresh Windows 10 | Download ZIP in a browser; extract to a writable folder; start Displays.cmd. Record actual warnings, first compilation time and first Settings window. | Pending |
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
-| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Automated round trip passed on September 18; owner reported dark UltraFine after All on October 1; visual acceptance unresolved |
+| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | All configured mode round trips and owner visual confirmation passed October 1; button-off UltraFine and idle sleep/wake remain open |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
-| Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Earlier test archive reproduced destructive layout and rotation changes; fixed candidate needs hardware retest |
+| Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Three distinct landscape panels passed October 1; identical/portrait setup pending |
 | Two identical panels | Save distinct hotkeys and a one-panel combination. Reconnect in a different enumeration order; remove either panel. The remaining one keeps its key and never substitutes for the absent selection. | Pending |
 | Laptop and external display | Repeat with lid open/closed, sleep/wake and reconnect. Record the configured Windows lid action; use a visible recovery path. | Pending |
 | Dock / multiple GPUs | Record exact adapters, dock, ports and driver; test unplug/replug and wake. | Pending; experimental |
