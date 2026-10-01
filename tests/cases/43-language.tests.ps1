@@ -221,8 +221,8 @@ Test-Case 'language: disconnected rows and editor validation follow Russian' {
         $ed = New-ModeEditorWindow -Mode $mode -Combo $combo -State $state -TakenNames @('Office') `
                                    -Hotkeys ([ordered]@{ 'all' = 'Ctrl+Alt+F5' }) -Dark $false
         try {
-            Assert-True ([string]$ed.Checks[1].Content -match 'не подключ') 'the disconnected display is translated'
-            Assert-True ([string]$ed.Checks[1].Content -notmatch 'not connected') 'no English suffix remains'
+            Assert-True ([string]$ed.Checks[1].Content -match 'не обнаружен') 'the disconnected display is translated'
+            Assert-True ([string]$ed.Checks[1].Content -notmatch 'not detected') 'no English suffix remains'
 
             $ed.NameBox.Text = 'Office'
             $got = Read-ModeFromUi -Editor $ed

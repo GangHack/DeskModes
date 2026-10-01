@@ -31,7 +31,7 @@
 
     'desk.hint'                   = 'La disposition actuelle de Windows et les choix utilisés lors du basculement sont affichés séparément.'
     'desk.live'                   = 'Disposition Windows actuelle'
-    'desk.live.hint'              = 'Actualisé automatiquement. Les positions, l''orientation et l''écran de la barre des tâches marqué d''une étoile viennent de Windows.'
+    'desk.live.hint'              = 'Actualisé automatiquement. Les positions, l''orientation et l''écran de la barre des tâches marqué d''une étoile viennent de Windows. Le statut décrit l''utilisation sur le bureau, pas l''alimentation de l''écran.'
     'desk.live.unavailable'       = 'Windows n''a signalé aucune disposition d''écrans.'
     'desk.saved'                  = 'Personnaliser la disposition au basculement'
     'desk.saved.hint'             = 'Faites glisser les cartes dans l''ordre réel des écrans et étoilez celui qui garde la barre des tâches.'
@@ -244,10 +244,11 @@
     'reason.displays'             = '{0} sont branchés'
 
     'display.off'                 = 'éteint'
-    'display.notConnected'        = 'non branché'
+    'display.inactive'            = 'non utilisé'
+    'display.notConnected'        = 'non détecté'
     'display.resolution'          = '{0} x {1} @ {2} Hz'
     'desk.taskbar.lower'          = 'barre des tâches'
-    'desk.card.remembered'        = '{0} est retenu de vos paramètres et garde sa place dans la rangée. Rebranchez-le et il reprend vie.'
+    'desk.card.remembered'        = 'Windows ne détecte pas {0} actuellement. Sa place dans la rangée est conservée. Vérifiez l''alimentation, l''entrée sélectionnée et la connexion.'
     'desk.sleep.unknown'          = 'Windows n''a rien voulu dire. Changez-le dans Paramètres - Système - Alimentation.'
 
     'hotkey.none'                 = 'aucun raccourci'
@@ -306,7 +307,7 @@
     'menu.displays'               = 'ÉCRANS'
     'menu.switchTo'               = 'BASCULER VERS'
     'menu.primary'                = 'principal'
-    'menu.notConnected'           = '(non branché)'
+    'menu.notConnected'           = '(non détecté)'
     'menu.belowHz'                = '(en dessous de {0} Hz)'
     'menu.whichIsWhich'           = 'Lequel est lequel...'
     'menu.backTo'                 = 'Revenir à « {0} »'

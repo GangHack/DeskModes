@@ -75,6 +75,13 @@ message and recovery action, reproduce from display sleep, and confirm visible o
 on every requested panel before accepting the candidate. No display configuration,
 monitor setting or switch behavior was changed during this investigation.
 
+The owner subsequently confirmed that pressing UltraFine's physical power button restored
+its image. This establishes the recovery action, not the cause of the dark panel. The current
+source now labels inactive desktop paths as **not in use** and unavailable displays as
+**not detected**, with a Settings explanation that desktop activity is not panel power.
+This wording change does not establish an automatic wake fix or accept the All scenario.
+The preserved draft ZIP predates this wording change and must be rebuilt for the next candidate.
+
 Repository visibility and the preserved draft were rechecked on October 1: the repository
 remains private and the candidate remains a draft. Distribution audience is still an owner
 decision; neither verification nor candidate preparation changes repository visibility.

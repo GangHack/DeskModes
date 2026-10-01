@@ -571,9 +571,10 @@ function Get-UiFont {
     return $font
 }
 
-# The monitor status dots: green — on and at its maximum, amber — the rate is below the
-# maximum, grey — off, an outline — not connected. The text says the same in words; the
-# dot gives it in one glance. One is drawn per kind, and they live until the process ends.
+# The monitor status dots: green — active and at its maximum, amber — the rate is below the
+# maximum, grey — unused by the desktop, an outline — not detected by Windows. They do not
+# report physical panel power. The text names the same desktop states, and the dot gives
+# them in one glance. One is drawn per kind, and they live until the process ends.
 $script:StatusDots = @{}
 
 function Get-StatusDot {
@@ -1494,7 +1495,7 @@ $menu.add_Opening({
             $dot = 'unplugged'
             if ($m.Disconnected)  { $what = Get-Text -Key 'display.notConnected' }
             elseif ($m.Active)    { $what = Get-Text -Key 'display.resolution' -Values @($m.Width, $m.Height, $m.Hz); $dot = 'on' }
-            else                  { $what = Get-Text -Key 'display.off'; $dot = 'off' }
+            else                  { $what = Get-Text -Key 'display.inactive'; $dot = 'off' }
             $suffix = ''
             if ($m.Primary) { $suffix = '   - ' + (Get-Text -Key 'menu.primary') }
 

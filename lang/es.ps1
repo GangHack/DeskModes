@@ -31,7 +31,7 @@
 
     'desk.hint'                   = 'La disposición actual de Windows y las opciones usadas al cambiar se muestran por separado.'
     'desk.live'                   = 'Disposición de Windows ahora'
-    'desk.live.hint'              = 'Se actualiza automáticamente. Las posiciones, la orientación y el monitor de la barra de tareas marcado con una estrella proceden de Windows.'
+    'desk.live.hint'              = 'Se actualiza automáticamente. Las posiciones, la orientación y el monitor de la barra de tareas marcado con una estrella proceden de Windows. El estado describe el uso en el escritorio, no la alimentación de la pantalla.'
     'desk.live.unavailable'       = 'Windows no informó de una disposición de pantallas.'
     'desk.saved'                  = 'Personalizar disposición al cambiar'
     'desk.saved.hint'             = 'Arrastra las tarjetas al orden en que las pantallas están de verdad y marca con la estrella la que se queda con la barra de tareas.'
@@ -244,10 +244,11 @@
     'reason.displays'             = '{0} están conectadas'
 
     'display.off'                 = 'apagada'
-    'display.notConnected'        = 'no conectada'
+    'display.inactive'            = 'sin usar'
+    'display.notConnected'        = 'no detectada'
     'display.resolution'          = '{0} x {1} @ {2} Hz'
     'desk.taskbar.lower'          = 'barra de tareas'
-    'desk.card.remembered'        = '{0} se recuerda de tu configuración y mantiene su sitio en la fila. Vuelve a conectarla y cobrará vida.'
+    'desk.card.remembered'        = 'Windows no detecta {0} actualmente. Mantiene su sitio en la fila. Comprueba la alimentación, la entrada seleccionada y la conexión.'
     'desk.sleep.unknown'          = 'Windows no ha contestado. Cámbialo en Configuración - Sistema - Energía.'
 
     'hotkey.none'                 = 'sin atajo'
@@ -307,7 +308,7 @@
     'menu.displays'               = 'PANTALLAS'
     'menu.switchTo'               = 'CAMBIAR A'
     'menu.primary'                = 'principal'
-    'menu.notConnected'           = '(no conectada)'
+    'menu.notConnected'           = '(no detectada)'
     'menu.belowHz'                = '(por debajo de {0} Hz)'
     'menu.whichIsWhich'           = 'Cuál es cuál...'
     'menu.backTo'                 = 'Volver a «{0}»'

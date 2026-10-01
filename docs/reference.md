@@ -1,4 +1,4 @@
-# DeskModes reference
+﻿# DeskModes reference
 
 For the first run, updating and recovery, start with the [README](https://github.com/GangHack/DeskModes#readme).
 
@@ -104,7 +104,13 @@ Save applies settings and keeps the window open for further edits. Saving a diff
 automatically reopens Settings on the same page with the translated interface.
 Reopening Settings activates the existing window, preserving unfinished edits.
 
-A display you have switched off at its own button is still there, marked `not connected`. Some
+Display status describes desktop use, not physical panel power. Active displays show their
+resolution and refresh rate; **not in use** means Windows sees a display but does not use it
+in the current desktop. **Not detected** means Windows does not report it as available. A
+sleeping or powered-off panel can remain active in Windows. If it stays dark, check its power
+button, selected input and connection.
+
+A display Windows no longer detects keeps its place, marked **not detected**. Some
 monitors leave the DisplayPort bus when they go dark, and Windows then stops mentioning them
 altogether — which used to mean the one display you wanted to set a rule or a combination up
 for was the one missing from every list. Every monitor seen in the last three months keeps its

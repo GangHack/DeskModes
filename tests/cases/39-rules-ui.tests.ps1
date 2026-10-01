@@ -304,7 +304,7 @@ Test-Case 'rules: a target whose display is unplugged keeps its place in the dro
         $ed = New-RuleEditorWindow -Rule $ui.Rules[0] -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false
         try {
             Assert-Equal 'solo:GONE MONITOR' ([string]$ed.ModeBox.SelectedItem.Tag) 'still the choice'
-            Assert-True ([string]$ed.ModeBox.SelectedItem.Content -like '*not connected*') 'and it says why it is odd'
+            Assert-True ([string]$ed.ModeBox.SelectedItem.Content -like '*not detected*') 'and it says why it is odd'
             $got = Read-RuleFromUi -Editor $ed
             Assert-True $got.Ok 'saving it changes nothing about it'
             Assert-Equal 'solo:GONE MONITOR' ([string]$got.Rule['mode']) 'the target is untouched'
@@ -393,7 +393,7 @@ Test-Case 'rules: the displays condition offers a tick per display of the desk, 
         $ed = New-RuleEditorWindow -Rule $null -Modes (Get-RuleTargetModes -Ui $ui) -Dark $false -Displays $desk
         try {
             Assert-Equal 3 @($ed.DisplayChecks).Count 'three ticks for three displays'
-            Assert-True ([string]$ed.DisplayChecks[2].Content -like '*not connected*') 'the one that is off says so'
+            Assert-True ([string]$ed.DisplayChecks[2].Content -like '*not detected*') 'the display Windows cannot see says so'
 
             $ed.WhenBox.SelectedItem = @($ed.WhenBox.Items | Where-Object { [string]$_.Tag -eq 'displays' })[0]
             Assert-Equal 'Visible' ([string]$ed.DisplaysPanel.Visibility) 'the ticks come up'
@@ -426,7 +426,7 @@ Test-Case 'rules: a displays rule opens with its desk ticked, and a row names th
             Assert-Equal 'displays' ([string]$ed.WhenBox.SelectedItem.Tag) 'the condition'
             $ticked = @($ed.DisplayChecks | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
             Assert-Equal 'LG ULTRAFINE|DELL U2720Q' ($ticked -join '|') 'the desk it names: the ULTRAFINE by its piece of a name, the DELL kept as a tick of its own'
-            Assert-True ([string]$ed.DisplayChecks[-1].Content -like 'DELL U2720Q*not connected*') 'and the DELL, which this desk has never seen, says so'
+            Assert-True ([string]$ed.DisplayChecks[-1].Content -like 'DELL U2720Q*not detected*') 'and the DELL, which this desk has never seen, says so'
         }
         finally { $ed.Window.Close(); $script:ActiveRuleUi = $null }
     }

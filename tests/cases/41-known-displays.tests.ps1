@@ -187,11 +187,11 @@ Test-Case 'dialog: a combo offers a tick for a display that is not connected' {
         $byTag = @{}
         foreach ($cb in $ed.Checks) { $byTag[[string]$cb.Tag] = $cb }
         Assert-True ($byTag.ContainsKey('XG27AQDMGR')) 'the display that is away has a row of its own'
-        Assert-True ($byTag['XG27AQDMGR'].Content -like '*(not connected)*') 'and it says so'
+        Assert-True ($byTag['XG27AQDMGR'].Content -like '*(not detected)*') 'and it says so'
         Assert-True (-not $byTag['XG27AQDMGR'].IsChecked) 'unticked: the combo does not name it yet'
         # What leaves for settings.json is the name and nothing else - the wording is for the eye.
         Assert-Equal 'XG27AQDMGR' ([string]$byTag['XG27AQDMGR'].Tag) 'the tag is the name that goes to the file'
-        Assert-True ($byTag['LG ULTRAGEAR'].Content -notlike '*(not connected)*') 'the connected one is named plainly'
+        Assert-True ($byTag['LG ULTRAGEAR'].Content -notlike '*(not detected)*') 'the connected one is named plainly'
     }
     finally { $ed.Window.Close() }
 }
@@ -230,7 +230,7 @@ Test-Case 'rules: a rule can be pointed at a display that is switched off' {
         try {
             $item = @($ed.ModeBox.Items | Where-Object { [string]$_.Tag -eq 'solo:XG27AQDMGR' })[0]
             Assert-True ($null -ne $item) 'the display that is off is offered as a target'
-            Assert-True ([string]$item.Content -like '*(not connected)*') 'and says it is not there right now'
+            Assert-True ([string]$item.Content -like '*(not detected)*') 'and says it is not there right now'
             Assert-True $item.IsEnabled 'but it can still be chosen'
 
             $ed.ProcessBox.Text = 'cs2.exe'

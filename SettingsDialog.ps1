@@ -3286,7 +3286,7 @@ function Add-DeskCard {
     $sub.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
     if (-not $connected)      { $sub.Text = (Get-Text -Key 'display.notConnected') }
     elseif ($Display.Active)  { $sub.Text = (Get-Text -Key 'display.resolution' -Values @($Display.Width, $Display.Height, $Display.Hz)) }
-    else                      { $sub.Text = (Get-Text -Key 'display.off') }
+    else                      { $sub.Text = (Get-Text -Key 'display.inactive') }
     # The size is drawn into the card and said in words on hover. Not in the caption itself: that
     # line is already the longest thing on the card, and it is the first to be trimmed.
     $inches = Get-DisplayInches -Display $Display
@@ -3464,7 +3464,7 @@ function Update-DisplaysTable {
         @{ Expression = { if ($_.Active) { $_.Y } else { 0 } } }, Label, Id |
         ForEach-Object { $_.Display })
     foreach ($m in $orderedState) {
-        $now = Get-Text -Key 'display.off'
+        $now = Get-Text -Key 'display.inactive'
         if ($m.Disconnected) { $now = Get-Text -Key 'display.notConnected' }
         elseif ($m.Active)   {
             $now = Get-Text -Key 'display.resolution' -Values @($m.Width, $m.Height, $m.Hz)

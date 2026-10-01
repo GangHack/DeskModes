@@ -12,6 +12,9 @@ the downloaded bytes against the published archive.
 
 ### Latest improvements
 
+- Describe display availability without claiming physical power state: unused displays say
+  **not in use**, and displays Windows cannot see say **not detected**. Settings explains that
+  a Windows desktop status does not confirm whether the panel is awake.
 - Let one rule watch several games or programs. It keeps the chosen mode while any of them
   is running and returns after the last one closes. Add programs in the rule editor; existing
   single-program rules keep working. The rules list now shows the default return mode too.

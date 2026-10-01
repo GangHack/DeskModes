@@ -39,7 +39,7 @@
 
     'desk.hint'                   = 'Windows'' live layout and the choices DeskModes uses when switching are shown separately.'
     'desk.live'                   = 'Live in Windows'
-    'desk.live.hint'              = 'Refreshes automatically. Positions, orientation and the starred taskbar display come from Windows.'
+    'desk.live.hint'              = 'Refreshes automatically. Positions, orientation and the starred taskbar display come from Windows. Status describes desktop use, not monitor power.'
     'desk.live.unavailable'       = 'Windows did not report a display layout.'
     'desk.saved'                  = 'Configured for switching'
     # The two halves of the fold's own caption. Two diagrams of the same desk, one above the
@@ -247,11 +247,12 @@
 
     # --- a display, in a row or on a card ---
     'display.off'                 = 'off'
-    'display.notConnected'        = 'not connected'
+    'display.inactive'            = 'not in use'
+    'display.notConnected'        = 'not detected'
     'display.resolution'          = '{0} x {1} @ {2} Hz'
     # The star beside it says what it is; this is the word next to the star.
     'desk.taskbar.lower'          = 'taskbar'
-    'desk.card.remembered'        = '{0} is remembered from your settings and keeps its place in the row. Plug it back in and it comes to life.'
+    'desk.card.remembered'        = 'Windows does not currently detect {0}. It keeps its place in the row. Check its power, input and connection.'
     'desk.sleep.unknown'          = 'Windows would not say. Change it in Settings - System - Power.'
 
     # --- the language row ---
@@ -359,7 +360,7 @@
     'menu.displays'               = 'DISPLAYS'
     'menu.switchTo'               = 'SWITCH TO'
     'menu.primary'                = 'primary'
-    'menu.notConnected'           = '(not connected)'
+    'menu.notConnected'           = '(not detected)'
     'menu.belowHz'                = '(below {0} Hz)'
     'menu.whichIsWhich'           = 'Which is which...'
     'menu.backTo'                 = 'Back to {0}'

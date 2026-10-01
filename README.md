@@ -49,6 +49,11 @@ Spanish, French and German. Choose it on the first screen of **First steps**, or
 Settings reopens automatically on the same page in the selected language. No JSON editing is required.
 The `.cmd` launchers choose Windows PowerShell 5.1 even if your terminal uses PowerShell 7.
 
+Display status describes the Windows desktop: a resolution and refresh rate mean the display
+is active, **not in use** means Windows sees it but does not use it in the current desktop,
+and **not detected** means Windows does not currently report it as available. A sleeping or
+powered-off panel can remain active in Windows; check its power and input if it stays dark.
+
 ## What comes with a mode
 
 - The selected displays and their saved Windows positions, orientation, resolution, refresh rate

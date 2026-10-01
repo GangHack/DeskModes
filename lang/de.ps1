@@ -32,7 +32,7 @@
 
     'desk.hint'                   = 'Die aktuelle Windows-Anordnung und die beim Umschalten verwendeten Einstellungen werden getrennt angezeigt.'
     'desk.live'                   = 'Windows-Anordnung jetzt'
-    'desk.live.hint'              = 'Wird automatisch aktualisiert. Positionen, Ausrichtung und der mit einem Stern markierte Taskleistenmonitor stammen aus Windows.'
+    'desk.live.hint'              = 'Wird automatisch aktualisiert. Positionen, Ausrichtung und der mit einem Stern markierte Taskleistenmonitor stammen aus Windows. Der Status beschreibt die Desktop-Nutzung, nicht die Stromversorgung des Monitors.'
     'desk.live.unavailable'       = 'Windows hat keine Bildschirmanordnung gemeldet.'
     'desk.saved'                  = 'Umschaltlayout anpassen'
     'desk.saved.hint'             = 'Ziehen Sie die Karten in die Reihenfolge, in der die Monitore wirklich stehen, und markieren Sie den mit der Taskleiste mit dem Stern.'
@@ -245,10 +245,11 @@
     'reason.displays'             = '{0} sind angesteckt'
 
     'display.off'                 = 'aus'
-    'display.notConnected'        = 'nicht angesteckt'
+    'display.inactive'            = 'nicht verwendet'
+    'display.notConnected'        = 'nicht erkannt'
     'display.resolution'          = '{0} x {1} @ {2} Hz'
     'desk.taskbar.lower'          = 'Taskleiste'
-    'desk.card.remembered'        = '{0} ist aus Ihren Einstellungen bekannt und behält seinen Platz in der Reihe. Stecken Sie ihn wieder an, und er wird lebendig.'
+    'desk.card.remembered'        = 'Windows erkennt {0} derzeit nicht. Sein Platz in der Reihe bleibt erhalten. Prüfen Sie Stromversorgung, Eingang und Verbindung.'
     'desk.sleep.unknown'          = 'Windows wollte es nicht sagen. Ändern Sie es unter Einstellungen - System - Netzbetrieb und Energiesparen.'
 
     'hotkey.none'                 = 'kein Kürzel'
@@ -307,7 +308,7 @@
     'menu.displays'               = 'MONITORE'
     'menu.switchTo'               = 'UMSCHALTEN AUF'
     'menu.primary'                = 'primär'
-    'menu.notConnected'           = '(nicht angesteckt)'
+    'menu.notConnected'           = '(nicht erkannt)'
     'menu.belowHz'                = '(unter {0} Hz)'
     'menu.whichIsWhich'           = 'Welcher ist welcher...'
     'menu.backTo'                 = 'Zurück zu «{0}»'
