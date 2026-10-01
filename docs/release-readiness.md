@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 18 September 2026: **local candidate preparation, not a published release**.
+Status on 1 October 2026: **verified local candidate awaiting interactive acceptance, not a published release**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -8,8 +8,8 @@ separate Save and apply-to-displays behavior.
 
 ## Continue from another computer
 
-The candidate source is on GitHub at `5a891f327ad3e42b79e761cf94f1dc9884608c65`.
-Its [Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/35369845280)
+The verified candidate source is on GitHub at `3f8a52f939eeb7d13e7aeea5891e826b270af807`.
+Its [Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/35370648757)
 completed successfully, including the required analyzer and full regression suite.
 The repository is private; sign in with an account that has access.
 
@@ -31,6 +31,39 @@ Before publishing, finish the applicable interactive checks below on Windows, th
 1.0.1 CHANGELOG heading, commit it, wait for green Windows CI, and push `v1.0.1` at that commit.
 The existing release workflow builds the final assets. Do not publish the preservation draft
 as the final release: its notes and source deliberately remain an undated candidate.
+
+## October 1 candidate verification
+
+The source above passed all five local gates with PSScriptAnalyzer 1.25.0 and 2,840
+assertions: 78 scripts parsed, 108 text files passed encoding checks, all six languages
+covered 368 English strings, and all 360 requested keys existed. The analyzer was loaded
+from a temporary development folder without a system installation. Its existing GitHub
+Actions run was independently confirmed successful on October 1.
+
+The candidate was rebuilt from the clean source. Its 25 program files excluded personal
+settings, logs, caches, diary data and development files. The ZIP SHA256 matched the
+preserved draft digest above. Freshly extracted `status` and `modes` commands exited 0
+under Windows PowerShell 5.1 on Windows build 26200.
+
+An isolated copy of the installation's eight machine-state files was overlaid with the
+candidate's program files. All eight files retained their exact hashes after the overlay.
+The extracted candidate then passed all eight checks in `tests/live.ps1 -ReadOnly`,
+including an unchanged active display set after `all -DryRun`. Settings, diary and the
+last chosen mode retained their hashes after those CLI checks. The real installation
+was not replaced; tray restart, Windows download warnings and clean-Windows startup
+remain pending.
+
+A temporary observer also recorded Windows display power changing from on to dim to
+off on the two-LG desktop. Wallpaper Engine's audio session became inactive, and no
+nonzero audio peak was sampled while both Windows display-power states were off during
+the remaining two minutes of capture. The reported intermittent music was not reproduced.
+The owner subsequently disabled Wallpaper Engine audio. This is an external workaround,
+not a DeskModes fix or acceptance of sleep/wake on the ASUS desktop; that scenario remains
+open. The observer stopped, and no DeskModes behavior or user settings were changed.
+
+Repository visibility and the preserved draft were rechecked on October 1: the repository
+remains private and the candidate remains a draft. Distribution audience is still an owner
+decision; neither verification nor candidate preparation changes repository visibility.
 
 ## Remaining acceptance for the current candidate
 
@@ -118,7 +151,7 @@ public reports.
 | Optional display controls | Opt into brightness/contrast/picture/HDR only where supported. Verify restoration and bounded failure; never query the capabilities string. | Pending |
 | Rules and Back | Test process/idle/plug trigger, return, unavailable target, bounded retry and manual override. | Pending |
 | Small screen and accessibility | 100/150/200% scale, short working area, long translations, keyboard and screen reader, light/dark/high contrast. All actions must remain reachable. | Pending |
-| Portable update | Back up the folder, exit, overlay the new program files and restart. Settings, hooks, rules and diary remain intact. | Pending on real installation |
+| Portable update | Back up the folder, exit, overlay the new program files and restart. Settings, hooks, rules and diary remain intact. | Isolated overlay and read-only CLI passed October 1; real tray restart pending |
 | Move, rollback, removal | Move folder, recreate startup target, restore the saved folder, disable startup, exit and remove. No orphaned enabled startup indicator. | Logic covered; end-to-end pending |
 | Read-only location | Start from a folder with no write access. Record the actionable error; do not solve by running elevated. | Pending |
 
