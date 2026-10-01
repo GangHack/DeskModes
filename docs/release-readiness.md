@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 1 October 2026: **automated candidate checks passed; reported dark UltraFine after All blocks hardware acceptance and publication**.
+Status on 1 October 2026: **automated candidate checks passed; UltraFine power-button wake limitation confirmed; remaining interactive acceptance pending**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -85,6 +85,39 @@ The preserved draft ZIP predates this wording change and must be rebuilt for the
 Repository visibility and the preserved draft were rechecked on October 1: the repository
 remains private and the candidate remains a draft. Distribution audience is still an owner
 decision; neither verification nor candidate preparation changes repository visibility.
+
+## October 1 wake checks
+
+The status-wording source `3888705a596abfac789b329c254f760177493c0d` passed all 2,840
+local assertions and the parse, encoding and language gates. Its
+[Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/36875615025) also passed,
+including the required analyzer. A separate local candidate was rebuilt from that clean
+source with 25 program files and SHA256
+`d007594900a612499ee98df7824914039d785152870b8fd30e6d800b7419fc55`.
+The older preserved draft above remains unchanged.
+
+With another panel displaying an image, the owner turned UltraFine off using its physical
+power button. Windows still reported its target as available but inactive; ordinary DDC
+physical-monitor enumeration had no handle for it. A restricted-process All attempt returned
+Win32 access error 5 before any display change, so that attempt is not hardware-failure evidence.
+Repeating All in the normal user session succeeded and restored all three display paths:
+UltraGear at 2560x1440 / 144 Hz, ASUS at 2560x1440 / 240 Hz, and UltraFine at 3840x2160 / 60 Hz.
+The owner confirmed that UltraFine remained physically dark.
+
+Once its desktop path was active, UltraFine answered a single-register DDC read with
+`0xD6 = 5`. One explicit developer-tool write of `0xD6 = 1` returned success. The immediate
+read did not answer while the panel was transitioning; a later fresh read returned 1.
+The owner confirmed that the image appeared without pressing its power button, and Windows
+kept the three display modes. No capabilities string was requested. This proves that this
+UltraFine can be powered on through DDC after desktop activation. Current DeskModes switching
+does not send that power command, and this result does not establish behavior on other panels
+or the cause of the earlier automatic-sleep incident.
+
+A separate Windows display-power off/on request ran for ten seconds without changing the
+configured power plan or display timeout. After it, active membership, primary, coordinates,
+rotation, resolutions and exact refresh fractions matched the preceding desktop; settings.json
+retained its hash. Visual confirmation of all three screens sleeping and waking is pending.
+This short explicit power cycle does not replace acceptance of the fifteen-minute idle timeout.
 
 ## Remaining acceptance for the current candidate
 

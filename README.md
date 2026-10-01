@@ -6,7 +6,7 @@
 **Switch the displays on your desk in named sets, with one hotkey.**
 
 Make a Work mode for two screens, a Game mode for one, and a Movie mode for the TV.
-DeskModes turns on the selected displays, remembers their Windows arrangement and refresh rates,
+DeskModes activates the selected displays in Windows, remembers their arrangement and refresh rates,
 and puts the taskbar where you chose. Switch from the tray, a shortcut or the command line.
 
 Windows 10/11 · Windows PowerShell 5.1 · No installer or service · No required downloads at runtime
