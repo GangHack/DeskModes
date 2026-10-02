@@ -1,66 +1,70 @@
 name: Bug report
-description: Something the tool gets wrong on a real desk
+description: Report a problem with startup, switching or the interface
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Two things make a display bug fixable by someone who cannot see your desk:
-        the `status` output, and the log around the moment it went wrong. Both are
-        asked for below — without them the answer is usually a guess.
+        Tell us what went wrong. Diagnostics and a short log excerpt help, but
+        you can report a problem even if DeskModes will not start.
+        This issue is public: review attachments and redact private information.
 
   - type: textarea
     id: what
     attributes:
-      label: What happened, and what you expected instead
+      label: What happened, and what you expected
+      placeholder: Selected Work. Both displays came up, but the taskbar stayed on the wrong one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      description: List the steps. If it only happened once, describe what you did before it happened.
       placeholder: |
-        Pressed Ctrl+Alt+F3. Both work displays came up, but the taskbar stayed
-        on the 4K panel instead of moving to the left one.
+        1. Start Displays.cmd.
+        2. Select Work from the tray menu.
+        3. Check the taskbar display.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: DeskModes version
+      description: See Settings → About or the release ZIP name. Write "unknown" if unavailable.
+      placeholder: 1.0.1
     validations:
       required: true
 
   - type: textarea
     id: status
     attributes:
-      label: Diagnostic summary or status output
+      label: Diagnostics (optional)
       description: >
-        Run `diagnostics.cmd` for a fresh JSON snapshot, or use Settings → About → Copy diagnostics.
-        Review it before posting. It includes versions and display modes, without settings,
-        hooks, full device paths or diary data. Existing `status.cmd` output is also useful.
+        Run diagnostics.cmd for a fresh snapshot, or use Settings → About → Copy diagnostics.
+        It includes versions and display modes, without settings, hooks, full device paths or diary data.
+        Review it before posting. If the app will not start, paste the error message instead.
       render: text
-    validations:
-      required: true
 
   - type: textarea
     id: log
     attributes:
-      label: The log around the failure
+      label: Log excerpt (optional)
       description: >
-        From `last-run.log` — **Open log** in the tray menu. The lines of the one
-        switch that went wrong are enough; the whole file is welcome too.
-
-
-        Worth a glance before you paste, because this issue is public: if you use
-        hooks, the log carries each command line exactly as you wrote it, and any
-        error line carries the full path the tool runs from — which usually spells
-        out your Windows user name. Redact what you would rather not publish.
+        Open log from the tray and copy only the relevant lines from last-run.log.
+        Logs may contain hook commands and local paths. Remove names, tokens and other private information.
       render: text
-    validations:
-      required: true
 
   - type: textarea
     id: desk
     attributes:
-      label: Your desk
-      description: >
-        Which monitors, how each is connected (HDMI, DisplayPort, USB-C), and to
-        what — one graphics card, two, or a laptop and a dock. Display bugs are
-        usually about the wiring, not the count.
-    validations:
-      required: true
+      label: Your display setup (optional)
+      description: Monitor models, HDMI/DisplayPort/USB-C connections, graphics card, and any laptop or dock.
 
   - type: input
     id: often
     attributes:
-      label: How often it happens
-      placeholder: Every time / only after waking from sleep / once, and not since
+      label: How often it happens (optional)
+      placeholder: Every time / after waking from sleep / only once

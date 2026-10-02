@@ -16,7 +16,7 @@
 
 The full set is in [AGENTS.md](https://github.com/GangHack/DeskModes/blob/main/AGENTS.md); these are the ones people trip over:
 
-- [ ] Comments in Russian, interface and log in English — neither translated
+- [ ] Code, comments, logs and documentation in English; interface translations in `lang/`
 - [ ] Every `.ps1` is UTF-8 **with BOM** and CRLF, and starts with `#Requires -Version 5.1` if it is run directly
 - [ ] No new dependency — no module, no package, no Pester
 - [ ] Settings read and written through `Get-ActiveSettings` / `Set-ActiveSettings`, never `$script:Settings` inside a handler

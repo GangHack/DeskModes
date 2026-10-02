@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        A few things are deliberate non-goals and will be declined: an installer
-        or a service, any dependency, and translating the interface. The reasons
-        are in [AGENTS.md](https://github.com/GangHack/DeskModes/blob/main/AGENTS.md).
+        Describe the problem this would solve at your desk. Ideas for the interface
+        and translations are welcome. DeskModes stays portable, without an installer,
+        a service or required dependencies.
 
   - type: textarea
     id: problem
