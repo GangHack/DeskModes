@@ -4,6 +4,17 @@ The public download remains 1.0.1. Current source prepares 1.0.2 with the existi
 Support DeskModes button enabled in About and project/help/feedback links updated
 to GentleMec. There is no display-engine, rules, settings or diagnostics change.
 
+## Prepared candidate
+
+The clean candidate built from source `36ee7e439d1defc28602eef9f2806e87a9514c5c` contains
+25 program files. Its checksum and release notes are beside the ZIP in the local delivery
+folder `../DeskModes-launch/prepared-1.0.2-36ee7e4`. Its validation record is in the launch log.
+
+The archive is also intended for a private maintainer draft named
+**DeskModes 1.0.2 candidate (36ee7e4)** on the [Releases page](https://github.com/GentleMec/DeskModes/releases).
+Keep that preservation draft unpublished; the final v1.0.2 still goes through the tag workflow.
+The draft's candidate tag name does not replace the final version tag.
+
 ## Before publication
 
 1. Finish the public Ko-fi page and verify its checkout; [copy is ready](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).

@@ -15,6 +15,7 @@ universal hardware support. Start with [the launch plan](https://github.com/Gent
 | Private security route | Enabled | Repository API returns private vulnerability reporting enabled. |
 | Maintainer notifications | Action required | Repository subscription API returned 404 for the authenticated owner. Enable Watch → Custom → Issues and test another account's report. Email/browser delivery is unverified. |
 | Donation links | Published on GitHub | README and FUNDING.yml point to https://ko-fi.com/gentlemec. Source About uses the same URL. The 1.0.1 ZIP predates this source change and has no Support button. |
+| Next app release | Candidate prepared | Clean source `36ee7e439d1defc28602eef9f2806e87a9514c5c`, version 1.0.2, undated changelog. All 25 archived files match source; no machine state or development files. Isolated status/diagnostics and offline Support-click verification passed. The release guard refuses the undated build before writing an archive. |
 | Ko-fi account | Owner reports providers connected | PayPal and Stripe are reported connected. English copy is ready. Page editing and public checkout remain unverified; browser tool cannot verify saved permissions. |
 | Outreach material | Prepared | Platform drafts, tester invitation, FAQ replies, direct destinations, posting rules and image captions are linked from the plan. No messages or community posts have been sent. |
 | Content formatting | Verified | GitHub Markdown API rendered the plan, posts, content checklist, journal and release notes; tables and code blocks are retained. About screenshot rendered from current WPF source and visually inspected. |
@@ -33,6 +34,29 @@ and the private [traffic view](https://github.com/GentleMec/DeskModes/graphs/tra
 
 An ignored local `DeskModes-1.0.1.zip` in the checkout predates publication and is a
 historical candidate. Use the public attached ZIP and verified hash above for the launch.
+
+## 1.0.2 candidate verification
+
+Candidate ZIP SHA256:
+
+```text
+ca39bf94179eef1357fd219b4acd4435e420fe6b7f2607ab75e961b58a0b7b12
+```
+
+The ZIP, matching hash and candidate notes are saved under
+`../DeskModes-launch/prepared-1.0.2-36ee7e4`. A maintainer preservation draft is planned
+on GitHub under **DeskModes 1.0.2 candidate (36ee7e4)**; its own body records upload and
+CI confirmation. The candidate is not a public release.
+
+Local tools/check.ps1 passed 2,849 assertions after the version bump; local analyzer
+was unavailable. Extracted status and diagnostics report DeskModes 1.0.2. The About
+window shows the same version, Support is visible/enabled, and raising its click event
+passes https://ko-fi.com/gentlemec to a locally captured Open-UiTarget call. This verifies
+the packaged action's target, not browser navigation or payment checkout.
+
+The [Support preview](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-support.png)
+was rendered offscreen from the candidate and visually inspected. No real display
+switch or user installation update was performed. The original hardware limits apply.
 
 ## Owner checks: record the actual result
 

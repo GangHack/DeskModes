@@ -11,6 +11,7 @@ Use a real interface image for the first post. A short real-desktop demo can fol
 | [Rule editor](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-rule.png) | Explain multi-program rules | Choose programs and the display mode a rule should use. Example configuration. |
 | [Your desk](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings.png) | Layout questions | Live Windows geometry and switching configuration have separate controls. Example desk. |
 | [About](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-about.png) | Help and diagnostics instructions | Help and diagnostic controls in current source. The optional Support card is below this view; the 1.0.1 download has no Support button. |
+| [Support](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-support.png) | Review the 1.0.2 candidate | Optional donation button in the candidate's About page. This is a rendered UI preview; checkout has not been verified. |
 
 Files are also in `docs/images/`. They are rendered from the real WPF interface with
 invented monitors. They show the interface, not successful switching or support for
