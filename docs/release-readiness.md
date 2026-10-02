@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 1 October 2026: **automated candidate checks and all configured native mode round trips passed; sleep and interactive acceptance remain open**.
+Status on 2 October 2026: **automated checks, native mode round trips and UltraFine manual wake passed; idle sleep and remaining interactive acceptance stay open**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -160,7 +160,7 @@ The regression cases failed on the previous code, then passed after implementati
 local assertions and parse, encoding and language gates passed; required analyzer acceptance is
 performed by Windows CI. The exact code commit `2852a6b4afce9670ffaaf47f8fc84999e33f5750`
 passed its [required Windows CI](https://github.com/GangHack/DeskModes/actions/runs/36887348398).
-The running tray still holds the previous source until it is restarted; CLI runs use the new code.
+The CLI used the new code before the October 2 tray restart recorded below.
 
 The [Microsoft DDC/CI API documentation](https://learn.microsoft.com/en-us/windows/win32/api/lowlevelmonitorconfigurationapi/nf-lowlevelmonitorconfigurationapi-setvcpfeature)
 requires hardware validation because firmware support varies. The
@@ -175,13 +175,35 @@ Before the integrated All test, Windows used only UltraFine and a single-registe
 2852a6b activated both LGs at 3840x2160 / 59997/1000 Hz and 2560x1440 / 143999/1000 Hz,
 with UltraGear primary. Its bounded confirmation on the original physical handle logged a
 power-on warning. A subsequent independent read using a fresh handle returned 0xD6=1.
-Thus the integrated command changed the reported power state, while visible image acceptance
-and the reason for the delayed confirmation remained open.
+The owner confirmed that UltraFine displayed an image without another power-button press.
+The integrated command therefore woke this panel; the reason for delayed confirmation
+was not independently isolated.
 
 Confirmation now closes the write handles and reopens physical handles on each of at most
 twelve passes. All pending panels share the pause, and confirmation sends no additional power
 writes. All 2,850 local assertions and the required local gates passed again. The modified
-confirmation still needs an observed wake run before accepting the complete hardware scenario.
+confirmation was subsequently verified by the controlled repeat below.
+
+### Controlled repeat and tray activation
+
+The modified source `37dbeed4b51efba1def5ced0781fde49cebe99f9` passed its
+[required Windows CI](https://github.com/GangHack/DeskModes/actions/runs/37056147098).
+A controlled single-register DDC off command put only UltraFine into power state 5 while
+UltraGear remained active. Repeated All preserved the exact two-LG desktop and internally
+confirmed UltraFine power state 1 without a wake warning. Independent fresh reads confirmed 1.
+settings.json retained its hash. The successful repeat recorded 4.8 seconds in the wake tail;
+normal already-on repeats do not incur this confirmation wait.
+
+An earlier control query returned a transient DDC error 0xC0262589 after the integrated code
+had already logged confirmed power-on. Its recovery path restored power. The successful repeat
+used bounded independent reads rather than treating one unanswered read as proof of wake failure.
+This applies to the hardware checker; no speculative power write was added to the application.
+
+The old tray then exited its message loop normally, logged its stop and flushed the diary.
+The restarted tray loaded the updated code, remained the only instance, registered all six
+shortcuts and started in 703 ms. The exact desktop and settings hash survived restart. The
+running application now includes the wake change. Full ZIP overlay, native settings interaction,
+Windows idle sleep, unavailable ASUS wake and other monitor models remain outside this acceptance.
 
 ## Remaining acceptance for the current candidate
 
@@ -259,7 +281,7 @@ public reports.
 | --- | --- | --- |
 | Fresh Windows 10 | Download ZIP in a browser; extract to a writable folder; start Displays.cmd. Record actual warnings, first compilation time and first Settings window. | Pending |
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
-| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | All configured mode round trips and owner visual confirmation passed October 1; button-off UltraFine and idle sleep/wake remain open |
+| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Mode round trips and visible output passed October 1; UltraFine manual power wake passed October 2; idle sleep/wake pending |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
 | Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Three distinct landscape panels passed October 1; identical/portrait setup pending |
