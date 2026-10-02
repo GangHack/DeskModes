@@ -158,7 +158,8 @@ Windows configuration, and does not claim optical output or universal monitor po
 
 The regression cases failed on the previous code, then passed after implementation. All 2,850
 local assertions and parse, encoding and language gates passed; required analyzer acceptance is
-performed by Windows CI. Controlled physical-button wake with the integrated code remains pending.
+performed by Windows CI. The exact code commit `2852a6b4afce9670ffaaf47f8fc84999e33f5750`
+passed its [required Windows CI](https://github.com/GangHack/DeskModes/actions/runs/36887348398).
 The running tray still holds the previous source until it is restarted; CLI runs use the new code.
 
 The [Microsoft DDC/CI API documentation](https://learn.microsoft.com/en-us/windows/win32/api/lowlevelmonitorconfigurationapi/nf-lowlevelmonitorconfigurationapi-setvcpfeature)
@@ -166,6 +167,21 @@ requires hardware validation because firmware support varies. The
 [power-register reference](https://www.ddcutil.com/vcpinfo_output/) identifies the standard power
 values; this desk's UltraFine additionally reports value 5 after button-off, as measured above.
 No capabilities request or monitor-off command is added.
+
+## October 2 integrated wake observation
+
+Before the integrated All test, Windows used only UltraFine and a single-register read returned
+0xD6=5. UltraGear remained available but inactive; ASUS was not detected. All on source
+2852a6b activated both LGs at 3840x2160 / 59997/1000 Hz and 2560x1440 / 143999/1000 Hz,
+with UltraGear primary. Its bounded confirmation on the original physical handle logged a
+power-on warning. A subsequent independent read using a fresh handle returned 0xD6=1.
+Thus the integrated command changed the reported power state, while visible image acceptance
+and the reason for the delayed confirmation remained open.
+
+Confirmation now closes the write handles and reopens physical handles on each of at most
+twelve passes. All pending panels share the pause, and confirmation sends no additional power
+writes. All 2,850 local assertions and the required local gates passed again. The modified
+confirmation still needs an observed wake run before accepting the complete hardware scenario.
 
 ## Remaining acceptance for the current candidate
 

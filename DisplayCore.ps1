@@ -2419,19 +2419,31 @@ public class NativeDdc {
                 // as a write-only off value. It was physically validated on the development desk.
                 if (value < 2 || value > 5) { continue; }
                 row.Asked = WithRetry(delegate { return SetVCPFeature(pair.Value.handle, 0xD6, 1); });
-                if (!row.Asked) { continue; }
-                // A successful write means only that the command left the host. The panel can
-                // temporarily stop answering while waking, so require a bounded read-back.
-                for (int pass = 0; pass < 12; pass++) {
-                    System.Threading.Thread.Sleep(ConfirmPauseMs);
-                    if (ReadVcp(pair.Value.handle, 0xD6, out value)) {
-                        row.Actual = (int)value;
-                        if (value == 1) { row.Confirmed = true; break; }
-                    }
-                }
             }
         }
         finally { foreach (var pair in open) { DestroyPhysicalMonitor(pair.Value.handle); } }
+        // Power-on can invalidate the old physical handle while leaving the CCD path active.
+        // Reopen for each bounded confirmation pass; all waking panels share the same pause.
+        // Confirmation only reads: a late answer must not send the power command again.
+        for (int pass = 0; pass < 12; pass++) {
+            if (!result.Exists(delegate(PowerWake row) { return row.Asked && !row.Confirmed; })) { break; }
+            System.Threading.Thread.Sleep(ConfirmPauseMs);
+            open = Open();
+            try {
+                foreach (var pair in open) {
+                    PowerWake row = result.Find(delegate(PowerWake item) {
+                        return item.Device == pair.Key && item.Asked && !item.Confirmed;
+                    });
+                    if (row == null) { continue; }
+                    uint value;
+                    if (ReadVcp(pair.Value.handle, 0xD6, out value)) {
+                        row.Actual = (int)value;
+                        row.Confirmed = (value == 1);
+                    }
+                }
+            }
+            finally { foreach (var pair in open) { DestroyPhysicalMonitor(pair.Value.handle); } }
+        }
         return result;
     }
     public static List<MonitorLevels> Read() {
