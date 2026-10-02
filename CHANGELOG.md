@@ -5,11 +5,23 @@ A release is dated only when its tag is ready to publish.
 
 ## Unreleased
 
+## 1.0.2
+
+Support and feedback links for the next release. This is an undated candidate;
+the public download remains 1.0.1 until the normal tag workflow publishes 1.0.2.
+
 ### Added
 
 - Enable the optional Support DeskModes button in About, linking to the author's Ko-fi page.
   GitHub and the README now link to the same voluntary support page.
+
+### Changed
+
 - Update project, help and feedback links to the renamed GentleMec/DeskModes repository.
+
+No display-switching, rules, settings or diagnostic behavior changed from 1.0.1.
+The existing hardware validation limits still apply. Start with Displays.cmd and use
+the GitHub Bug report or Suggest an improvement forms for feedback.
 
 ## 1.0.1 — 2026-10-02
 

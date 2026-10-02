@@ -8,8 +8,9 @@ See [the launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launc
 for current presentation, feedback and support checks.
 
 The owner chose public distribution and authorized opening the repository. The application
-reports 1.0.1 and its CHANGELOG heading is dated 2 October 2026. The tag workflow checked
-and built that dated source. Changes after the tag remain under Unreleased until the next release.
+reports 1.0.1 in the published ZIP and its CHANGELOG heading is dated 2 October 2026.
+The tag workflow checked and built that dated source. Current source reports 1.0.2;
+its undated changelog section prepares support and canonical-link changes for the next release.
 The first-release feature notes are consolidated under 1.0.1, including the current
 separate Save and apply-to-displays behavior.
 

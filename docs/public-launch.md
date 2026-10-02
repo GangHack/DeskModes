@@ -10,6 +10,7 @@ Start here when returning to the project. The public release is already availabl
 | Attach screenshots or record a short demo | [Content checklist](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-content.md) |
 | See completed checks and remaining owner actions | [Launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md) |
 | Fill in Ko-fi | [English page copy](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md) |
+| Review the next app release | [1.0.2 candidate procedure](https://github.com/GentleMec/DeskModes/blob/main/docs/next-release.md) |
 
 ## Next owner actions, in order
 
@@ -88,8 +89,8 @@ The English page title, description, feedback links and thank-you message are re
 [docs/kofi-page.md](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
 
 GitHub FUNDING.yml and the README link to this page. The About button uses the same URL
-in the source. The released 1.0.1 ZIP has no support link; the app change is recorded under
-Unreleased and will reach downloaded copies through the normal next-release workflow.
+in the source. The released 1.0.1 ZIP has no support link; the app change is prepared in
+the undated 1.0.2 candidate and will reach downloaded copies through the normal tag workflow.
 
 Remaining owner checks:
 

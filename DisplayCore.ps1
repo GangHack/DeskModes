@@ -50,7 +50,7 @@ $script:UiStateFile = Join-Path $PSScriptRoot 'ui-state.json'
 # The Windows build and the PowerShell version go in there too: almost every refusal in this code is a
 # refusal of one particular "driver + system build" pair, and without them the question "what have you got?"
 # takes a separate email.
-$script:Version = '1.0.1'
+$script:Version = '1.0.2'
 
 function Get-VersionName {
     return 'DeskModes {0}' -f $script:Version
