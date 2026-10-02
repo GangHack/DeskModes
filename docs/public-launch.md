@@ -1,5 +1,45 @@
 ﻿# Public launch plan
 
+Start here when returning to the project. The public release is already available.
+
+## Ready-to-use materials
+
+| Need | Open |
+| --- | --- |
+| Copy a post, invitation or reply | [Launch copy](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-copy.md) |
+| Attach screenshots or record a short demo | [Content checklist](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-content.md) |
+| See completed checks and remaining owner actions | [Launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md) |
+| Fill in Ko-fi | [English page copy](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md) |
+
+## Next owner actions, in order
+
+1. Finish Ko-fi using the prepared copy. Check the public checkout and any outstanding
+   PayPal/Stripe requirements. No shop or membership is needed for one-time tips.
+2. Open both GitHub feedback forms while signed in. Check required fields and submit
+   one harmless test suggestion, then close it. Enable Watch → Custom → Issues and
+   confirm a notification from a different account.
+3. Use the Modes screenshot for the first post. A real 20-second demo can follow;
+   the shot list and captions are ready in the content checklist.
+4. Choose one community below, paste its matching draft, read the current rules again
+   and stay available for replies. Record the actual post URL in the launch log.
+
+## Where to go
+
+Rules checked on 2026-10-03. Recheck on the day of posting. The agent has prepared
+materials and has not sent invitations, contacted moderators or published community posts.
+
+| Priority | Destination | What to do |
+| --- | --- | --- |
+| First | [r/SideProject](https://www.reddit.com/r/SideProject/) · [create post](https://www.reddit.com/r/SideProject/submit) | Share the project and ask for feedback. Its [sidebar](https://old.reddit.com/r/SideProject/) requests a project name followed by a short description for link submissions. Use the matching draft and Modes screenshot. |
+| Second | [r/software](https://www.reddit.com/r/software/) · [create post](https://www.reddit.com/r/software/submit) | Current rules allow open-source software promotion and reserve Release posts for new programs or substantial updates. DeskModes is free and MIT licensed. Use the software draft and appropriate Release flair; do not repost each patch. There is an undisclosed account-karma threshold. |
+| Optional | [Show HN](https://news.ycombinator.com/submit) · [guidelines](https://news.ycombinator.com/showhn.html) | Submit the runnable project and be available to discuss it. Write your own text: the [moderator's guidance](https://news.ycombinator.com/item?id=22336638) says not to use LLM-generated or edited text on HN. The copy file provides facts, not an HN post. Do not request upvotes. |
+| Ask first | [r/Windows11](https://www.reddit.com/r/Windows11/) · [message moderators](https://www.reddit.com/message/compose?to=%2Fr%2FWindows11) | Current rules say Windows compatibility alone does not make a post relevant. Ask whether a display-workflow demo fits. The [October help thread](https://www.reddit.com/r/Windows11/comments/1wuxl8s/simple_questions_and_help_thread_month_of_october/) is for help; do not treat it as a launch thread. |
+| Direct feedback | Existing friends or communities you participate in | Invite 5–10 willing Windows multi-monitor users with the tester draft. The owner chooses recipients; no private chat or contact list is assumed. |
+
+GitHub Issues provides one public place for bugs and suggestions; a new support chat
+is not needed for this launch. If a post is removed, read the reason and use the community's
+moderator route where appropriate instead of repeatedly submitting it.
+
 Goal: help Windows users with several displays understand the value, try one mode,
 and report whether it works on their desk. This is an outreach plan, not a compatibility promise.
 
@@ -81,16 +121,9 @@ sending messages or posting announcements; the owner chooses the accounts and ch
 
 ## Draft announcement
 
-> I built DeskModes because I kept switching between a work setup and a gaming monitor.
-> It lets you save named display sets and switch with a hotkey, restoring their layouts,
-> refresh rates and window positions. It is a free, portable Windows tool with no telemetry.
->
-> The first public release is available now. It has been tested on my three-display desktop;
-> laptops, docks and other setups still need feedback. If you try it, I would like to know
-> whether Work → Game → Back restores your desk correctly.
->
-> Download and screenshots: https://github.com/GentleMec/DeskModes
-> Report a problem: https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml
+Use the matching platform draft in [Launch copy](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-copy.md).
+The drafts cover custom modes, hotkeys and rules, with hardware controls described as optional.
+Keep the donation link on GitHub and Ko-fi; the first community post asks for product feedback.
 
 ## What to measure
 

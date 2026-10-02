@@ -1,9 +1,15 @@
 ﻿# Release readiness
 
-Status on 2 October 2026: **1.0.1 is prepared for public release with the validation limits below**.
+Status checked on 3 October 2026: **1.0.1 is publicly released with the validation limits below**.
+The [release](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.1) has its ZIP and
+SHA256 attached. The published ZIP was downloaded again, its checksum matched, and
+isolated status/diagnostics commands exited successfully under Windows PowerShell 5.1.
+See [the launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md)
+for current presentation, feedback and support checks.
+
 The owner chose public distribution and authorized opening the repository. The application
-reports 1.0.1 and its CHANGELOG heading is dated 2 October 2026. The final dated commit must
-pass Windows CI before `v1.0.1` is pushed; the tag workflow checks and builds the release again.
+reports 1.0.1 and its CHANGELOG heading is dated 2 October 2026. The tag workflow checked
+and built that dated source. Changes after the tag remain under Unreleased until the next release.
 The first-release feature notes are consolidated under 1.0.1, including the current
 separate Save and apply-to-displays behavior.
 
@@ -374,7 +380,7 @@ For diagnostics use `diagnostics.cmd` or Settings -> About -> Copy diagnostics. 
 copies the snapshot captured when Settings opened; the CLI reads a fresh state. Neither
 sends anything. Logs are separate and can include paths and hook commands.
 
-## Candidate and release procedure
+## First-release procedure (historical)
 
 1. Run all five gates, with the required analyzer. Commit the exact changes and verify
    that GitHub Actions succeeds for that commit as well.
