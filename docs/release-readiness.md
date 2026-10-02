@@ -1,17 +1,36 @@
 ﻿# Release readiness
 
-Status on 2 October 2026: **automated checks, native mode round trips and UltraFine manual wake passed; the owner accepts timed display power-off; remaining interactive acceptance stays open**.
-The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
-`pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
+Status on 2 October 2026: **1.0.1 is prepared for public release with the validation limits below**.
+The owner chose public distribution and authorized opening the repository. The application
+reports 1.0.1 and its CHANGELOG heading is dated 2 October 2026. The final dated commit must
+pass Windows CI before `v1.0.1` is pushed; the tag workflow checks and builds the release again.
 The first-release feature notes are consolidated under 1.0.1, including the current
 separate Save and apply-to-displays behavior.
 
-## Continue from another computer
+## Public release scope
 
-The verified candidate source is on GitHub at `3f8a52f939eeb7d13e7aeea5891e826b270af807`.
+Automated checks, exact native mode round trips on the author's three-display desktop and
+UltraFine manual power-on passed. The owner accepts Windows' timed display power-off.
+The updated running tray preserves the desktop and settings at startup. Those observations
+do not establish whole-computer suspend/resume, automatic panel wake or another hardware setup.
+
+Repository publication review found no common credential-pattern matches in 829 historical
+text objects. Historical settings contain monitor choices and hotkeys, without hook commands,
+personal filesystem paths or email addresses. The current program archive excludes machine
+settings, logs, diary data, caches and development files.
+
+Remaining native UI interactions, fresh Windows 10/11 launch and the full accessibility matrix
+are unverified. Laptop, dock, multiple-GPU and identical-panel configurations are experimental.
+These limits are included in the README and release notes. A normal Settings window was built
+from an isolated extraction on October 2, but the Windows automation helper did not expose it;
+no keyboard, Save/apply or tray-interaction acceptance is inferred from that construction.
+
+## Historical candidate handoff
+
+The earlier preserved candidate source is on GitHub at `3f8a52f939eeb7d13e7aeea5891e826b270af807`.
 Its [Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/35370648757)
 completed successfully, including the required analyzer and full regression suite.
-The repository is private; sign in with an account that has access.
+The repository was private at preservation time; the draft still requires maintainer access.
 
 The [candidate draft](https://github.com/GangHack/DeskModes/releases/tag/untagged-a77f5d749e045ddaa30f)
 contains the exact tested ZIP, its SHA256 file, release notes and validation evidence.
@@ -27,10 +46,9 @@ Windows PowerShell 5.1 and cannot run natively on macOS. No source or candidate 
 available only on the author's Windows computer. Personal settings and machine caches are
 excluded from the uploaded assets.
 
-Before publishing, finish the applicable interactive checks below on Windows, then date the
-1.0.1 CHANGELOG heading, commit it, wait for green Windows CI, and push `v1.0.1` at that commit.
-The existing release workflow builds the final assets. Do not publish the preservation draft
-as the final release: its notes and source deliberately remain an undated candidate.
+The public release uses the current wake implementation and a dated commit with green Windows CI.
+The existing tag workflow builds its final assets. The preservation draft remains historical:
+its notes and source deliberately remain an undated candidate and are not the final release.
 
 ## October 1 candidate verification
 
@@ -213,14 +231,14 @@ repeating the timeout test is not required. Detailed automatic wake timing and a
 trace were not supplied. This observation does not establish whole-computer suspend or
 compatibility with other monitor/dock configurations.
 
-## Remaining acceptance for the current candidate
+## Remaining validation coverage
 
 The integrated candidate includes imported physical-selector compatibility, opt-in startup
 restoration, per-monitor WPF DPI handling, tray placement/dismissal, first-run language selection,
 separate Save and apply-to-displays actions, and rules that watch several programs.
 Earlier hardware evidence applies only to its recorded source, not automatically to this candidate.
 
-Before tagging:
+Follow-up checks outside the recorded release acceptance:
 
 - The current three-monitor desk passed exact and visually confirmed mode round trips above.
   Timed display power-off is accepted by the owner; repeat All -> solo/subset -> All on the external setup.
@@ -236,13 +254,10 @@ Before tagging:
   active until the last program closes; verify the configured return and manual override too.
 - Test the exact ZIP on a clean Windows installation and overlay it on a backed-up installation.
   Record Windows warnings, first launch, imported bindings, settings preservation and rollback.
-- Recheck GitHub Actions for the final dated release commit. The current candidate's run is
-  green, as linked above.
-- Decide the distribution audience: the repository is confirmed private. Verify README,
-  screenshot, download and issue links as an unauthenticated visitor before announcing
-  a public release. Changing repository visibility requires the owner's explicit decision.
+- Public distribution was chosen by the owner on October 2. Verify README, screenshot,
+  download and issue links as an unauthenticated visitor before announcing the release.
 
-The first release date and tag remain unset until applicable hardware acceptance is recorded.
+The dated release is scoped to the hardware acceptance recorded above.
 Untested laptop, dock and multi-GPU configurations must remain explicitly experimental.
 
 ## What the automated checks establish

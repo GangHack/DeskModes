@@ -15,8 +15,8 @@ Windows 10/11 · Windows PowerShell 5.1 · No installer or service · No require
 [Full reference](https://github.com/GangHack/DeskModes/blob/main/docs/reference.md) ·
 [Compatibility and testing](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md)
 
-The first public release is being prepared. Until a ZIP appears on the Releases page,
-use a source checkout; a version number in the application is not a published release.
+[Download DeskModes 1.0.1](https://github.com/GangHack/DeskModes/releases/tag/v1.0.1).
+The release includes the portable ZIP and its SHA256 checksum.
 
 ![DeskModes Settings: arranging a desk](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings.png)
 
@@ -90,9 +90,10 @@ when you copy and send them yourself.
 - Identical models use a connection fingerprint to distinguish instances. A different port
   may require selecting that connection again. Plain name patterns can intentionally match
   several displays; use the full label when you mean one identical panel.
-- Real hardware validation has so far been documented on the author's desk. Laptops, docks,
-  multiple GPUs and identical panels need external testing; automated tests do not prove
-  compatibility. See the [validation matrix](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md).
+- Real hardware validation covers the author's three-display desktop and manual UltraFine wake.
+  Laptops, docks, multiple GPUs and identical panels remain experimental. Fresh Windows 10/11
+  launch and the full accessibility matrix have not been validated; automated checks do not
+  establish those results. See the [validation matrix](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md).
 
 Switch duration includes Windows reconfiguration and the panel waking up. Historical results
 on the development desk were 1.3–6.9 seconds for actual switches and 0.3–0.5 seconds when

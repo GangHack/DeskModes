@@ -3,12 +3,20 @@
 User-visible changes. The version shown by DeskModes is defined in DisplayCore.ps1.
 A release is dated only when its tag is ready to publish.
 
-## 1.0.1 — not released yet
+## 1.0.1 — 2026-10-02
 
-First public release candidate. Requires Windows 10/11 and Windows PowerShell 5.1.
+First public release. Requires Windows 10/11 and Windows PowerShell 5.1.
 Extract the complete ZIP into a writable folder and start Displays.cmd.
 The scripts and locally compiled API cache are unsigned. The ZIP's SHA256 verifies
 the downloaded bytes against the published archive.
+
+Validation covers 2,850 automated assertions, Windows CI with the required analyzer,
+exact mode round trips on the author's three-display desktop, manual UltraFine power-on
+and an isolated portable overlay. Timed display power-off is accepted by the owner.
+Fresh Windows 10/11 launch, whole-computer suspend/resume and the full native UI/accessibility
+matrix remain unverified. Laptop, dock, multiple-GPU and identical-panel setups are experimental.
+See the [validation matrix](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md)
+for the recorded scope. The scripts and native cache remain unsigned.
 
 ### Latest improvements
 
