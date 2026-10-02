@@ -11,7 +11,7 @@ universal hardware support. Start with [the launch plan](https://github.com/Gent
 | Released startup commands | Verified on this PC | Fresh isolated extraction: status and diagnostics exit 0 under Windows PowerShell 5.1. Diagnostics contains schema, version, windows, powershell and displays. No real switch was invoked. |
 | Source quality | Verified for functional source | Commit `4ee38111360bd44bd68181019901fe1873723deb`: [Windows CI success](https://github.com/GentleMec/DeskModes/actions/runs/37074182210), including required analyzer. Local check on October 3 passed 2,849 assertions; local analyzer unavailable. |
 | GitHub presentation | Prepared and published | Short README, Modes/desk screenshots, release download link, useful About description and repository website. Release description shortened with full changelog linked separately. |
-| Bug and idea forms | Published; browser check pending | Both YAML forms are on main; bug/enhancement labels exist; Issues enabled. [API smoke issue #1](https://github.com/GentleMec/DeskModes/issues/1) was created and closed. That does not prove browser validation. |
+| Bug and idea forms | Published; browser check pending | Both YAML forms are on main; bug/enhancement labels exist; Issues enabled. [Bug smoke issue #1](https://github.com/GentleMec/DeskModes/issues/1) and [suggestion smoke issue #2](https://github.com/GentleMec/DeskModes/issues/2) were created with their labels and closed as completed. This verifies API issue creation/closure, not browser validation. |
 | Private security route | Enabled | Repository API returns private vulnerability reporting enabled. |
 | Maintainer notifications | Action required | Repository subscription API returned 404 for the authenticated owner. Enable Watch → Custom → Issues and test another account's report. Email/browser delivery is unverified. |
 | Donation links | Published on GitHub | README and FUNDING.yml point to https://ko-fi.com/gentlemec. Source About uses the same URL. The 1.0.1 ZIP predates this source change and has no Support button. |
@@ -44,9 +44,11 @@ ca39bf94179eef1357fd219b4acd4435e420fe6b7f2607ab75e961b58a0b7b12
 ```
 
 The ZIP, matching hash and candidate notes are saved under
-`../DeskModes-launch/prepared-1.0.2-36ee7e4`. A maintainer preservation draft is planned
-on GitHub under **DeskModes 1.0.2 candidate (36ee7e4)**; its own body records upload and
-CI confirmation. The candidate is not a public release.
+`../DeskModes-launch/prepared-1.0.2-36ee7e4`. The same files are saved in the
+[maintainer-only preservation draft](https://github.com/GentleMec/DeskModes/releases/tag/untagged-5e2a2933156f305e801c),
+including validation.txt and the UI preview. All five uploaded asset digests matched
+the local files. The draft's own body records hosted CI confirmation. No v1.0.2 tag
+was pushed; public latest remains 1.0.1.
 
 Local tools/check.ps1 passed 2,849 assertions after the version bump; local analyzer
 was unavailable. Extracted status and diagnostics report DeskModes 1.0.2. The About

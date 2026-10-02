@@ -10,8 +10,10 @@ The clean candidate built from source `36ee7e439d1defc28602eef9f2806e87a9514c5c`
 25 program files. Its checksum and release notes are beside the ZIP in the local delivery
 folder `../DeskModes-launch/prepared-1.0.2-36ee7e4`. Its validation record is in the launch log.
 
-The archive is also intended for a private maintainer draft named
-**DeskModes 1.0.2 candidate (36ee7e4)** on the [Releases page](https://github.com/GentleMec/DeskModes/releases).
+The archive is also saved in the maintainer-only
+[DeskModes 1.0.2 candidate (36ee7e4) draft](https://github.com/GentleMec/DeskModes/releases/tag/untagged-5e2a2933156f305e801c),
+with its hash, notes, validation summary and Support preview. All uploaded digests matched
+the local files. Sign in with maintainer access to open the draft.
 Keep that preservation draft unpublished; the final v1.0.2 still goes through the tag workflow.
 The draft's candidate tag name does not replace the final version tag.
 
