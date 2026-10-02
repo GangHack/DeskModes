@@ -5,16 +5,16 @@
 Switch between named display setups without rebuilding your Windows desktop each time.
 DeskModes remembers each set's arrangement, refresh rates and window positions.
 
-[**Download DeskModes**](https://github.com/GangHack/DeskModes/releases/latest) ·
-[Report a bug](https://github.com/GangHack/DeskModes/issues/new?template=bug_report.yml) ·
-[Suggest an idea](https://github.com/GangHack/DeskModes/issues/new?template=feature_request.yml)
+[**Download DeskModes**](https://github.com/GentleMec/DeskModes/releases/latest) ·
+[Report a bug](https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml) ·
+[Suggest an idea](https://github.com/GentleMec/DeskModes/issues/new?template=feature_request.yml)
 
 Windows 10/11 · Free and open source · Portable · No administrator rights · No telemetry
 
-[![check](https://github.com/GangHack/DeskModes/actions/workflows/check.yml/badge.svg)](https://github.com/GangHack/DeskModes/actions/workflows/check.yml)
+[![check](https://github.com/GentleMec/DeskModes/actions/workflows/check.yml/badge.svg)](https://github.com/GentleMec/DeskModes/actions/workflows/check.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<img src="https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-modes.png" alt="DeskModes Modes page: named display sets and their hotkeys" width="880">
+<img src="https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-modes.png" alt="DeskModes Modes page: named display sets and their hotkeys" width="880">
 
 *Current interface with an example desk. Monitor names and hotkeys are yours to choose.*
 
@@ -33,7 +33,7 @@ Brightness, picture presets and HDR are available where your hardware supports t
 
 ## Start in three steps
 
-1. [Download the latest release](https://github.com/GangHack/DeskModes/releases/latest).
+1. [Download the latest release](https://github.com/GentleMec/DeskModes/releases/latest).
    Extract the **DeskModes release ZIP** into a writable folder; keep the whole folder together.
 2. Double-click **Displays.cmd**. Follow **First steps**, then open **Modes** to add
    a display set and assign its hotkey. Press **Save**.
@@ -50,7 +50,7 @@ Choose a language in **First steps** or **Settings → Behavior**.
 <details>
 <summary>See how your desk is arranged</summary>
 
-<img src="https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings.png" alt="DeskModes Your desk page: live Windows geometry and the configuration used for switching" width="880">
+<img src="https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings.png" alt="DeskModes Your desk page: live Windows geometry and the configuration used for switching" width="880">
 
 The live Windows layout and your switching choices are shown separately.
 **Use Windows layout** adopts the current arrangement; **Save** writes settings.
@@ -60,10 +60,10 @@ Applying an edited arrangement has its own button.
 
 ## Need help?
 
-[Setup, updating and recovery](https://github.com/GangHack/DeskModes/blob/main/docs/getting-started.md) ·
-[Full reference](https://github.com/GangHack/DeskModes/blob/main/docs/reference.md)
+[Setup, updating and recovery](https://github.com/GentleMec/DeskModes/blob/main/docs/getting-started.md) ·
+[Full reference](https://github.com/GentleMec/DeskModes/blob/main/docs/reference.md)
 
-[**Report a bug**](https://github.com/GangHack/DeskModes/issues/new?template=bug_report.yml):
+[**Report a bug**](https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml):
 describe what happened and how to reproduce it. Add **Settings → About → Copy diagnostics**
 or `diagnostics.cmd` output if available. Logs are optional; review them for private paths
 or hook commands before posting. A GitHub account is required to submit an issue.
@@ -80,14 +80,20 @@ DDC/CI controls and panel wake depend on your monitor and connection.
 
 Start with a correct Windows layout and keep the folder writable. Windows desktop status
 does not confirm that a physical panel is awake. See the
-[recorded validation](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md)
+[recorded validation](https://github.com/GentleMec/DeskModes/blob/main/docs/release-readiness.md)
 before relying on an optional hardware feature.
 
 DeskModes makes no network requests. The optional activity diary is off by default.
 Startup is opt-in; see the setup guide to update, move or remove the portable folder.
 
+## Support DeskModes
+
+If DeskModes helps you, [buy me a coffee on Ko-fi](https://ko-fi.com/gentlemec).
+Support is optional and helps me keep improving the app. Have an idea for a feature or a better
+workflow? [Suggest an improvement](https://github.com/GentleMec/DeskModes/issues/new?template=feature_request.yml).
+
 ## Contribute
 
 Bug reports, setup reports, translation improvements and code contributions are welcome.
-See [CONTRIBUTING.md](https://github.com/GangHack/DeskModes/blob/main/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/GentleMec/DeskModes/blob/main/CONTRIBUTING.md).
 [MIT license](LICENSE).

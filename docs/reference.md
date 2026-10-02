@@ -1,9 +1,9 @@
 ﻿# DeskModes reference
 
-For the first run, updating and recovery, start with the [README](https://github.com/GangHack/DeskModes#readme).
+For the first run, updating and recovery, start with the [README](https://github.com/GentleMec/DeskModes#readme).
 
-[![check](https://github.com/GangHack/DeskModes/actions/workflows/check.yml/badge.svg)](https://github.com/GangHack/DeskModes/actions/workflows/check.yml)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/GangHack/DeskModes/blob/main/LICENSE)
+[![check](https://github.com/GentleMec/DeskModes/actions/workflows/check.yml/badge.svg)](https://github.com/GentleMec/DeskModes/actions/workflows/check.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/GentleMec/DeskModes/blob/main/LICENSE)
 
 Turn the displays on your desk on and off in named sets, with one hotkey.
 
@@ -15,7 +15,7 @@ placement preserved. Explicit per-mode choices can override the primary display.
 No installer, no service, no dependencies — a folder of PowerShell scripts talking to the
 Windows display API. Disable startup and exit the tray before deleting the folder.
 
-![The Settings window, on the page where the desk is arranged](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings.png)
+![The Settings window, on the page where the desk is arranged](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings.png)
 
 ## What it actually does
 
@@ -132,28 +132,28 @@ Control Panel.
 **Modes** is everything you can switch to. Each one is a row, and **Edit** opens the one place
 that mode is configured:
 
-![The Modes page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-modes.png)
+![The Modes page](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-modes.png)
 
 The mode editor holds everything one mode owns. What the mode IS stays in sight — its name,
 its displays, where the taskbar goes and the keys that reach it; what it does to the hardware
 — brightness, contrast, the playback device and the commands — is folded under one line, and
 unfolds by itself for a mode that already has any of them set:
 
-![The mode editor](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-editor.png)
+![The mode editor](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-editor.png)
 
 And the shutdown timer, from the tray menu, when a ready length is not the one you want:
 
-![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-timer.png)
+![Picking a time for the shutdown timer](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-timer.png)
 
 **Diary** is the same window's page too: where the time went, by display, by mode and by
 application, for today, a week, a month or everything the diary holds.
 
-![The Diary page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-diary.png)
+![The Diary page](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-diary.png)
 
 **About** sits at the bottom of the pane, where Windows keeps its own: the version to paste
 into a bug report, the log, the folder everything lives in, and the project page.
 
-![The About page](https://raw.githubusercontent.com/GangHack/DeskModes/main/docs/images/settings-about.png)
+![The About page](https://raw.githubusercontent.com/GentleMec/DeskModes/main/docs/images/settings-about.png)
 
 ## Requirements
 
@@ -169,12 +169,12 @@ show for it.
 
 ## Quickstart
 
-Download the ZIP from [Releases](https://github.com/GangHack/DeskModes/releases) and
+Download the ZIP from [Releases](https://github.com/GentleMec/DeskModes/releases) and
 unpack it anywhere you like — your user folder is fine, no admin rights are needed. Or take
 the whole repository, which also gets you the tests and the engineering notes:
 
 ```bash
-git clone https://github.com/GangHack/DeskModes.git
+git clone https://github.com/GentleMec/DeskModes.git
 ```
 
 Then:
@@ -267,7 +267,7 @@ decision, not a property of the hardware.
 ## settings.json
 
 Written by the Settings window, and safe to edit by hand. See
-[`settings.example.json`](https://github.com/GangHack/DeskModes/blob/main/settings.example.json).
+[`settings.example.json`](https://github.com/GentleMec/DeskModes/blob/main/settings.example.json).
 
 | Key | What it is |
 | --- | --- |
@@ -750,16 +750,16 @@ because that is where they are of any use.
 
 The engineering notes are worth a look if you are here for the display API rather than the
 tool — they are a day-by-day account of what Windows actually does, with measurements:
-[`docs/notes.md`](https://github.com/GangHack/DeskModes/blob/main/docs/notes.md).
+[`docs/notes.md`](https://github.com/GentleMec/DeskModes/blob/main/docs/notes.md).
 
 ## Also here
 
-- [CHANGELOG.md](https://github.com/GangHack/DeskModes/blob/main/CHANGELOG.md) — what changed in each version, and why you would care.
-- [CONTRIBUTING.md](https://github.com/GangHack/DeskModes/blob/main/CONTRIBUTING.md) — how to make a change stick, and the one command that
+- [CHANGELOG.md](https://github.com/GentleMec/DeskModes/blob/main/CHANGELOG.md) — what changed in each version, and why you would care.
+- [CONTRIBUTING.md](https://github.com/GentleMec/DeskModes/blob/main/CONTRIBUTING.md) — how to make a change stick, and the one command that
   decides whether it is done.
-- [SECURITY.md](https://github.com/GangHack/DeskModes/blob/main/SECURITY.md) — what the tool touches, what it does not, and how to report a
+- [SECURITY.md](https://github.com/GentleMec/DeskModes/blob/main/SECURITY.md) — what the tool touches, what it does not, and how to report a
   hole privately.
 
 ## License
 
-MIT — see [LICENSE](https://github.com/GangHack/DeskModes/blob/main/LICENSE).
+MIT — see [LICENSE](https://github.com/GentleMec/DeskModes/blob/main/LICENSE).

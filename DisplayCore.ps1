@@ -70,15 +70,13 @@ function Get-VersionLine {
 # The addresses the About page opens. Here rather than in the window's markup for the reason the
 # version is here: README links the same project, and two copies of an address drift apart at
 # the first rename.
-$script:RepoUrl = 'https://github.com/GangHack/DeskModes'
-$script:IssuesUrl = 'https://github.com/GangHack/DeskModes/issues'
+$script:RepoUrl = 'https://github.com/GentleMec/DeskModes'
+$script:IssuesUrl = 'https://github.com/GentleMec/DeskModes/issues'
 # The reference, and the one address here that points INSIDE the repository. Absolute for the same
 # reason README's links are: the About page is read from an unpacked folder that holds no docs\.
-$script:HelpUrl = 'https://github.com/GangHack/DeskModes/blob/main/docs/reference.md'
-# Empty on purpose until there is an address to put here. The Support card is built either way;
-# with no address the button says so and does nothing, which is honest, while a button that
-# opens a 404 is not.
-$script:DonateUrl = ''
+$script:HelpUrl = 'https://github.com/GentleMec/DeskModes/blob/main/docs/reference.md'
+# Voluntary support stays an external link, opened only when the user clicks the button.
+$script:DonateUrl = 'https://ko-fi.com/gentlemec'
 
 # The date and time for the log and for the files — the same on any locale. Both `-Format` and ToString
 # without a culture take from the current one not only the time separator but the CALENDAR: on a Thai locale

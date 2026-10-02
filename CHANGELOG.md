@@ -3,6 +3,14 @@
 User-visible changes. The version shown by DeskModes is defined in DisplayCore.ps1.
 A release is dated only when its tag is ready to publish.
 
+## Unreleased
+
+### Added
+
+- Enable the optional Support DeskModes button in About, linking to the author's Ko-fi page.
+  GitHub and the README now link to the same voluntary support page.
+- Update project, help and feedback links to the renamed GentleMec/DeskModes repository.
+
 ## 1.0.1 — 2026-10-02
 
 First public release. Requires Windows 10/11 and Windows PowerShell 5.1.
@@ -15,7 +23,7 @@ exact mode round trips on the author's three-display desktop, manual UltraFine p
 and an isolated portable overlay. Timed display power-off is accepted by the owner.
 Fresh Windows 10/11 launch, whole-computer suspend/resume and the full native UI/accessibility
 matrix remain unverified. Laptop, dock, multiple-GPU and identical-panel setups are experimental.
-See the [validation matrix](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md)
+See the [validation matrix](https://github.com/GentleMec/DeskModes/blob/main/docs/release-readiness.md)
 for the recorded scope. The scripts and native cache remain unsigned.
 
 ### Latest improvements

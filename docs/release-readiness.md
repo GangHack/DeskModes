@@ -28,11 +28,11 @@ no keyboard, Save/apply or tray-interaction acceptance is inferred from that con
 ## Historical candidate handoff
 
 The earlier preserved candidate source is on GitHub at `3f8a52f939eeb7d13e7aeea5891e826b270af807`.
-Its [Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/35370648757)
+Its [Windows CI run](https://github.com/GentleMec/DeskModes/actions/runs/35370648757)
 completed successfully, including the required analyzer and full regression suite.
 The repository was private at preservation time; the draft still requires maintainer access.
 
-The [candidate draft](https://github.com/GangHack/DeskModes/releases/tag/untagged-a77f5d749e045ddaa30f)
+The [candidate draft](https://github.com/GentleMec/DeskModes/releases/tag/untagged-a77f5d749e045ddaa30f)
 contains the exact tested ZIP, its SHA256 file, release notes and validation evidence.
 It is a draft, not a published release. The server-reported ZIP digest matches the local one:
 
@@ -108,7 +108,7 @@ decision; neither verification nor candidate preparation changes repository visi
 
 The status-wording source `3888705a596abfac789b329c254f760177493c0d` passed all 2,840
 local assertions and the parse, encoding and language gates. Its
-[Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/36875615025) also passed,
+[Windows CI run](https://github.com/GentleMec/DeskModes/actions/runs/36875615025) also passed,
 including the required analyzer. A separate local candidate was rebuilt from that clean
 source with 25 program files and SHA256
 `d007594900a612499ee98df7824914039d785152870b8fd30e6d800b7419fc55`.
@@ -141,7 +141,7 @@ This short explicit power cycle does not replace acceptance of the fifteen-minut
 ## October 1 final candidate round trips
 
 The documented candidate source `f8fcc050a8eeb2491186cc3cc5001f13edd55483` passed its
-[Windows CI run](https://github.com/GangHack/DeskModes/actions/runs/36882100726), including
+[Windows CI run](https://github.com/GentleMec/DeskModes/actions/runs/36882100726), including
 the required analyzer. Its code is unchanged from the status-wording source above, whose
 full local suite passed 2,840 assertions. The rebuilt ZIP contains 25 program files and has SHA256
 `2e346e2bf0075d2e6975e9e78f203ea38eab794bd1486f56cba1d4db15c7f107`.
@@ -177,7 +177,7 @@ Windows configuration, and does not claim optical output or universal monitor po
 The regression cases failed on the previous code, then passed after implementation. All 2,850
 local assertions and parse, encoding and language gates passed; required analyzer acceptance is
 performed by Windows CI. The exact code commit `2852a6b4afce9670ffaaf47f8fc84999e33f5750`
-passed its [required Windows CI](https://github.com/GangHack/DeskModes/actions/runs/36887348398).
+passed its [required Windows CI](https://github.com/GentleMec/DeskModes/actions/runs/36887348398).
 The CLI used the new code before the October 2 tray restart recorded below.
 
 The [Microsoft DDC/CI API documentation](https://learn.microsoft.com/en-us/windows/win32/api/lowlevelmonitorconfigurationapi/nf-lowlevelmonitorconfigurationapi-setvcpfeature)
@@ -205,7 +205,7 @@ confirmation was subsequently verified by the controlled repeat below.
 ### Controlled repeat and tray activation
 
 The modified source `37dbeed4b51efba1def5ced0781fde49cebe99f9` passed its
-[required Windows CI](https://github.com/GangHack/DeskModes/actions/runs/37056147098).
+[required Windows CI](https://github.com/GentleMec/DeskModes/actions/runs/37056147098).
 A controlled single-register DDC off command put only UltraFine into power state 5 while
 UltraGear remained active. Repeated All preserved the exact two-LG desktop and internally
 confirmed UltraFine power state 1 without a wake warning. Independent fresh reads confirmed 1.

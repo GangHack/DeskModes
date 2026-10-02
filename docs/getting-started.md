@@ -1,12 +1,12 @@
 ﻿# DeskModes setup and recovery
 
-For a quick overview and download, see the [README](https://github.com/GangHack/DeskModes#readme).
+For a quick overview and download, see the [README](https://github.com/GentleMec/DeskModes#readme).
 
 ## Quickstart
 
 1. Extract the release ZIP into a folder you can write to, such as a folder under your
    user account. Keep the whole `DeskModes` folder together; do not run from inside the ZIP.
-   A source checkout works too: `git clone https://github.com/GangHack/DeskModes.git`.
+   A source checkout works too: `git clone https://github.com/GentleMec/DeskModes.git`.
 2. Double-click **Displays.cmd**. The tray icon appears and a short **First steps** tour opens,
    followed by Settings. The interface language is in the head of the tour — it follows Windows
    until you change it there or in Behavior. The tour can be skipped from any screen and reopens
@@ -75,7 +75,7 @@ when you copy and send them yourself.
 - Real hardware validation covers the author's three-display desktop and manual UltraFine wake.
   Laptops, docks, multiple GPUs and identical panels remain experimental. Fresh Windows 10/11
   launch and the full accessibility matrix have not been validated; automated checks do not
-  establish those results. See the [validation matrix](https://github.com/GangHack/DeskModes/blob/main/docs/release-readiness.md).
+  establish those results. See the [validation matrix](https://github.com/GentleMec/DeskModes/blob/main/docs/release-readiness.md).
 
 Switch duration includes Windows reconfiguration and the panel waking up. Historical results
 on the development desk were 1.3–6.9 seconds for actual switches and 0.3–0.5 seconds when
@@ -103,7 +103,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Displays.ps1
 
 A company execution policy can override Bypass. Use `Get-ExecutionPolicy -List` to inspect it;
 a policy managed by your organisation needs its administrator. More troubleshooting is in the
-[reference](https://github.com/GangHack/DeskModes/blob/main/docs/reference.md#when-something-goes-wrong).
+[reference](https://github.com/GentleMec/DeskModes/blob/main/docs/reference.md#when-something-goes-wrong).
 
 ## Update, move, roll back or remove
 
@@ -125,7 +125,7 @@ automatically. Keep an external folder backup before an upgrade as well.
 
 ## For contributors
 
-Read [AGENTS.md](https://github.com/GangHack/DeskModes/blob/main/AGENTS.md), then run:
+Read [AGENTS.md](https://github.com/GentleMec/DeskModes/blob/main/AGENTS.md), then run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\check.ps1
@@ -133,5 +133,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\check.ps1
 
 The gates cover syntax, encoding, static analysis, translation keys and tests. Static analysis
 is optional locally and required in CI. Tests use fake displays and temporary settings. The
-[engineering diary](https://github.com/GangHack/DeskModes/blob/main/docs/notes.md) explains the
-hardware decisions and measured tradeoffs. [MIT license](https://github.com/GangHack/DeskModes/blob/main/LICENSE).
+[engineering diary](https://github.com/GentleMec/DeskModes/blob/main/docs/notes.md) explains the
+hardware decisions and measured tradeoffs. [MIT license](https://github.com/GentleMec/DeskModes/blob/main/LICENSE).

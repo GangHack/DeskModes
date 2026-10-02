@@ -1,33 +1,36 @@
-name: Feature request
-description: Something the tool should do and does not
+name: Suggest an improvement
+description: Share an idea for modes, rules, the interface or another part of DeskModes
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Describe the problem this would solve at your desk. Ideas for the interface
-        and translations are welcome. DeskModes stays portable, without an installer,
-        a service or required dependencies.
+        What would make DeskModes more useful to you? Suggestions for display modes,
+        rules, hotkeys, the interface and translations are welcome. Describe your
+        workflow and the change you would like to see. No code or technical solution
+        is needed. Please check existing suggestions before posting.
 
   - type: textarea
     id: problem
     attributes:
-      label: What you were trying to do
+      label: What would you like to make easier?
       description: >
-        The situation at your desk, not the feature. What the tool should do
-        instead is the next box — this one is what made you look for it.
+        Describe the situation at your desk or something that feels inconvenient.
+        For example, configuring several rules or changing brightness for a mode.
     validations:
       required: true
 
   - type: textarea
     id: idea
     attributes:
-      label: What the tool could do about it
+      label: Your suggestion
+      description: What would you like DeskModes to do, and how would that help you?
+      placeholder: I would like to… because…
     validations:
       required: true
 
   - type: textarea
     id: workaround
     attributes:
-      label: How you handle it today
+      label: How you handle it today (optional)
       description: A hook, a second combination, a hand-edited settings.json, or nothing.

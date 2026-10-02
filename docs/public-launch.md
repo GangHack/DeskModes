@@ -14,7 +14,7 @@ Suggested repository About description:
 
 > Switch between Work, Game and TV display setups with one hotkey. Portable Windows app that remembers layouts, refresh rates and window positions.
 
-Use https://github.com/GangHack/DeskModes/releases/latest as the About website.
+Use https://github.com/GentleMec/DeskModes/releases/latest as the About website.
 Keep the existing focused topics: windows, powershell, multi-monitor, monitor-switcher,
 display-profiles, hotkeys and ddc-ci. Keep the public issue channel enabled.
 
@@ -40,28 +40,29 @@ Record those owner checks before describing the entire feedback path as verified
 
 ## Enable voluntary support
 
-The owner creates a page at https://ko-fi.com/ and connects PayPal or Stripe in
-Payment Settings. Registration, identity checks and payment account connection are
-owner actions. Use a project-facing name and review what a supporter sees at checkout.
+The support page is https://ko-fi.com/gentlemec. The owner reports PayPal and Stripe
+connected on 2026-10-03. Registration, identity checks, payment setup and transactions
+are owner actions. Page editing and checkout have not been verified by the agent.
+
+The English page title, description, feedback links and thank-you message are ready in
+[docs/kofi-page.md](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
+
+GitHub FUNDING.yml and the README link to this page. The About button uses the same URL
+in the source. The released 1.0.1 ZIP has no support link; the app change is recorded under
+Unreleased and will reach downloaded copies through the normal next-release workflow.
+
+Remaining owner checks:
+
+1. Paste the prepared English copy into Ko-fi and add the GitHub links.
+2. Review page currency, suggested tip amount and Standard/Contributor fees.
+3. Confirm the public page offers both payment methods and check for any outstanding
+   payment-provider requirements. Confirm receipt after a genuine supporter payment.
 
 Official setup:
 https://help.ko-fi.com/hc/en-us/articles/115003980093-How-do-I-get-paid
 
-After the owner supplies a working public page URL:
-
-1. Add .github/FUNDING.yml on main with `ko_fi: <confirmed-page-name>`.
-   GitHub supports it directly:
-   https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
-2. Add a small Support DeskModes link near the README footer.
-3. Set the existing DonateUrl in DisplayCore.ps1 to that exact public URL.
-   This is an app change: add a changelog entry, run the required checks and
-   ship it through the normal next-release workflow. The downloaded 1.0.1 ZIP
-   continues to contain the disabled support button until a new release is installed.
-4. Verify the GitHub Sponsor button and app button open the correct page.
-   The owner confirms the payment method actually accepts a contribution.
-
-Do not publish an invented handle or a payment button without a working destination.
 DeskModes remains free; support is optional and grants no promise of priority fixes.
+
 
 ## First two weeks
 
@@ -88,8 +89,8 @@ sending messages or posting announcements; the owner chooses the accounts and ch
 > laptops, docks and other setups still need feedback. If you try it, I would like to know
 > whether Work → Game → Back restores your desk correctly.
 >
-> Download and screenshots: https://github.com/GangHack/DeskModes
-> Report a problem: https://github.com/GangHack/DeskModes/issues/new?template=bug_report.yml
+> Download and screenshots: https://github.com/GentleMec/DeskModes
+> Report a problem: https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml
 
 ## What to measure
 
@@ -111,4 +112,4 @@ with the bug label and closed as completed. About description and release link u
 Local tools/check.ps1 passed with 2,850 assertions; the local analyzer was unavailable.
 Signed-in browser form validation and notification delivery remain owner checks because
 the browser tool could not verify its saved access permissions. The public chooser
-redirects signed-out visitors to GitHub sign-in. The support page URL is pending.
+redirects signed-out visitors to GitHub sign-in. At that snapshot, the support page URL was pending.
