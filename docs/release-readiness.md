@@ -1,6 +1,6 @@
 ﻿# Release readiness
 
-Status on 2 October 2026: **automated checks, native mode round trips and UltraFine manual wake passed; idle sleep and remaining interactive acceptance stay open**.
+Status on 2 October 2026: **automated checks, native mode round trips and UltraFine manual wake passed; the owner accepts timed display power-off; remaining interactive acceptance stays open**.
 The application reports 1.0.1. Its CHANGELOG heading intentionally has no release date;
 `pack.ps1 -ExpectVersion 1.0.1` refuses publication until a dated section is committed.
 The first-release feature notes are consolidated under 1.0.1, including the current
@@ -203,7 +203,15 @@ The old tray then exited its message loop normally, logged its stop and flushed 
 The restarted tray loaded the updated code, remained the only instance, registered all six
 shortcuts and started in 703 ms. The exact desktop and settings hash survived restart. The
 running application now includes the wake change. Full ZIP overlay, native settings interaction,
-Windows idle sleep, unavailable ASUS wake and other monitor models remain outside this acceptance.
+automatic wake timing, unavailable ASUS wake and other monitor models remain outside this acceptance.
+
+### Owner acceptance of the display timeout
+
+The owner confirmed that Windows' timed display power-off had been tested and considers that
+behavior working. Timed display power-off on the owner's desk is accepted from this observation;
+repeating the timeout test is not required. Detailed automatic wake timing and a sleep/resume
+trace were not supplied. This observation does not establish whole-computer suspend or
+compatibility with other monitor/dock configurations.
 
 ## Remaining acceptance for the current candidate
 
@@ -215,7 +223,7 @@ Earlier hardware evidence applies only to its recorded source, not automatically
 Before tagging:
 
 - The current three-monitor desk passed exact and visually confirmed mode round trips above.
-  Finish idle sleep/wake acceptance and repeat All -> solo/subset -> All on the external setup.
+  Timed display power-off is accepted by the owner; repeat All -> solo/subset -> All on the external setup.
   Compare physical primary, X/Y, rotation, resolution, refresh and restored window reachability.
   Include an unavailable panel and confirm recovery leaves a usable desktop.
 - Start with a different visible panel than the last chosen mode. Defaults must preserve the
@@ -281,7 +289,7 @@ public reports.
 | --- | --- | --- |
 | Fresh Windows 10 | Download ZIP in a browser; extract to a writable folder; start Displays.cmd. Record actual warnings, first compilation time and first Settings window. | Pending |
 | Fresh Windows 11 | Same procedure, recording Smart App Control state without changing it for the test. A refused run must have actionable troubleshooting. | Pending |
-| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Mode round trips and visible output passed October 1; UltraFine manual power wake passed October 2; idle sleep/wake pending |
+| Author's three-monitor desk | Solo -> All -> solo -> All -> original solo, using exact desktop comparisons and the extracted candidate. | Mode round trips and visible output passed October 1; UltraFine wake passed October 2; timed display power-off accepted by owner |
 | One monitor | Start, configure, repeat its mode, open/close Settings and exit. No phantom monitors or failure loop. | Pending |
 | Two different monitors | Alternate solo, combination and all; verify membership, primary, positions and refresh rates. | Pending |
 | Exact three-display restoration | Two identical landscape panels plus portrait-flipped third panel at asymmetric Y. Repeat All; cycle subset/solo to All; restart in subset. Compare physical primary, every X/Y, rotation, resolution and rational Hz. | Three distinct landscape panels passed October 1; identical/portrait setup pending |
@@ -291,7 +299,7 @@ public reports.
 | Optional display controls | Opt into brightness/contrast/picture/HDR only where supported. Verify restoration and bounded failure; never query the capabilities string. | Pending |
 | Rules and Back | Test process/idle/plug trigger, return, unavailable target, bounded retry and manual override. | Pending |
 | Small screen and accessibility | 100/150/200% scale, short working area, long translations, keyboard and screen reader, light/dark/high contrast. All actions must remain reachable. | Pending |
-| Portable update | Back up the folder, exit, overlay the new program files and restart. Settings, hooks, rules and diary remain intact. | Isolated overlay and read-only CLI passed October 1; real tray restart pending |
+| Portable update | Back up the folder, exit, overlay the new program files and restart. Settings, hooks, rules and diary remain intact. | Isolated overlay/CLI passed October 1 and updated real tray restart passed October 2; full ZIP overlay acceptance pending |
 | Move, rollback, removal | Move folder, recreate startup target, restore the saved folder, disable startup, exit and remove. No orphaned enabled startup indicator. | Logic covered; end-to-end pending |
 | Read-only location | Start from a folder with no write access. Record the actionable error; do not solve by running elevated. | Pending |
 
