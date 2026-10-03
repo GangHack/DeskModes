@@ -1,43 +1,43 @@
 ﻿# Launch log
 
-Checked on 2026-10-03. This records evidence and actions still needed, not a claim of
+Checked on 2026-10-04. This records evidence and actions still needed, not a claim of
 universal hardware support. Start with [the launch plan](https://github.com/GentleMec/DeskModes/blob/main/docs/public-launch.md).
 
 ## Current evidence
 
 | Item | Result | Evidence and limit |
 | --- | --- | --- |
-| Public release | Verified | [1.0.1](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.1), ZIP and checksum are public. Downloaded ZIP hash matches the attached hash and GitHub asset digest. |
+| Public release | Verified | [1.0.2](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.2), normal public release from f07232136200a4650ef4b355a399f31e6a878edf. [Tag workflow succeeded](https://github.com/GentleMec/DeskModes/actions/runs/37158627145). Downloaded ZIP hash matches attached checksum and GitHub digest. All 25 files match the clean local build. |
 | Released startup commands | Verified on this PC | Fresh isolated extraction: status and diagnostics exit 0 under Windows PowerShell 5.1. Diagnostics contains schema, version, windows, powershell and displays. No real switch was invoked. |
-| Source quality | Verified for functional source | Commit `4ee38111360bd44bd68181019901fe1873723deb`: [Windows CI success](https://github.com/GentleMec/DeskModes/actions/runs/37074182210), including required analyzer. Local check on October 3 passed 2,849 assertions; local analyzer unavailable. |
+| Source quality | Verified | Release commit f07232136200a4650ef4b355a399f31e6a878edf: [Windows CI success](https://github.com/GentleMec/DeskModes/actions/runs/37158437316), including required analyzer. Local tools/check.ps1 passed 2,849 assertions on October 4; local analyzer unavailable. Tag workflow ran all gates again successfully. |
 | GitHub presentation | Prepared and published | Short README, Modes/desk screenshots, release download link, useful About description and repository website. Release description shortened with full changelog linked separately. |
-| Bug and idea forms | Published; browser check pending | Both YAML forms are on main; bug/enhancement labels exist; Issues enabled. [Bug smoke issue #1](https://github.com/GentleMec/DeskModes/issues/1) and [suggestion smoke issue #2](https://github.com/GentleMec/DeskModes/issues/2) were created with their labels and closed as completed. This verifies API issue creation/closure, not browser validation. |
+| Bug and idea forms | Verified in a signed-in browser | Required fields block empty submissions. A suggestion with optional fields empty created [#3](https://github.com/GentleMec/DeskModes/issues/3) with enhancement; a bug without logs created [#4](https://github.com/GentleMec/DeskModes/issues/4) with bug. Both harmless tests were closed. |
 | Private security route | Enabled | Repository API returns private vulnerability reporting enabled. |
-| Maintainer notifications | Action required | Repository subscription API returned 404 for the authenticated owner. Enable Watch → Custom → Issues and test another account's report. Email/browser delivery is unverified. |
-| Donation links | Published on GitHub | README and FUNDING.yml point to https://ko-fi.com/gentlemec. Source About uses the same URL. The 1.0.1 ZIP predates this source change and has no Support button. |
-| Next app release | Candidate prepared | Clean source `36ee7e439d1defc28602eef9f2806e87a9514c5c`, version 1.0.2, undated changelog. All 25 archived files match source; no machine state or development files. Isolated status/diagnostics and offline Support-click verification passed. The release guard refuses the undated build before writing an archive. |
-| Ko-fi profile | Text saved and verified in browser | Display name, English About with download/bug/idea URLs, Website and Software category confirmed on the page. Cover prepared locally; upload interrupted by Chrome disconnect. Thank-you entered; persistence check pending. |
+| Maintainer notifications | Subscription saved; delivery pending | Watch → Custom → Issues was saved and confirmed checked after reload on October 4. A report from another account and actual notification delivery remain unverified. |
+| Donation links | Published in app and on GitHub | README, FUNDING.yml and the 1.0.2 About Support button point to https://ko-fi.com/gentlemec. Payment acceptance remains a separate owner check. |
+| App release | 1.0.2 published | Support and canonical-link patch; no display-engine, rules, settings or diagnostics change. Isolated downloaded status/diagnostics exit 0 and report DeskModes 1.0.2. No real display switch was invoked. |
+| Ko-fi profile | Text verified; cover ready locally | Display name, English About, Website and Software category confirmed. New dark cover and its generation brief are in the local delivery folder. Automated upload requires the extension file-URL option; manual upload is available. Thank-you field was empty after reload and is not saved. |
 | Ko-fi payments | Owner checks remain | Payment Settings shows both providers connected and outstanding verification requirements. Signed-out checkout and receipt unverified. Private account follow-up is kept outside this public log. |
 | Outreach material | Prepared | Platform drafts, tester invitation, FAQ replies, direct destinations, posting rules and image captions are linked from the plan. No messages or community posts have been sent. |
-| Content formatting | Verified | GitHub Markdown API rendered the plan, posts, content checklist, journal and release notes; tables and code blocks are retained. About screenshot rendered from current WPF source and visually inspected. |
-| October 3 profile follow-up checks | Local suite has one failure | Full tools/check.ps1 run: 1 of 2,849 assertions failed in the unchanged tall-menu scroll test; a focused repeat failed the same assertion (1 of 5). Documentation-only diff passes git diff --check. Earlier successful candidate/CI results above remain separate evidence. No release was tagged during this follow-up. |
+| Content formatting | Earlier rendering verified; current Markdown inspected | GitHub Markdown API rendered the earlier plan, posts, content checklist, journal and release notes; tables and code blocks are retained. About screenshot rendered from current WPF source and visually inspected. |
+| October 3 profile follow-up checks | Historical failure resolved October 4 | Tall-menu fixture assumed 1,200 pixels would fit 40 rows; at 150% DPI the menu needs 1,204. Larger fake screen now uses the natural menu height. Original regression failed 1 of 5; fixed check passes 5 of 5 and full tools/check.ps1 passes 2,849 assertions. No production menu change. |
 | Demo | Script ready; recording pending | A 20–25 second physical-desk recording is optional for the first screenshot post. No real-hardware video was fabricated or recorded. |
 
 Published ZIP SHA256:
 
 ```text
-d90f79b308d26b6ba205372180fe740926702c98ad6e2b562f0c0382a13bbcbe
+cdcc7ea4807f1ed3d4e47eff067547802882c67eb52781cb20787e876943ac7e
 ```
 
-Release asset download count was 1 before this session's verification download. Treat
+The 1.0.1 asset count was 1 before its earlier verification download. Treat
 maintainer downloads as part of the count, not new users. Refresh the baseline immediately
-before outreach using [release assets](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.1)
+before outreach using [release assets](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.2)
 and the private [traffic view](https://github.com/GentleMec/DeskModes/graphs/traffic).
 
 An ignored local `DeskModes-1.0.1.zip` in the checkout predates publication and is a
 historical candidate. Use the public attached ZIP and verified hash above for the launch.
 
-## 1.0.2 candidate verification
+## Historical 1.0.2 candidate verification
 
 Candidate ZIP SHA256:
 
@@ -49,8 +49,8 @@ The ZIP, matching hash and candidate notes are saved under
 `../DeskModes-launch/prepared-1.0.2-36ee7e4`. The same files are saved in the
 [maintainer-only preservation draft](https://github.com/GentleMec/DeskModes/releases/tag/untagged-5e2a2933156f305e801c),
 including validation.txt and the UI preview. All five uploaded asset digests matched
-the local files. The draft's own body records hosted CI confirmation. No v1.0.2 tag
-was pushed; public latest remains 1.0.1.
+the local files. The draft's own body records hosted CI confirmation. At that candidate stage no v1.0.2 tag
+was pushed. The final dated release above supersedes it; the preservation draft stays unpublished.
 
 Local tools/check.ps1 passed 2,849 assertions after the version bump; local analyzer
 was unavailable. Extracted status and diagnostics report DeskModes 1.0.2. The About
@@ -66,9 +66,9 @@ switch or user installation update was performed. The original hardware limits a
 
 | Check | How | Result |
 | --- | --- | --- |
-| Suggestion form | [Open while signed in](https://github.com/GentleMec/DeskModes/issues/new?template=feature_request.yml); empty required fields should block submission. Submit a clearly marked test with no private data and close it. | Pending |
-| Bug form | [Open while signed in](https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml); symptom, steps and version required; logs optional. | Pending |
-| Notifications | Repository Watch → Custom → Issues; [notification settings](https://github.com/settings/notifications) for delivery preference. Have another account create a harmless issue and check arrival. | Pending |
+| Suggestion form | Browser submission and required-field validation; optional workaround left empty. | Passed; #3 closed |
+| Bug form | Browser submission and required-field validation; diagnostics and logs left empty. | Passed; #4 closed |
+| Notifications | Watch → Custom → Issues is saved. Have another account create a harmless issue and check arrival. | Subscription verified; delivery pending |
 | Ko-fi page | [Profile text](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md) is saved; finish cover upload, reload-check thank-you and inspect signed-out checkout. | Text verified; remaining checks pending |
 | Receipt | Check any outstanding PayPal/Stripe account requirements and confirm receipt after a genuine supporter payment. | Pending; no agent payment attempted |
 | First outreach | Choose one community, recheck its rules, review and post the matching draft. Add its URL below. | Pending; owner action |
@@ -83,8 +83,9 @@ Do not reuse v1.0.1 or overwrite its assets to add the new Support button.
 No community publication is recorded yet.
 
 The owner confirmed on 2026-10-03 that the task is to prepare the posting plan. No community
-post or moderator message was sent. First destination: r/SideProject; r/software follows
-after reviewing initial feedback. Public latest was rechecked as v1.0.1; v1.0.2 remains a draft.
+post or moderator message was sent. First options: the current r/software Weekly Discovery Thread or r/SideProject.
+The October 4 weekly thread welcomes relevant side projects with transparent authorship.
+Wait for feedback before another announcement; no community post has been sent.
 
 Duplicate the following block for each actual post:
 

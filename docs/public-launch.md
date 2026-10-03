@@ -10,15 +10,14 @@ Start here when returning to the project. The public release is already availabl
 | Attach screenshots or record a short demo | [Content checklist](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-content.md) |
 | See completed checks and remaining owner actions | [Launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md) |
 | Fill in Ko-fi | [English page copy](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md) |
-| Review the next app release | [1.0.2 candidate procedure](https://github.com/GentleMec/DeskModes/blob/main/docs/next-release.md) |
+| Review the next app release | [1.0.2 release verification](https://github.com/GentleMec/DeskModes/blob/main/docs/next-release.md) |
 
 ## Next owner actions, in order
 
 1. The Ko-fi profile text is saved. Finish owner verification requirements, check the
    public checkout and finish the prepared cover upload. No shop or membership is needed.
-2. Open both GitHub feedback forms while signed in. Check required fields and submit
-   one harmless test suggestion, then close it. Enable Watch → Custom → Issues and
-   confirm a notification from a different account.
+2. Both GitHub forms passed browser checks and test submissions are closed. Watch →
+   Custom → Issues is saved. Confirm notification delivery from a different account.
 3. Use the Modes screenshot for the first post. A real 20-second demo can follow;
    the shot list and captions are ready in the content checklist.
 4. Choose one community below, paste its matching draft, read the current rules again
@@ -26,18 +25,19 @@ Start here when returning to the project. The public release is already availabl
 
 ## Where to go
 
-Rules checked on 2026-10-03. Recheck on the day of posting. The agent has prepared
+Rules checked on 2026-10-04. Recheck on the day of posting. The agent has prepared
 materials and has not sent invitations, contacted moderators or published community posts.
 
-The owner confirmed on October 3 that outreach is still at the planning stage. Start with
-the r/SideProject draft and Modes screenshot; after 48 hours of feedback, adapt the
-r/software draft using what people actually found useful or confusing. Keep both posts
-about the available app; describe 1.0.2 as a candidate until its release workflow completes.
+Outreach remains at the planning stage. Start with one short comment in the current
+r/software Weekly Discovery Thread, or the r/SideProject draft and Modes screenshot.
+After 48 hours of feedback, adapt the next post using what people actually found useful
+or confusing. Keep announcements about the available app and disclose authorship.
 
 | Priority | Destination | What to do |
 | --- | --- | --- |
-| First | [r/SideProject](https://www.reddit.com/r/SideProject/) · [create post](https://www.reddit.com/r/SideProject/submit) | Share the project and ask for feedback. Its [sidebar](https://old.reddit.com/r/SideProject/) requests a project name followed by a short description for link submissions. Use the matching draft and Modes screenshot. |
-| Second | [r/software](https://www.reddit.com/r/software/) · [create post](https://www.reddit.com/r/software/submit) | Current rules allow open-source software promotion and reserve Release posts for new programs or substantial updates. DeskModes is free and MIT licensed. Use the software draft and appropriate Release flair; do not repost each patch. There is an undisclosed account-karma threshold. |
+| First option | [r/software Weekly Discovery Thread](https://www.reddit.com/r/software/comments/1wvquoc/weekly_discovery_thread_october_02_2026/) | Relevant side projects and transparent self-promotion are allowed. Keep the comment short and personal; the thread prohibits link spam and AI-generated content dumps. Use the short draft; recheck the active weekly thread before posting. |
+| Alternative first post | [r/SideProject](https://www.reddit.com/r/SideProject/) · [create post](https://www.reddit.com/r/SideProject/submit) | Share the project and ask for feedback. Its [sidebar](https://old.reddit.com/r/SideProject/) requests a project name followed by a short description for link submissions. Use the matching draft and Modes screenshot. |
+| Later | [r/software](https://www.reddit.com/r/software/) · [create post](https://www.reddit.com/r/software/submit) | Current rules allow open-source software promotion and reserve Release posts for new programs or substantial updates. DeskModes is free and MIT licensed. Use the software draft and appropriate Release flair; do not repost each patch. There is an undisclosed account-karma threshold. |
 | Optional | [Show HN](https://news.ycombinator.com/submit) · [guidelines](https://news.ycombinator.com/showhn.html) | Submit the runnable project and be available to discuss it. Write your own text: the [moderator's guidance](https://news.ycombinator.com/item?id=22336638) says not to use LLM-generated or edited text on HN. The copy file provides facts, not an HN post. Do not request upvotes. |
 | Ask first | [r/Windows11](https://www.reddit.com/r/Windows11/) · [message moderators](https://www.reddit.com/message/compose?to=%2Fr%2FWindows11) | Current rules say Windows compatibility alone does not make a post relevant. Ask whether a display-workflow demo fits. The [October help thread](https://www.reddit.com/r/Windows11/comments/1wuxl8s/simple_questions_and_help_thread_month_of_october/) is for help; do not treat it as a launch thread. |
 | Direct feedback | Existing friends or communities you participate in | Invite 5–10 willing Windows multi-monitor users with the tester draft. The owner chooses recipients; no private chat or contact list is assumed. |
@@ -82,7 +82,8 @@ display-profiles, hotkeys and ddc-ci. Keep the public issue channel enabled.
   add a workaround when known, and link a fix to its release.
 
 A successful API smoke check does not prove the browser form or email notifications.
-Record those owner checks before describing the entire feedback path as verified.
+Browser forms and the Issues subscription passed on October 4. Delivery from another
+account still needs checking before describing the entire feedback path as verified.
 
 ## Enable voluntary support
 
@@ -94,9 +95,8 @@ checks. Registration, identity checks, payment setup and transactions are owner 
 The English page title, description, feedback links and thank-you message are ready in
 [docs/kofi-page.md](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
 
-GitHub FUNDING.yml and the README link to this page. The About button uses the same URL
-in the source. The released 1.0.1 ZIP has no support link; the app change is prepared in
-the undated 1.0.2 candidate and will reach downloaded copies through the normal tag workflow.
+GitHub FUNDING.yml and the README link to this page. The released 1.0.2 About button uses the same URL.
+Its tag workflow and downloaded archive checks passed; payment acceptance is separate.
 
 Remaining owner checks:
 

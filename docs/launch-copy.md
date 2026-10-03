@@ -3,6 +3,41 @@
 Prepared drafts for the owner to review and post. Nothing here has been sent.
 Use one audience at a time and reply to its questions before widening the launch.
 
+## r/software Weekly Discovery Thread
+
+First option checked on October 4:
+[Weekly Discovery Thread - October 02, 2026](https://www.reddit.com/r/software/comments/1wvquoc/weekly_discovery_thread_october_02_2026/).
+It welcomes relevant side projects and transparent self-promotion, but prohibits link
+spam and AI-generated content dumps. Review and personalize this short draft before posting;
+use the current weekly thread if this one is no longer active.
+
+```text
+I develop DeskModes, a free, open-source Windows tool for switching between work screens, a gaming monitor and a TV. You can save display modes, assign hotkeys and add rules that select a mode while any chosen game or program is running, then return when the last one closes.
+
+It's portable and has no installer or telemetry. I've tested the core workflow on my three-display desktop; other hardware still needs feedback.
+
+Download and screenshots: https://github.com/GentleMec/DeskModes
+
+If you use several displays, what part of switching between setups would you most like to improve?
+```
+
+Start with this comment or the SideProject post below. Wait for replies before adding
+another announcement. Keep the donation link on the project page.
+
+## Replies to existing discussions
+
+Search for recent questions about Windows display presets, saved layouts or hotkeys.
+Answer the actual question, disclose that you develop DeskModes and link it only when
+the current app fits. Automatic rules are useful when the question involves games or
+programs selecting a display setup.
+
+Older examples are research context:
+[layout hotkeys](https://www.reddit.com/r/software/comments/w423fs/) and
+[switching displays with hotkeys](https://www.reddit.com/r/windows/comments/1h6qkci/).
+Their age makes them poor first launch destinations. DeskModes does not promise
+cross-PC KVM switching, monitor input-source switching or cloned-display profiles.
+Do not revive old threads with a generic promotion message. No replies have been sent.
+
 ## r/SideProject
 
 Title:

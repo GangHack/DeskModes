@@ -1,18 +1,17 @@
 ﻿# Release readiness
 
-Status checked on 3 October 2026: **1.0.1 is publicly released with the validation limits below**.
-The [release](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.1) has its ZIP and
-SHA256 attached. The published ZIP was downloaded again, its checksum matched, and
-isolated status/diagnostics commands exited successfully under Windows PowerShell 5.1.
-See [the launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md)
-for current presentation, feedback and support checks.
+Status checked on 4 October 2026: **1.0.2 is publicly released with the validation limits below**.
+The [release](https://github.com/GentleMec/DeskModes/releases/tag/v1.0.2) has its ZIP and
+SHA256 attached. The tag workflow passed all gates, including the required analyzer.
+The downloaded ZIP matches its checksum and GitHub digest; all 25 files match the
+clean local build. Isolated status/diagnostics exit 0 under Windows PowerShell 5.1 and
+report DeskModes 1.0.2. See [the launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md)
+for feedback and support checks.
 
-The owner chose public distribution and authorized opening the repository. The application
-reports 1.0.1 in the published ZIP and its CHANGELOG heading is dated 2 October 2026.
-The tag workflow checked and built that dated source. Current source reports 1.0.2;
-its undated changelog section prepares support and canonical-link changes for the next release.
-The first-release feature notes are consolidated under 1.0.1, including the current
-separate Save and apply-to-displays behavior.
+The 1.0.2 patch enables voluntary support in About and updates canonical project/help/
+feedback links. It does not change display switching, rules, settings or diagnostics.
+The first-release feature notes remain under 1.0.1. New hardware compatibility is not
+inferred from this patch or its automated checks.
 
 ## Public release scope
 

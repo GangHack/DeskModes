@@ -52,17 +52,20 @@ Thanks for being part of it!
 
 Display name, About copy and Website were saved and verified after reloading Settings,
 then on the profile page. The page shows the Software category and the GitHub website link.
-The thank-you message was entered; persistence still needs a reload check.
+The thank-you message was entered, but the October 4 reload check showed an empty
+field. It is not saved yet.
 
-A 3:1 cover is prepared in the local delivery folder as `../DeskModes-launch/kofi-cover.png`.
-It was generated with the built-in image tool using this brief: graphite background,
-ivory DeskModes title, teal monitor outlines, "Display modes · Hotkeys · Automatic rules"
-and "Free & open source for Windows". This is branding, not a hardware screenshot.
-Upload was interrupted when Chrome disconnected; the installed cover is unverified.
+A darker 3:1 cover is prepared as `../DeskModes-launch/kofi-cover-dark.png` (2172 × 724).
+The built-in image tool produced an obsidian background, warm ivory DeskModes title
+and restrained champagne-gold monitor outlines. The two smaller lines read
+"Display modes · Hotkeys · Automatic rules" and "Free & open source for Windows".
+The complete brief is beside it in `kofi-cover-dark-prompt.txt`. This is branding.
+Upload remains pending: Chrome requires the ChatGPT extension's "Allow access to file
+URLs" option for automated local uploads. The owner can upload the PNG manually.
 
 ## Owner setup checks
 
-Payment Settings showed both providers connected on 2026-10-03, but outstanding owner
+Payment Settings showed both providers connected on 2026-10-04, but outstanding owner
 verification requirements still need attention. Connection alone does not establish
 payment acceptance. No shop or membership is required for one-time tips.
 
