@@ -5,10 +5,7 @@ A release is dated only when its tag is ready to publish.
 
 ## Unreleased
 
-## 1.0.2
-
-Support and feedback links for the next release. This is an undated candidate;
-the public download remains 1.0.1 until the normal tag workflow publishes 1.0.2.
+## 1.0.2 — 2026-10-04
 
 ### Added
 

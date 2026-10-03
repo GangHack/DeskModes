@@ -142,6 +142,9 @@ Test-Case 'menu: a tall menu scrolls and can grow again on a larger display' {
     $menu.TopLevel = $false
     try {
         foreach ($number in 1..40) { [void]$menu.Items.Add("Mode $number") }
+        # At 150% DPI these rows need 1,204 pixels: a fixed 1,200-pixel screen still
+        # overflows. Size the larger fixture from the uncapped menu, not the host DPI.
+        $naturalHeight = $menu.GetPreferredSize([System.Drawing.Size]::Empty).Height
         $small = New-Object System.Drawing.Rectangle 0, 0, 1000, 300
         Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $small
         Assert-True ($small.Contains($menu.Bounds)) 'the menu fits the shorter display'
@@ -151,7 +154,7 @@ Test-Case 'menu: a tall menu scrolls and can grow again on a larger display' {
         Assert-True ([bool]$scroll.GetValue($menu, $null)) 'overflow commands have scroll buttons'
         $shortHeight = $menu.Height
 
-        $large = New-Object System.Drawing.Rectangle 0, 0, 1600, 1200
+        $large = New-Object System.Drawing.Rectangle 0, 0, 1600, ([Math]::Max(1200, $naturalHeight + 100))
         Update-TrayMenuWorkingArea -Menu $menu -WorkingArea $large
         Assert-True ($menu.Height -gt $shortHeight) 'a previous small screen does not pin the height'
         Assert-True ($large.Contains($menu.Bounds)) 'the expanded menu still fits'
