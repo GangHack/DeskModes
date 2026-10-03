@@ -14,8 +14,8 @@ Start here when returning to the project. The public release is already availabl
 
 ## Next owner actions, in order
 
-1. Finish Ko-fi using the prepared copy. Check the public checkout and any outstanding
-   PayPal/Stripe requirements. No shop or membership is needed for one-time tips.
+1. The Ko-fi profile text is saved. Finish owner verification requirements, check the
+   public checkout and finish the prepared cover upload. No shop or membership is needed.
 2. Open both GitHub feedback forms while signed in. Check required fields and submit
    one harmless test suggestion, then close it. Enable Watch → Custom → Issues and
    confirm a notification from a different account.
@@ -28,6 +28,11 @@ Start here when returning to the project. The public release is already availabl
 
 Rules checked on 2026-10-03. Recheck on the day of posting. The agent has prepared
 materials and has not sent invitations, contacted moderators or published community posts.
+
+The owner confirmed on October 3 that outreach is still at the planning stage. Start with
+the r/SideProject draft and Modes screenshot; after 48 hours of feedback, adapt the
+r/software draft using what people actually found useful or confusing. Keep both posts
+about the available app; describe 1.0.2 as a candidate until its release workflow completes.
 
 | Priority | Destination | What to do |
 | --- | --- | --- |
@@ -82,8 +87,9 @@ Record those owner checks before describing the entire feedback path as verified
 ## Enable voluntary support
 
 The support page is https://ko-fi.com/gentlemec. The owner reports PayPal and Stripe
-connected on 2026-10-03. Registration, identity checks, payment setup and transactions
-are owner actions. Page editing and checkout have not been verified by the agent.
+connected on 2026-10-03. Profile text and its Website link were saved and verified in the
+browser. Outstanding payment verification, signed-out checkout and receipt remain owner
+checks. Registration, identity checks, payment setup and transactions are owner actions.
 
 The English page title, description, feedback links and thank-you message are ready in
 [docs/kofi-page.md](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
@@ -94,8 +100,8 @@ the undated 1.0.2 candidate and will reach downloaded copies through the normal 
 
 Remaining owner checks:
 
-1. Paste the prepared English copy into Ko-fi and add the GitHub links.
-2. Review page currency, suggested tip amount and Standard/Contributor fees.
+1. Finish the prepared cover upload and verify the saved thank-you message.
+2. Resolve outstanding owner verification and review currency, tip amount and fees.
 3. Confirm the public page offers both payment methods and check for any outstanding
    payment-provider requirements. Confirm receipt after a genuine supporter payment.
 

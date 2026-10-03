@@ -4,7 +4,7 @@ Public page: https://ko-fi.com/gentlemec
 
 ## Page title
 
-Support DeskModes
+Yegor · DeskModes
 
 ## Short bio
 
@@ -13,14 +13,22 @@ automatic rules, brightness settings and more.
 
 ## About
 
-Hi! I'm building DeskModes, a free and open-source Windows tool for managing your
-display setups — with custom modes, hotkeys, automatic rules, brightness settings and more.
+Hi! I'm building DeskModes, a free and open-source Windows tool for custom display
+setups, hotkeys, automatic rules, brightness settings and more.
 
-I've put a lot of time and care into developing it. If you find it useful, consider buying
-me a coffee. Every contribution is appreciated and helps me keep improving the app.
+I've put a lot of time and care into developing it. If it makes your day easier, consider
+buying me a coffee. Every contribution is appreciated and helps me keep improving the app.
 
-Have an idea or something you'd like to improve? Share your suggestions on GitHub.
-Bug reports and feedback are welcome too.
+DeskModes is free to use. Support is always optional.
+
+Download and screenshots:
+https://github.com/GentleMec/DeskModes
+
+Have an idea? Suggest an improvement:
+https://github.com/GentleMec/DeskModes/issues/new?template=feature_request.yml
+
+Found a bug? Let me know:
+https://github.com/GentleMec/DeskModes/issues/new?template=bug_report.yml
 
 Thanks for helping make DeskModes better!
 
@@ -32,14 +40,31 @@ Thanks for helping make DeskModes better!
 
 ## Thank-you message
 
-Thank you for supporting DeskModes! Your contribution helps me keep improving it.
-If you have an idea or feedback, I'd love to hear it on GitHub:
+Thank you for supporting DeskModes! Your contribution helps me keep improving this
+free and open-source app.
+
+Have an idea or feedback? I'd love to hear it:
 https://github.com/GentleMec/DeskModes/issues/new?template=feature_request.yml
+
+Thanks for being part of it!
+
+## Saved profile — 2026-10-03
+
+Display name, About copy and Website were saved and verified after reloading Settings,
+then on the profile page. The page shows the Software category and the GitHub website link.
+The thank-you message was entered; persistence still needs a reload check.
+
+A 3:1 cover is prepared in the local delivery folder as `../DeskModes-launch/kofi-cover.png`.
+It was generated with the built-in image tool using this brief: graphite background,
+ivory DeskModes title, teal monitor outlines, "Display modes · Hotkeys · Automatic rules"
+and "Free & open source for Windows". This is branding, not a hardware screenshot.
+Upload was interrupted when Chrome disconnected; the installed cover is unverified.
 
 ## Owner setup checks
 
-The owner reports PayPal and Stripe connected on 2026-10-03. That is sufficient for
-one-time tips once those providers accept payments. No shop or membership is required.
+Payment Settings showed both providers connected on 2026-10-03, but outstanding owner
+verification requirements still need attention. Connection alone does not establish
+payment acceptance. No shop or membership is required for one-time tips.
 
 - Choose the page's preferred currency and a modest suggested one-time amount.
 - Review Standard/Contributor or Get all of Ko-fi in Settings → Payment.
@@ -49,5 +74,6 @@ one-time tips once those providers accept payments. No shop or membership is req
   The owner should check for any outstanding payment-provider requirements and
   confirm receipt after a genuine supporter payment.
 
-Page editing, checkout availability and receipt of a contribution were not verified by
-the agent: browser access could not be established. The copy above is ready to paste.
+Profile text editing was verified. Signed-out checkout and receipt of a contribution remain
+unverified. Private payment follow-up is in the local delivery folder's Ko-fi-owner-checks.md;
+do not put account identifiers or payment records in this public document.

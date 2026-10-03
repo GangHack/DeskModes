@@ -19,7 +19,8 @@ The draft's candidate tag name does not replace the final version tag.
 
 ## Before publication
 
-1. Finish the public Ko-fi page and verify its checkout; [copy is ready](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
+1. Ko-fi profile text is saved. Finish outstanding owner verification and verify checkout;
+   [profile copy and remaining checks](https://github.com/GentleMec/DeskModes/blob/main/docs/kofi-page.md).
 2. Verify both GitHub feedback forms and owner notification delivery as listed in
    [the launch log](https://github.com/GentleMec/DeskModes/blob/main/docs/launch-log.md).
 3. Verify the isolated candidate shows version 1.0.2 and its Support button points
